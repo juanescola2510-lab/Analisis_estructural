@@ -22,14 +22,14 @@ col_p, col_q = st.columns(2)
 with col_p:
     st.subheader("📍 Cargas Puntuales")
     df_puntuales = st.data_editor(
-        pd.DataFrame([{"x": L/2, "P (kN)": 10.0}]),
+        pd.DataFrame([{"x": 5.0, "P (kN)": 10.0}]),
         num_rows="dynamic", key="puntuales", use_container_width=True
     )
 
 with col_q:
     st.subheader("📏 Cargas Distribuidas (UDL)")
     df_distribuidas = st.data_editor(
-        pd.DataFrame([{"x_inicio": 0.0, "x_fin": L, "q (kN/m)": 5.0}]),
+        pd.DataFrame([{"x_inicio": 0.0, "x_fin": 10.0, "q (kN/m)": 5.0}]),
         num_rows="dynamic", key="distribuidas", use_container_width=True
     )
 
@@ -46,7 +46,7 @@ if st.button("🚀 Calcular Estructura Combinada", use_container_width=True):
         for x in p_validas["x"]:
             if 0 <= x <= L: puntos_x.add(float(x))
             
-        # Agregar puntos de inicio y fin de cargas distribuidas para segmentar bien
+        # Agregar puntos de inicio y fin de cargas distribuidas
         q_validas = df_distribuidas.dropna(subset=["x_inicio", "x_fin", "q (kN/m)"])
         for _, row in q_validas.iterrows():
             if 0 <= row["x_inicio"] <= L: puntos_x.add(float(row["x_inicio"]))
@@ -67,19 +67,17 @@ if st.button("🚀 Calcular Estructura Combinada", use_container_width=True):
         elif tipo_der == "Fijo": ss.add_support_hinged(node_id=n_final)
         elif tipo_der == "Empotrado": ss.add_support_fixed(node_id=n_final)
 
-        # 4. Aplicar Cargas Puntuales (Evitando NoneType)
+        # 4. Aplicar Cargas Puntuales
         for _, row in p_validas.iterrows():
             pos_x = float(row["x"])
             val_p = float(row["P (kN)"])
-            # Encontrar el ID del nodo comparando con tolerancia pequeña por decimales
             for idx, coord in enumerate(puntos_ordenados):
                 if abs(coord - pos_x) < 1e-5:
                     ss.point_load(Fy=-val_p, node_id=idx + 1)
 
-        # 5. Aplicar Cargas Distribuidas por tramos
+        # 5. Aplicar Cargas Distribuidas
         for _, row in q_validas.iterrows():
             xi, xf, val_q = float(row["x_inicio"]), float(row["x_fin"]), float(row["q (kN/m)"])
-            # Aplicar a cada elemento que esté contenido en el rango [xi, xf]
             for i in range(len(puntos_ordenados) - 1):
                 p_mediano = (puntos_ordenados[i] + puntos_ordenados[i+1]) / 2
                 if xi <= p_mediano <= xf:
@@ -87,34 +85,29 @@ if st.button("🚀 Calcular Estructura Combinada", use_container_width=True):
 
         ss.solve()
 
-        # --- VISUALIZACIÓN DE RESULTADOS ---
+        # --- VISUALIZACIÓN ---
         st.header("📊 Resultados del Análisis")
-        
-        tab1, tab2, tab3, tab4 = st.tabs(["📐 DCL", "📉 Cortante (V)", "📈 Momento (M)", "🌊 Deflexión"])
+        tab1, tab2, tab3, tab4 = st.tabs(["📐 DCL", "📉 Cortante", "📈 Momento", "🌊 Deflexión"])
         
         with tab1:
-            st.subheader("Diagrama de Cuerpo Libre")
             st.pyplot(ss.show_structure(show=False))
         with tab2:
-            st.subheader("Diagrama de Fuerza Cortante (kN)")
             st.pyplot(ss.show_shear_force(show=False))
         with tab3:
-            st.subheader("Diagrama de Momento Flector (kNm)")
             st.pyplot(ss.show_bending_moment(show=False))
         with tab4:
-            st.subheader("Curva de Deflexión (m)")
             st.pyplot(ss.show_displacement(show=False))
 
-        # --- REACCIONES ---
+        # Reacciones
         st.subheader("📍 Reacciones en Apoyos")
         reacciones = ss.get_node_results_system()
         res_list = []
         for r in reacciones:
             if r['id'] in [1, n_final]:
                 ubi = "Izquierdo (x=0)" if r['id'] == 1 else f"Derecho (x={L})"
-                res_list.append({"Ubicación": ubi, "Reacción Vertical (kN)": round(abs(r.get('fy', 0)), 2)})
+                res_list.append({"Ubicación": ubi, "Reacción (kN)": round(abs(r.get('fy', 0)), 2)})
         st.table(res_list)
 
     except Exception as e:
-        st.error(f"Error detectado: {e}")
-        st.warning("Verifica que no haya valores incoherentes (ej: x_inicio > x_f
+        st.error(f"Error: {e}")
+        st.warning("Verifica que los valores de X estén dentro del rango de la viga.")
