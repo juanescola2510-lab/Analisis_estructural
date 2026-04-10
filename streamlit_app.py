@@ -17,37 +17,32 @@ if st.button("🚀 Calcular Estructura", use_container_width=True):
     try:
         ss = SystemElements()
         
-        # 1. Crear viga en dos tramos (asegura que haya un nodo exacto en la carga)
+        # 1. Crear viga en dos tramos (Nodo 1: Inicio, Nodo 2: Carga, Nodo 3: Fin)
         ss.add_element(location=[[0, 0], [x_p, 0]])
         ss.add_element(location=[[x_p, 0], [L, 0]])
         
-        # 2. Añadir apoyos en los extremos exactos
-        # Buscamos los nodos por posición para no fallar
-        ss.add_support_hinged(node_id=ss.find_node_id([0, 0]))
-        ss.add_support_roll(node_id=ss.find_node_id([L, 0]), direction=2)
+        # 2. Añadir apoyos en los extremos fijos (IDs 1 y 3)
+        ss.add_support_hinged(node_id=1)
+        ss.add_support_roll(node_id=3, direction=2)
         
-        # 3. Añadir carga
-        ss.point_load(Fy=-P, node_id=ss.find_node_id([x_p, 0]))
+        # 3. Añadir carga en el nodo central (ID 2)
+        ss.point_load(Fy=-P, node_id=2)
         
         # 4. Resolver
         ss.solve()
 
-        # --- SECCIÓN DE REACCIONES (MÉTODO DE BÚSQUEDA POR COORDENADAS) ---
+        # --- SECCIÓN DE REACCIONES (USANDO IDS DIRECTOS) ---
         st.subheader("📍 Valores de las Reacciones")
         
-        # Obtenemos TODOS los resultados de los nodos
-        todos_los_resultados = ss.get_node_results_system()
+        # Obtenemos fy directamente de los nodos de apoyo
+        # Usamos .get para que si no existe no explote, pero con IDs fijos es seguro
+        res_izq = ss.get_node_results_system(node_id=1)
+        res_der = ss.get_node_results_system(node_id=3)
         
-        r_izq, r_der = 0, 0
+        r_izq = res_izq.get('fy', 0) if isinstance(res_izq, dict) else res_izq[0].get('fy', 0)
+        r_der = res_der.get('fy', 0) if isinstance(res_der, dict) else res_der[0].get('fy', 0)
         
-        # Recorremos los resultados buscando los nodos en x=0 y x=L
-        for nodo in todos_los_resultados:
-            if abs(nodo['x'] - 0) < 0.01: # Nodo en el inicio
-                r_izq = nodo.get('fy', 0)
-            if abs(nodo['x'] - L) < 0.01: # Nodo en el final
-                r_der = nodo.get('fy', 0)
-        
-        # Crear tabla con los valores encontrados
+        # Crear tabla
         datos_reacciones = [
             {"Ubicación": "Apoyo Izquierdo (x=0)", "Reacción Vertical (kN)": round(r_izq, 2)},
             {"Ubicación": f"Apoyo Derecho (x={L})", "Reacción Vertical (kN)": round(r_der, 2)}
@@ -60,15 +55,13 @@ if st.button("🚀 Calcular Estructura", use_container_width=True):
         
         with col1:
             st.info("**Fuerza Cortante (V)**")
-            fig_v = ss.show_shear_force(show=False)
-            st.pyplot(fig_v)
+            st.pyplot(ss.show_shear_force(show=False))
             
         with col2:
             st.info("**Momento Flector (M)**")
-            fig_m = ss.show_bending_moment(show=False)
-            st.pyplot(fig_m)
+            st.pyplot(ss.show_bending_moment(show=False))
 
-        st.success(f"✅ ¡Cálculo exitoso! Suma de reacciones: {round(r_izq + r_der, 2)} kN")
+        st.success(f"✅ ¡Cálculo exitoso! Equilibrio: Reacciones ({round(r_izq + r_der, 2)} kN) = Carga ({P} kN)")
 
     except Exception as e:
         st.error(f"Error en el cálculo: {e}")
