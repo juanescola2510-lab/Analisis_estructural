@@ -16,57 +16,53 @@ st.sidebar.subheader("🗜️ Tipos de Apoyos")
 tipo_apoyo_izq = st.sidebar.selectbox("Apoyo Izquierdo (x=0)", ["Fijo", "Empotrado", "Libre"])
 tipo_apoyo_der = st.sidebar.selectbox("Apoyo Derecho (x=L)", ["Móvil (Rodillo)", "Fijo", "Empotrado", "Libre"])
 
-# 2. Configuración de Cargas (Uso de Pestañas)
+# 2. Configuración de Cargas
 st.sidebar.subheader("⚖️ Definir Cargas")
-tab_puntual, tab_distribuida = st.sidebar.tabs(["Puntual", "Distribuida"])
+usa_puntual = st.sidebar.checkbox("Activar Carga Puntual", value=True)
+if usa_puntual:
+    P = st.sidebar.number_input("Magnitud P (kN)", value=10.0)
+    x_p = st.sidebar.slider("Posición x (m)", 0.0, L, L/2)
 
-with tab_puntual:
-    usa_puntual = st.checkbox("Activar Carga Puntual", value=True)
-    P = st.number_input("Magnitud P (kN)", value=10.0)
-    x_p = st.slider("Posición x (m)", 0.0, L, L/2)
-
-with tab_distribuida:
-    usa_dist = st.checkbox("Activar Carga Distribuida")
-    q = st.number_input("Carga q (kN/m)", value=5.0)
-    x_q_inicio = st.number_input("Inicia en x (m)", 0.0, L, 0.0)
-    x_q_fin = st.number_input("Termina en x (m)", 0.0, L, L)
+usa_dist = st.sidebar.checkbox("Activar Carga Distribuida")
+if usa_dist:
+    q = st.sidebar.number_input("Carga q (kN/m)", value=5.0)
 
 # --- PROCESO DE CÁLCULO ---
 if st.button("🚀 Calcular Estructura", use_container_width=True):
     try:
         ss = SystemElements()
         
-        # 1. Crear elemento (viga completa)
-        ss.add_element(location=[[0, 0], [L, 0]])
+        # 1. Crear viga. Si hay carga puntual, la dividimos en dos para asegurar un nodo
+        if usa_puntual and 0 < x_p < L:
+            ss.add_element(location=[, [x_p, 0]])
+            ss.add_element(location=[[x_p, 0], [L, 0]])
+        else:
+            ss.add_element(location=[, [L, 0]])
         
-        # 2. Aplicar Apoyo Izquierdo
-        id_izq = 1
-        if tipo_apoyo_izq == "Fijo":
-            ss.add_support_hinged(node_id=id_izq)
-        elif tipo_apoyo_izq == "Empotrado":
-            ss.add_support_fixed(node_id=id_izq)
+        # 2. Aplicar Apoyos
+        id_izq = ss.find_node_id()
+        id_der = ss.find_node_id([L, 0])
+        
+        # Izquierdo
+        if tipo_apoyo_izq == "Fijo": ss.add_support_hinged(node_id=id_izq)
+        elif tipo_apoyo_izq == "Empotrado": ss.add_support_fixed(node_id=id_izq)
             
-        # 3. Aplicar Apoyo Derecho
-        id_der = 2
-        if tipo_apoyo_der == "Móvil (Rodillo)":
-            ss.add_support_roll(node_id=id_der, direction=2)
-        elif tipo_apoyo_der == "Fijo":
-            ss.add_support_hinged(node_id=id_der)
-        elif tipo_apoyo_der == "Empotrado":
-            ss.add_support_fixed(node_id=id_der)
+        # Derecho
+        if tipo_apoyo_der == "Móvil (Rodillo)": ss.add_support_roll(node_id=id_der, direction=2)
+        elif tipo_apoyo_der == "Fijo": ss.add_support_hinged(node_id=id_der)
+        elif tipo_apoyo_der == "Empotrado": ss.add_support_fixed(node_id=id_der)
 
-        # 4. Aplicar Cargas
+        # 3. Aplicar Cargas
         if usa_puntual:
-            # Buscamos o insertamos nodo para la carga puntual
-            ss.point_load(Fy=-P, x=x_p)
+            id_carga = ss.find_node_id([x_p, 0])
+            ss.point_load(Fy=-P, node_id=id_carga)
             
         if usa_dist:
-            if x_q_fin > x_q_inicio:
-                ss.q_load(q=-q, element_id=1, direction="element") # Simplificado para toda la viga
-            else:
-                st.warning("La posición final de la carga distribuida debe ser mayor a la inicial.")
+            # Aplica carga distribuida a todos los elementos (la viga completa)
+            for i in range(1, len(ss.element_map) + 1):
+                ss.q_load(q=-q, element_id=i)
 
-        # 5. Resolver
+        # 4. Resolver
         ss.solve()
 
         # --- RESULTADOS ---
@@ -75,23 +71,25 @@ if st.button("🚀 Calcular Estructura", use_container_width=True):
         with col1:
             st.subheader("📍 Reacciones")
             reacciones = ss.get_node_results_system()
-            df_reac = pd.DataFrame(reacciones)
-            # Limpiamos para mostrar solo valores relevantes
-            if not df_reac.empty:
-                st.table(df_reac[['id', 'fx', 'fy', 'm']].rename(columns={'m': 'Momento (kNm)', 'fy': 'Vertical (kN)', 'fx': 'Horiz (kN)'}))
+            # Mostramos solo nodos con reacciones (fuerzas no nulas)
+            filas = []
+            for r in reacciones:
+                if abs(r['fy']) > 0.1 or abs(r['m']) > 0.1:
+                    filas.append({
+                        "Nodo": r['id'],
+                        "X (m)": r['x'],
+                        "Vertical (kN)": round(r['fy'], 2),
+                        "Momento (kNm)": round(r['m'], 2)
+                    })
+            if filas:
+                st.table(pd.DataFrame(filas))
 
         with col2:
             st.subheader("📈 Diagramas")
-            fig_v = ss.show_shear_force(show=False)
-            st.pyplot(fig_v)
-            fig_m = ss.show_bending_moment(show=False)
-            st.pyplot(fig_m)
+            st.pyplot(ss.show_shear_force(show=False))
+            st.pyplot(ss.show_bending_moment(show=False))
 
-        st.success("✅ Análisis realizado. ¡Prueba combinando cargas!")
+        st.success("✅ ¡Análisis completado con éxito!")
 
     except Exception as e:
         st.error(f"Error en el cálculo: {e}")
-        st.info("Tip: Asegúrate de que la estructura sea estable (no pongas ambos apoyos como 'Libre').")
-
-else:
-    st.info("👋 Configura apoyos y cargas, luego presiona Calcular.")
