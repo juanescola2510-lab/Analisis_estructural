@@ -5,52 +5,59 @@ import pandas as pd
 
 # Configuración de la página
 st.set_page_config(page_title="Analizador Estructural PRO", layout="wide")
-st.title("🏗️ Analizador de Vigas Multi-Carga")
+st.title("🏗️ Analizador de Vigas (Valores Exactos)")
 
 # --- BARRA LATERAL ---
 st.sidebar.header("⚙️ Geometría y Apoyos")
-L = st.sidebar.slider("Longitud total (m)", 1.0, 50.0, 10.0)
+
+# CAMBIO: Ahora puedes escribir el valor exacto de la longitud
+L = st.sidebar.number_input("Longitud total de la viga (m)", min_value=0.1, max_value=500.0, value=10.0, step=0.01, format="%.2f")
 
 tipo_izq = st.sidebar.selectbox("Apoyo Izquierdo (x=0)", ["Fijo", "Empotrado", "Libre"])
 tipo_der = st.sidebar.selectbox("Apoyo Derecho (x=L)", ["Móvil", "Fijo", "Empotrado", "Libre"])
 
 # --- SECCIÓN DE CARGAS ---
 st.header("⚖️ Configuración de Cargas")
-st.info("Puedes añadir varias filas. Las filas vacías serán ignoradas automáticamente.")
+st.info("Escribe los valores exactos en las tablas. Usa el botón '+' para añadir filas.")
 col_p, col_q = st.columns(2)
 
 with col_p:
     st.subheader("📍 Cargas Puntuales")
+    # Tabla editable para cargas puntuales
     df_puntuales = st.data_editor(
-        pd.DataFrame([{"x": 5.0, "P (kN)": 10.0}]),
+        pd.DataFrame([{"x": L/2, "P (kN)": 10.0}]),
         num_rows="dynamic", key="puntuales", use_container_width=True
     )
 
 with col_q:
     st.subheader("📏 Cargas Distribuidas (UDL)")
+    # Tabla editable para cargas distribuidas
     df_distribuidas = st.data_editor(
-        pd.DataFrame([{"x_inicio": 0.0, "x_fin": 10.0, "q (kN/m)": 5.0}]),
+        pd.DataFrame([{"x_inicio": 0.0, "x_fin": L, "q (kN/m)": 5.0}]),
         num_rows="dynamic", key="distribuidas", use_container_width=True
     )
 
 # --- PROCESAMIENTO Y CÁLCULO ---
-if st.button("🚀 Calcular Estructura Combinada", use_container_width=True):
+if st.button("🚀 Calcular Estructura con Valores Exactos", use_container_width=True):
     try:
         ss = SystemElements()
         
-        # 1. Crear nodos basados en posiciones de cargas y apoyos
-        puntos_x = {0.0, L}
+        # 1. Crear nodos basados en posiciones exactas
+        puntos_x = {0.0, float(L)}
         
-        # Limpiar y agregar puntos de cargas puntuales
+        # Limpiar y agregar puntos de cargas puntuales (ignorando filas vacías)
         p_validas = df_puntuales.dropna(subset=["x", "P (kN)"])
         for x in p_validas["x"]:
-            if 0 <= x <= L: puntos_x.add(float(x))
+            val_x = float(x)
+            if 0 <= val_x <= L: 
+                puntos_x.add(val_x)
             
         # Agregar puntos de inicio y fin de cargas distribuidas
         q_validas = df_distribuidas.dropna(subset=["x_inicio", "x_fin", "q (kN/m)"])
         for _, row in q_validas.iterrows():
-            if 0 <= row["x_inicio"] <= L: puntos_x.add(float(row["x_inicio"]))
-            if 0 <= row["x_fin"] <= L: puntos_x.add(float(row["x_fin"]))
+            xi, xf = float(row["x_inicio"]), float(row["x_fin"])
+            if 0 <= xi <= L: puntos_x.add(xi)
+            if 0 <= xf <= L: puntos_x.add(xf)
         
         puntos_ordenados = sorted(list(puntos_x))
         
@@ -67,12 +74,12 @@ if st.button("🚀 Calcular Estructura Combinada", use_container_width=True):
         elif tipo_der == "Fijo": ss.add_support_hinged(node_id=n_final)
         elif tipo_der == "Empotrado": ss.add_support_fixed(node_id=n_final)
 
-        # 4. Aplicar Cargas Puntuales
+        # 4. Aplicar Cargas Puntuales con tolerancia de precisión
         for _, row in p_validas.iterrows():
             pos_x = float(row["x"])
             val_p = float(row["P (kN)"])
             for idx, coord in enumerate(puntos_ordenados):
-                if abs(coord - pos_x) < 1e-5:
+                if abs(coord - pos_x) < 1e-7: # Tolerancia para valores exactos
                     ss.point_load(Fy=-val_p, node_id=idx + 1)
 
         # 5. Aplicar Cargas Distribuidas
@@ -98,16 +105,19 @@ if st.button("🚀 Calcular Estructura Combinada", use_container_width=True):
         with tab4:
             st.pyplot(ss.show_displacement(show=False))
 
-        # Reacciones
+        # Reacciones con formato numérico
         st.subheader("📍 Reacciones en Apoyos")
         reacciones = ss.get_node_results_system()
         res_list = []
         for r in reacciones:
             if r['id'] in [1, n_final]:
                 ubi = "Izquierdo (x=0)" if r['id'] == 1 else f"Derecho (x={L})"
-                res_list.append({"Ubicación": ubi, "Reacción (kN)": round(abs(r.get('fy', 0)), 2)})
+                res_list.append({
+                    "Ubicación": ubi, 
+                    "Reacción Vertical (kN)": f"{abs(r.get('fy', 0)):.4f}"
+                })
         st.table(res_list)
 
     except Exception as e:
-        st.error(f"Error: {e}")
-        st.warning("Verifica que los valores de X estén dentro del rango de la viga.")
+        st.error(f"Error en el cálculo: {e}")
+        st.warning("Asegúrate de que las posiciones 'x' estén dentro del rango 0 y L.")
