@@ -30,10 +30,10 @@ if st.button("🚀 Calcular Estructura", use_container_width=True):
     try:
         ss = SystemElements()
         
-        # Ajuste de seguridad: si x_p coincide con los extremos, lo movemos un milímetro
+        # Ajuste de seguridad para evitar errores de punto exacto
         x_p_adj = x_p
-        if x_p == 0: x_p_adj = 0.001
-        if x_p == L: x_p_adj = L - 0.001
+        if x_p == 0: x_p_adj = 0.01
+        if x_p == L: x_p_adj = L - 0.01
 
         # 1. Crear geometría
         if usa_p:
@@ -62,40 +62,40 @@ if st.button("🚀 Calcular Estructura", use_container_width=True):
             for i in range(1, len(ss.element_map) + 1):
                 ss.q_load(q=-q_val, element_id=i)
 
+        # --- SECCIÓN 1: ESQUEMA DE LA VIGA ---
+        st.subheader("📐 Esquema de la Estructura")
+        st.info("Aquí puedes ver la viga con sus apoyos (triángulos/rectángulos) y la posición de las cargas (flechas).")
+        fig_base = ss.show_structure(show=False)
+        st.pyplot(fig_base)
+
         # 4. Resolver
         ss.solve()
 
-        # --- RESULTADOS ---
-        st.subheader("📍 Reacciones")
-        reacciones = ss.get_node_results_system()
-        res_list = []
+        # --- SECCIÓN 2: REACCIONES Y DIAGRAMAS ---
+        col1, col2 = st.columns([1, 2])
         
-        for r in reacciones:
-            # Usamos .get() para evitar el error 'fy' si la etiqueta no existe
-            f_vert = r.get('fy', 0.0)
-            m_reac = r.get('m', 0.0)
-            if abs(f_vert) > 0.01 or abs(m_reac) > 0.01:
-                res_list.append({
-                    "Ubicación (x)": f"{round(r['x'], 2)} m",
-                    "Vertical (kN)": round(f_vert, 2),
-                    "Momento (kNm)": round(m_reac, 2)
-                })
-        
-        if res_list:
-            st.table(pd.DataFrame(res_list))
-        else:
-            st.info("No hay reacciones verticales detectadas (viga en voladizo o apoyos libres).")
-
-        # --- DIAGRAMAS ---
-        st.subheader("📈 Diagramas Estructurales")
-        col1, col2 = st.columns(2)
         with col1:
-            st.write("**Corte (V)**")
-            st.pyplot(ss.show_shear_force(show=False))
+            st.subheader("📍 Reacciones")
+            reacciones = ss.get_node_results_system()
+            res_list = []
+            for r in reacciones:
+                f_vert = r.get('fy', 0.0)
+                m_reac = r.get('m', 0.0)
+                if abs(f_vert) > 0.01 or abs(m_reac) > 0.01:
+                    res_list.append({
+                        "Posición": f"{round(r['x'], 2)} m",
+                        "Vertical (kN)": round(f_vert, 2),
+                        "Momento (kNm)": round(m_reac, 2)
+                    })
+            st.table(pd.DataFrame(res_list))
+
         with col2:
-            st.write("**Momento (M)**")
-            st.pyplot(ss.show_bending_moment(show=False))
+            st.subheader("📈 Diagramas")
+            tab1, tab2 = st.tabs(["Corte (V)", "Momento (M)"])
+            with tab1:
+                st.pyplot(ss.show_shear_force(show=False))
+            with tab2:
+                st.pyplot(ss.show_bending_moment(show=False))
 
     except Exception as e:
-        st.error(f"Error en el análisis: {e}")
-        st.info("Asegúrate de que la estructura sea estable (no dejes ambos extremos 'Libre').")
+        st.error(f"Error: {e}")
