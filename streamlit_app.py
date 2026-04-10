@@ -1,5 +1,5 @@
 import streamlit as st
-from PyNite import FEModel3D
+from pynitefea import FEModel3D
 import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
