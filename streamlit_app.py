@@ -4,8 +4,9 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 
+# Configuración de la página
 st.set_page_config(page_title="Ingeniería PRO", layout="wide")
-st.title("🏗️ Analizador y Optimizador Estructural")
+st.title("🏗️ Analizador Estructural: Informe de Esfuerzos")
 
 # --- BARRA LATERAL ---
 st.sidebar.header("🛠️ Sección y Material")
@@ -40,14 +41,15 @@ with c2:
 
 if st.button("🚀 CALCULAR ESTRUCTURA", use_container_width=True):
     try:
-        # FORZAR CONVERSIÓN A FLOTANTES PARA EVITAR NULOS
+        # 1. Limpieza de datos (Evitar 0 y Nones)
         p_v = pd.DataFrame(df_p).apply(pd.to_numeric, errors='coerce').dropna()
         q_v = pd.DataFrame(df_q).apply(pd.to_numeric, errors='coerce').dropna()
-        
         p_v = p_v[p_v["P (kN)"] != 0]
         q_v = q_v[q_v["q (kN/m)"] != 0]
 
         ss = SystemElements(EA=E*area, EI=E*I)
+        
+        # 2. Definición de puntos críticos
         puntos = {0.0, float(L)}
         for x in p_v["x"]: puntos.add(round(float(x), 3))
         for _, r in q_v.iterrows(): 
@@ -55,6 +57,8 @@ if st.button("🚀 CALCULAR ESTRUCTURA", use_container_width=True):
             puntos.add(round(float(r["x_f"]), 3))
         
         pts = sorted([x for x in puntos if 0 <= x <= L])
+        
+        # 3. Crear elementos y apoyos
         for i in range(len(pts)-1):
             ss.add_element(location=[[pts[i], 0], [pts[i+1], 0]])
         
@@ -65,8 +69,10 @@ if st.button("🚀 CALCULAR ESTRUCTURA", use_container_width=True):
         elif t_der == "Fijo": ss.add_support_hinged(nf)
         elif t_der == "Empotrado": ss.add_support_fixed(nf)
 
+        # 4. Aplicación de Cargas
         for _, r in p_v.iterrows():
-            ss.point_load(Fy=-float(r["P (kN)"]), node_id=pts.index(round(float(r["x"]), 3)) + 1)
+            idx = pts.index(round(float(r["x"]), 3)) + 1
+            ss.point_load(Fy=-float(r["P (kN)"]), node_id=idx)
         for _, r in q_v.iterrows():
             xi, xf, val_q = float(r["x_i"]), float(r["x_f"]), float(r["q (kN/m)"])
             for i in range(len(pts)-1):
@@ -76,26 +82,57 @@ if st.button("🚀 CALCULAR ESTRUCTURA", use_container_width=True):
 
         ss.solve()
         
-        # --- EXTRACCIÓN DE DATOS REALES ---
-        res = ss.get_element_results()
-        # Buscamos el valor máximo real en todos los tramos
-        m_max = max([abs(r['Mmax']) for r in res]) if res else 0
+        # 5. EXTRACCIÓN DE RESULTADOS (CORRECCIÓN DE VALORES 0)
+        elementos = ss.get_element_results()
+        todos_los_momentos = []
+        todas_las_deflexiones = []
+
+        for el in elementos:
+            # Capturamos todos los valores posibles de momento en cada tramo
+            todos_los_momentos.append(abs(el.get('Mmin', 0)))
+            todos_los_momentos.append(abs(el.get('Mmax', 0)))
+            # Capturamos deflexiones
+            todas_las_deflexiones.append(abs(el.get('wmin', 0)))
+            todas_las_deflexiones.append(abs(el.get('wmax', 0)))
+            
+        m_max = max(todos_los_momentos) if todos_los_momentos else 0.0
+        deflex_max_mm = (max(todas_las_deflexiones) if todas_las_deflexiones else 0.0) * 1000
+
+        # 6. CÁLCULO DE ESFUERZO REAL
         sigma_mpa = (m_max * 1000 * c / I) / 1e6
         util = (sigma_mpa / Fy) * 100
 
+        # --- INFORME ---
         st.header("📊 Informe de Ingeniería")
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Momento Máx", f"{m_max:.2f} kNm")
-        c2.metric("Esfuerzo Máx", f"{sigma_mpa:.2f} MPa")
-        c3.metric("Utilización", f"{util:.1f}%")
+        col_res, col_img = st.columns([2, 1])
+        
+        with col_res:
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Momento Máx", f"{m_max:.2f} kNm")
+            c2.metric("Esfuerzo Máx", f"{sigma_mpa:.2f} MPa")
+            c3.metric("Deflexión Máx", f"{deflex_max_mm:.2f} mm")
+            
+            st.write(f"**Utilización del material:** {util:.1f}%")
+            if util > 100:
+                st.error(f"❌ FALLA: El esfuerzo supera el límite de {Fy} MPa.")
+            else:
+                st.success(f"✅ SEGURA: La viga trabaja dentro del rango elástico.")
 
-        if m_max > 0:
-            st.success("✅ Datos procesados correctamente.")
-            col_a, col_b = st.columns(2)
-            with col_a: st.pyplot(ss.show_bending_moment(show=False))
-            with col_b: st.pyplot(ss.show_displacement(show=False))
-        else:
-            st.error("⚠️ El cálculo sigue dando 0. Prueba a pulsar 'Enter' en las celdas de la tabla antes de calcular.")
+        with col_img:
+            st.write("**Sección Transversal**")
+            fig_sec, ax_sec = plt.subplots(figsize=(3,3))
+            if forma == "Rectangular":
+                ax_sec.add_patch(plt.Rectangle((-base/2, -altura/2), base, altura, color='gray', alpha=0.5, ec='black'))
+                ax_sec.set_xlim(-base, base); ax_sec.set_ylim(-altura, altura)
+            else:
+                ax_sec.add_patch(plt.Circle((0,0), radio, color='gray', alpha=0.5, ec='black'))
+                ax_sec.set_xlim(-radio*2, radio*2); ax_sec.set_ylim(-radio*2, radio*2)
+            ax_sec.set_aspect('equal')
+            st.pyplot(fig_sec)
+
+        tabs = st.tabs(["📉 Momento Flector", "🌊 Curva de Deflexión"])
+        with tabs[0]: st.pyplot(ss.show_bending_moment(show=False))
+        with tabs[1]: st.pyplot(ss.show_displacement(show=False))
 
     except Exception as e:
-        st.error(f"Error: {e}")
+        st.error(f"Error en el proceso: {e}")
