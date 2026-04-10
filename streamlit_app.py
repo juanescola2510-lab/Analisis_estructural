@@ -29,92 +29,94 @@ L = st.sidebar.number_input("Longitud total (m)", 0.1, 500.0, 6.0)
 t_izq = st.sidebar.selectbox("Apoyo Izq (x=0)", ["Fijo", "Empotrado", "Libre"])
 t_der = st.sidebar.selectbox("Apoyo Der (x=L)", ["Móvil", "Fijo", "Empotrado", "Libre"])
 
-# --- TABLAS DE CARGAS (CON KEY PARA CAPTURAR CAMBIOS) ---
+# --- TABLAS DE CARGAS ---
 st.header("⚖️ Cargas Aplicadas")
-c1, c2, c3 = st.columns(3)
+c1, c2 = st.columns(2)
 with c1:
-    df_p = st.data_editor(pd.DataFrame([{"x": 3.0, "P (kN)": 50.0}]), num_rows="dynamic", key="p_editor")
+    st.subheader("📍 Cargas Puntuales")
+    df_p = st.data_editor(pd.DataFrame([{"x": 3.0, "P (kN)": 50.0}]), num_rows="dynamic", key="p_edit")
 with c2:
-    df_q = st.data_editor(pd.DataFrame([{"x_i": 0.0, "x_f": 6.0, "q (kN/m)": 10.0}]), num_rows="dynamic", key="q_editor")
-with c3:
-    df_m = st.data_editor(pd.DataFrame([{"x": 3.0, "M (kNm)": 0.0}]), num_rows="dynamic", key="m_editor")
+    st.subheader("📏 Cargas Distribuidas")
+    df_q = st.data_editor(pd.DataFrame([{"x_i": 0.0, "x_f": 6.0, "q (kN/m)": 10.0}]), num_rows="dynamic", key="q_edit")
 
 if st.button("🚀 CALCULAR ESTRUCTURA", use_container_width=True):
     try:
-        # 1. FILTRADO ESTRICTO DE DATOS
-        p_v = df_p.dropna().query("`P (kN)` != 0")
-        q_v = df_q.dropna().query("`q (kN/m)` != 0")
-        m_v = df_m.dropna().query("`M (kNm)` != 0")
+        # 1. FORZAR LECTURA DE DATOS (Solución al error 0)
+        p_v = pd.DataFrame(st.session_state["p_edit"]).dropna()
+        q_v = pd.DataFrame(st.session_state["q_edit"]).dropna()
+        
+        # Eliminar filas con ceros o vacías
+        p_v = p_v[p_v["P (kN)"] != 0]
+        q_v = q_v[q_v["q (kN/m)"] != 0]
 
-        # 2. SISTEMA Y SEGMENTACIÓN
         ss = SystemElements(EA=E*area, EI=E*I)
+        
+        # 2. NODOS Y SEGMENTACIÓN
         puntos = {0.0, float(L)}
         for x in p_v["x"]: puntos.add(round(float(x), 4))
-        for x in m_v["x"]: puntos.add(round(float(x), 4))
         for _, r in q_v.iterrows(): 
             puntos.add(round(float(r["x_i"]), 4))
             puntos.add(round(float(r["x_f"]), 4))
         
-        pts_ordenados = sorted([x for x in puntos if 0 <= x <= L])
-        
-        for i in range(len(pts_ordenados)-1):
-            ss.add_element(location=[[pts_ordenados[i], 0], [pts_ordenados[i+1], 0]])
+        pts = sorted([x for x in puntos if 0 <= x <= L])
+        for i in range(len(pts)-1):
+            ss.add_element(location=[[pts[i], 0], [pts[i+1], 0]])
         
         # 3. APOYOS
-        n_final = len(pts_ordenados)
+        nf = len(pts)
         if t_izq == "Fijo": ss.add_support_hinged(1)
         elif t_izq == "Empotrado": ss.add_support_fixed(1)
-        if t_der == "Móvil": ss.add_support_roll(n_final, direction=2)
-        elif t_der == "Fijo": ss.add_support_hinged(n_final)
-        elif t_der == "Empotrado": ss.add_support_fixed(n_final)
+        if t_der == "Móvil": ss.add_support_roll(nf, direction=2)
+        elif t_der == "Fijo": ss.add_support_hinged(nf)
+        elif t_der == "Empotrado": ss.add_support_fixed(nf)
 
-        # 4. APLICACIÓN DE CARGAS
+        # 4. CARGAS
         for _, r in p_v.iterrows():
-            pos = round(float(r["x"]), 4)
-            idx = pts_ordenados.index(pos) + 1
+            idx = pts.index(round(float(r["x"]), 4)) + 1
             ss.point_load(Fy=-float(r["P (kN)"]), node_id=idx)
-            
-        for _, r in m_v.iterrows():
-            pos = round(float(r["x"]), 4)
-            idx = pts_ordenados.index(pos) + 1
-            ss.moment_load(Ty=float(r["M (kNm)"]), node_id=idx)
-
         for _, r in q_v.iterrows():
             xi, xf, val_q = float(r["x_i"]), float(r["x_f"]), float(r["q (kN/m)"])
-            for i in range(len(pts_ordenados)-1):
-                mid = round((pts_ordenados[i] + pts_ordenados[i+1]) / 2, 4)
+            for i in range(len(pts)-1):
+                mid = round((pts[i] + pts[i+1]) / 2, 4)
                 if xi <= mid <= xf:
                     ss.q_load(q=-val_q, element_id=i+1)
 
         ss.solve()
         
-        # 5. RESULTADOS
-        res = ss.get_element_results()
-        m_max = max([abs(r['Mmax']) for r in res]) if res else 0
-        
+        # 5. RESULTADOS E INFORMES
+        m_max = max([abs(r['Mmax']) for r in ss.get_element_results()])
         sigma_mpa = (m_max * 1000 * c / I) / 1e6
         util = (sigma_mpa / Fy) * 100
 
-        st.header("📊 Informe Final")
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Momento Máximo", f"{m_max:.2f} kNm")
-        c2.metric("Esfuerzo Máximo", f"{sigma_mpa:.2f} MPa")
-        c3.metric("Uso del Material", f"{util:.1f}%")
-
-        if util > 100:
-            st.error(f"❌ FALLA: La viga colapsa al {util:.1f}%")
-        else:
-            st.success(f"✅ SEGURA: La viga resiste al {util:.1f}%")
-
-        tab_diag, tab_reac = st.tabs(["📈 Diagramas", "📍 Reacciones"])
-        with tab_diag:
-            col_a, col_b = st.columns(2)
-            with col_a: st.pyplot(ss.show_bending_moment(show=False))
-            with col_b: st.pyplot(ss.show_displacement(show=False))
+        st.header("📊 Informe de Ingeniería")
+        col_res, col_img = st.columns([2, 1])
         
-        with tab_reac:
-            reac = ss.get_node_results_system()
-            st.table([{"Nodo": r['id'], "Fy (kN)": round(r.get('fy',0),2), "M (kNm)": round(r.get('m',0),2)} for r in reac if abs(r.get('fy',0)) > 1e-3 or abs(r.get('m',0)) > 1e-3])
+        with col_res:
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Momento Máx", f"{m_max:.2f} kNm")
+            c2.metric("Esfuerzo Máx", f"{sigma_mpa:.2f} MPa")
+            c3.metric("Uso Material", f"{util:.1f}%")
+            
+            if util > 100: st.error("❌ LA VIGA FALLA POR FLEXIÓN")
+            else: st.success("✅ ESTRUCTURA SEGURA")
+
+        with col_img:
+            st.write("**Sección Transversal**")
+            fig_sec, ax_sec = plt.subplots(figsize=(3,3))
+            if forma == "Rectangular":
+                rect = plt.Rectangle((-base/2, -altura/2), base, altura, color='gray', alpha=0.7)
+                ax_sec.add_patch(rect)
+                ax_sec.set_xlim(-base, base); ax_sec.set_ylim(-altura, altura)
+            else:
+                circ = plt.Circle((0,0), radio, color='gray', alpha=0.7)
+                ax_sec.add_patch(circ)
+                ax_sec.set_xlim(-radio*2, radio*2); ax_sec.set_ylim(-radio*2, radio*2)
+            ax_sec.set_aspect('equal'); plt.grid(linestyle='--')
+            st.pyplot(fig_sec)
+
+        tabs = st.tabs(["📉 Momento Flector", "🌊 Deflexión Real"])
+        with tabs: st.pyplot(ss.show_bending_moment(show=False))
+        with tabs: st.pyplot(ss.show_displacement(show=False))
 
     except Exception as e:
-        st.error(f"Error de cálculo: {e}")
+        st.error(f"Error: {e}")
