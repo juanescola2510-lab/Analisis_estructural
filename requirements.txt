@@ -1,3 +1,6 @@
-anastruct
+streamlit
 pandas
+numpy
 matplotlib
+PyNiteFEA
+plotly
