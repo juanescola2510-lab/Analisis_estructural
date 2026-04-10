@@ -8,46 +8,41 @@ st.title("🏗️ Análisis Estructural con AnaStruct")
 
 # --- BARRA LATERAL ---
 st.sidebar.header("⚙️ Configuración")
-L = st.sidebar.slider("Longitud de la viga (m)", 1.0, 20.0, 10.0)
+L = st.sidebar.slider("Longitud de la viga (m)", 1.0, 30.0, 10.0)
 P = st.sidebar.number_input("Carga Puntual (kN)", value=15.0)
-x_p = st.sidebar.slider("Posición de la carga (m)", 0.0, L, L/2)
+x_p = st.sidebar.slider("Posición de la carga (m)", 0.01, L-0.01, L/2) # Evitamos los extremos exactos
 
 if st.button("🚀 Calcular Estructura"):
     try:
         # Crear el sistema
         ss = SystemElements()
         
-        # 1. Añadir la viga (de 0 a L)
-        ss.add_element(location=[[0, 0], [L, 0]])
+        # 1. Construir la viga en dos partes para asegurar un nodo en la carga
+        # Tramo 1: Desde el inicio hasta la carga
+        ss.add_element(location=[[0, 0], [x_p, 0]])
+        # Tramo 2: Desde la carga hasta el final
+        ss.add_element(location=[[x_p, 0], [L, 0]])
         
-        # 2. Añadir Apoyos
-        ss.add_support_hinged(node_id=1)  # Inicio
-        ss.add_support_roll(node_id=2, direction=2)  # Fin
+        # 2. Añadir Apoyos (Usando IDs de nodos fijos)
+        ss.add_support_hinged(node_id=1)  # Inicio (x=0)
+        ss.add_support_roll(node_id=3, direction=2)  # Fin (x=L). El nodo 3 es el final del tramo 2.
         
-        # 3. EL TRUCO: Crear un nodo justo donde está la carga para evitar el error 'NoneType'
-        id_nodo_carga = ss.find_node_id([x_p, 0])
-        if id_nodo_carga is None:
-            # Si no existe el nodo en esa posición decimal, lo creamos dividiendo el elemento
-            ss.insert_node(element_id=1, location=[x_p, 0])
-            id_nodo_carga = ss.find_node_id([x_p, 0])
-
-        # 4. Aplicar la carga en el nodo encontrado/creado
-        ss.point_load(Fy=-P, node_id=id_nodo_carga)
+        # 3. Aplicar la carga en el nodo central (Nodo 2)
+        ss.point_load(Fy=-P, node_id=2)
         
-        # 5. Resolver
+        # 4. Resolver
         ss.solve()
 
         # --- MOSTRAR RESULTADOS ---
         st.subheader("📍 Reacciones")
-        reacciones = ss.get_node_results_system()
         
-        # Crear tabla de reacciones de forma segura
-        nodos = [1, 2]
-        fuerzas_y = [round(ss.get_node_results_system(node_id=n)['fy'], 2) for n in nodos]
+        # Obtener reacciones de forma manual para evitar errores de índice
+        reac_ini = ss.get_node_results_system(node_id=1)['fy']
+        reac_fin = ss.get_node_results_system(node_id=3)['fy']
         
         res_df = pd.DataFrame({
             "Ubicación": ["Apoyo Inicial (x=0)", f"Apoyo Final (x={L})"],
-            "Reacción Vertical (kN)": fuerzas_y
+            "Reacción Vertical (kN)": [round(reac_ini, 2), round(reac_fin, 2)]
         })
         st.table(res_df)
 
@@ -58,14 +53,18 @@ if st.button("🚀 Calcular Estructura"):
         with col1:
             st.write("**Fuerza Cortante**")
             fig_v = ss.show_shear_force(show=False)
+            # Ajuste de tamaño para Streamlit
+            fig_v.set_size_inches(6, 4)
             st.pyplot(fig_v)
             
         with col2:
             st.write("**Momento Flector**")
             fig_m = ss.show_bending_moment(show=False)
+            fig_m.set_size_inches(6, 4)
             st.pyplot(fig_m)
 
-        st.success("✅ ¡Cálculo realizado con éxito!")
+        st.success("✅ ¡Análisis completado con éxito!")
 
     except Exception as e:
-        st.error(f"Error técnico: {e}")
+        st.error(f"Error en el cálculo: {e}")
+        st.info("Asegúrate de que la posición de la carga no sea exactamente igual a los apoyos.")
