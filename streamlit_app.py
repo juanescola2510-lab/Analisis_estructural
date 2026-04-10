@@ -2,13 +2,12 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# --- IMPORTACIÓN ROBUSTA ---
+# Esta es la UNICA forma correcta de importar la librería:
 try:
     from PyNite import FEModel3D
 except ImportError:
-    try:
-        from pynite import FEModel3D
-    except ImportError:
+    st.error("❌ La librería PyNiteFEA no se instaló. Revisa tu requirements.txt")
+    st.stop()
         from pynitefea import FEModel3D
 # Configuración de la interfaz
 st.set_page_config(page_title="Analizador de Vigas", layout="wide")
