@@ -1,21 +1,15 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-import importlib
 
-# --- IMPORTACIÓN FORZADA ---
+# --- IMPORTACIÓN ROBUSTA ---
 try:
-    # Intentamos cargar el módulo directamente por su nombre de instalación
-    pynite_mod = importlib.import_module('PyNite')
-    FEModel3D = pynite_mod.FEModel3D
+    from PyNite import FEModel3D
 except ImportError:
     try:
-        pynite_mod = importlib.import_module('pynite')
-        FEModel3D = pynite_mod.FEModel3D
+        from pynite import FEModel3D
     except ImportError:
-        st.error("❌ El servidor NO instaló PyNiteFEA. Revisa los Logs de 'Processed dependencies'.")
-        st.stop() # Detiene la ejecución para no mostrar más errores
-
+        from pynitefea import FEModel3D
 # Configuración de la interfaz
 st.set_page_config(page_title="Analizador de Vigas", layout="wide")
 st.title("🏗️ Analizador Estructural Interactivo")
