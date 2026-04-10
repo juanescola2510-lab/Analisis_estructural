@@ -7,7 +7,7 @@ import pandas as pd
 st.set_page_config(page_title="Calculadora Estructural", layout="wide")
 st.title("🏗️ Análisis de Vigas: Reacciones y Diagramas")
 
-# --- BARRA LATERAL (Entrada de datos) ---
+# --- BARRA LATERAL ---
 st.sidebar.header("⚙️ Configuración de la Viga")
 L = st.sidebar.slider("Longitud de la viga (m)", 1.0, 30.0, 10.0)
 P = st.sidebar.number_input("Carga Puntual (kN)", value=10.0)
@@ -19,60 +19,59 @@ if st.button("🚀 Calcular Estructura", use_container_width=True):
         # 1. Crear el sistema
         ss = SystemElements()
         
-        # 2. Construir la viga en dos tramos para asegurar un nodo en la carga
+        # 2. Construir la viga en dos tramos
         ss.add_element(location=[[0, 0], [x_p, 0]])
         ss.add_element(location=[[x_p, 0], [L, 0]])
         
-        # 3. Identificar IDs de nodos automáticamente
-        id_inicio = ss.find_node_id([0, 0])
-        id_carga = ss.find_node_id([x_p, 0])
-        id_fin = ss.find_node_id([L, 0])
+        # 3. Definir Apoyos usando coordenadas exactas
+        ss.add_support_hinged(node_id=ss.find_node_id([0, 0])) 
+        ss.add_support_roll(node_id=ss.find_node_id([L, 0]), direction=2)
         
-        # 4. Definir Apoyos
-        ss.add_support_hinged(node_id=id_inicio) # Apoyo fijo en x=0
-        ss.add_support_roll(node_id=id_fin, direction=2) # Apoyo móvil en x=L
+        # 4. Aplicar Carga puntual
+        ss.point_load(Fy=-P, node_id=ss.find_node_id([x_p, 0]))
         
-        # 5. Aplicar Carga puntual
-        ss.point_load(Fy=-P, node_id=id_carga)
-        
-        # 6. Resolver sistema
+        # 5. Resolver sistema
         ss.solve()
 
-        # --- SECCIÓN DE REACCIONES ---
+        # --- SECCIÓN DE REACCIONES (MÉTODO ROBUSTO) ---
         st.subheader("📍 Valores de las Reacciones")
         
-        # Extraer reacciones de los nodos de apoyo
-        reac_a = ss.get_node_results_system(node_id=id_inicio)['fy']
-        reac_b = ss.get_node_results_system(node_id=id_fin)['fy']
-        
-        # Crear DataFrame para la tabla
-        datos_reacciones = {
-            "Apoyo": ["Izquierdo (x=0)", f"Derecho (x={L})"],
-            "Reacción Vertical (kN)": [round(reac_a, 2), round(reac_b, 2)],
-            "Dirección": ["Arriba ↑", "Arriba ↑"]
-        }
-        
-        st.table(pd.DataFrame(datos_reacciones))
+        # Obtenemos todos los resultados de los nodos
+        nodos_res = ss.get_node_results_system()
+        reacciones_finales = []
+
+        for nodo in nodos_res:
+            # Solo nos interesan los nodos que tienen una fuerza de reacción vertical (fy)
+            # y que están en las posiciones de los apoyos (0 o L)
+            fuerza_y = nodo.get('fy', 0)
+            if abs(fuerza_y) > 0.001:
+                pos_x = nodo.get('x', 0)
+                label = "Apoyo Izquierdo (x=0)" if abs(pos_x) < 0.01 else f"Apoyo Derecho (x={L})"
+                reacciones_finales.append({
+                    "Ubicación": label,
+                    "Reacción Vertical (kN)": round(fuerza_y, 2)
+                })
+
+        if reacciones_finales:
+            st.table(pd.DataFrame(reacciones_finales))
+        else:
+            st.warning("El sistema no detectó reacciones verticales. Revisa los apoyos.")
         
         # --- SECCIÓN DE DIAGRAMAS ---
         st.subheader("📈 Diagramas Estructurales")
         col1, col2 = st.columns(2)
         
         with col1:
-            st.info("**Diagrama de Fuerza Cortante (V)**")
-            fig_v = ss.show_shear_force(show=False)
-            st.pyplot(fig_v)
+            st.info("**Fuerza Cortante (V)**")
+            st.pyplot(ss.show_shear_force(show=False))
             
         with col2:
-            st.info("**Diagrama de Momento Flector (M)**")
-            fig_m = ss.show_bending_moment(show=False)
-            st.pyplot(fig_m)
-
-        st.success(f"✅ Análisis completado. La suma de reacciones ({round(reac_a + reac_b, 2)} kN) coincide con la carga aplicada.")
+            st.info("**Momento Flector (M)**")
+            st.pyplot(ss.show_bending_moment(show=False))
 
     except Exception as e:
-        st.error(f"Error en el cálculo: {e}")
-        st.info("Asegúrate de que la posición de la carga no coincida exactamente con los apoyos.")
+        st.error(f"Error técnico: {e}")
+        st.info("Intenta mover ligeramente el control de la posición de la carga.")
 
 else:
-    st.info("👋 Ajusta los valores a la izquierda y presiona 'Calcular' para obtener los resultados.")
+    st.info("👋 Ajusta los valores y presiona 'Calcular'.")
