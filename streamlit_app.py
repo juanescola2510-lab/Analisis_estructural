@@ -10,48 +10,42 @@ st.title("🏗️ Análisis Estructural con AnaStruct")
 st.sidebar.header("⚙️ Configuración")
 L = st.sidebar.slider("Longitud de la viga (m)", 1.0, 30.0, 10.0)
 P = st.sidebar.number_input("Carga Puntual (kN)", value=15.0)
-# Ajustamos para que la carga nunca esté exactamente en el apoyo
 x_p = st.sidebar.slider("Posición de la carga (m)", 0.01, L-0.01, L/2)
 
 if st.button("🚀 Calcular Estructura"):
     try:
-        # Crear el sistema
         ss = SystemElements()
         
-        # 1. Añadir elementos (Viga dividida en dos para tener un nodo en la carga)
+        # 1. Crear viga en dos tramos
         ss.add_element(location=[[0, 0], [x_p, 0]])
         ss.add_element(location=[[x_p, 0], [L, 0]])
         
-        # 2. Añadir Apoyos en los extremos
-        ss.add_support_hinged(node_id=ss.find_node_id([0, 0]))
-        ss.add_support_roll(node_id=ss.find_node_id([L, 0]), direction=2)
+        # 2. Apoyos (Buscando IDs por coordenadas)
+        id_inicio = ss.find_node_id([0, 0])
+        id_fin = ss.find_node_id([L, 0])
+        id_carga = ss.find_node_id([x_p, 0])
         
-        # 3. Aplicar la carga en el nodo central
-        ss.point_load(Fy=-P, node_id=ss.find_node_id([x_p, 0]))
+        ss.add_support_hinged(node_id=id_inicio)
+        ss.add_support_roll(node_id=id_fin, direction=2)
         
-        # 4. Resolver el sistema
+        # 3. Carga
+        ss.point_load(Fy=-P, node_id=id_carga)
+        
+        # 4. Resolver
         ss.solve()
 
-        # --- MOSTRAR RESULTADOS ---
+        # --- REACCIONES (Método ultra-seguro) ---
         st.subheader("📍 Reacciones")
         
-        # Obtenemos todas las reacciones del sistema
-        reacciones_raw = ss.get_node_results_system()
+        reacciones_lista = []
+        for nid in [id_inicio, id_fin]:
+            res = ss.get_node_results_system(node_id=nid)
+            # Si no encuentra 'fy', usamos 0.0 como respaldo
+            val_fy = res.get('fy', 0.0)
+            label = "Inicio (x=0)" if nid == id_inicio else f"Fin (x={L})"
+            reacciones_lista.append({"Ubicación": label, "Reacción Vertical (kN)": round(val_fy, 2)})
         
-        # Filtramos solo los nodos que tienen reacción en Y (fy) y creamos la tabla
-        datos_tabla = []
-        for res in reacciones_raw:
-            if abs(res['fy']) > 1e-5: # Si la reacción no es cero
-                ubicacion = "Inicio (x=0)" if res['id'] == 1 else f"Fin (x={L})"
-                datos_tabla.append({
-                    "Ubicación": ubicacion,
-                    "Reacción Vertical (kN)": round(res['fy'], 2)
-                })
-        
-        if datos_tabla:
-            st.table(pd.DataFrame(datos_tabla))
-        else:
-            st.warning("No se detectaron reacciones. Revisa la configuración de apoyos.")
+        st.table(pd.DataFrame(reacciones_lista))
 
         # --- DIAGRAMAS ---
         st.subheader("📈 Diagramas de la Viga")
@@ -67,8 +61,7 @@ if st.button("🚀 Calcular Estructura"):
             fig_m = ss.show_bending_moment(show=False)
             st.pyplot(fig_m)
 
-        st.success("✅ ¡Cálculo realizado con éxito!")
+        st.success("✅ ¡Análisis completado!")
 
     except Exception as e:
-        st.error(f"Error en el cálculo: {e}")
-        st.info("Intenta mover ligeramente la posición de la carga.")
+        st.error(f"Error inesperado: {e}")
