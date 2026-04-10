@@ -12,7 +12,6 @@ st.sidebar.header("🛠️ Sección y Material")
 material = st.sidebar.selectbox("Material", ["Acero (ASTM A36)", "Concreto (f'c 210)", "Madera (Pino)"])
 E_map = {"Acero (ASTM A36)": 200e6, "Concreto (f'c 210)": 21e6, "Madera (Pino)": 10e6}
 Fy_map = {"Acero (ASTM A36)": 250, "Concreto (f'c 210)": 21, "Madera (Pino)": 15}
-
 E, Fy = E_map[material], Fy_map[material]
 
 forma = st.sidebar.selectbox("Forma de la Sección", ["Rectangular", "Circular Maciza"])
@@ -37,32 +36,28 @@ with c1:
     df_p = st.data_editor(pd.DataFrame([{"x": 3.0, "P (kN)": 10.0}]), num_rows="dynamic", key="p_editor")
 with c2:
     st.subheader("📏 Cargas Distribuidas")
-    df_q = st.data_editor(pd.DataFrame([{"x_i": 0.0, "x_f": 6.0, "q (kN/m)": 0.0}]), num_rows="dynamic", key="q_editor")
+    df_q = st.data_editor(pd.DataFrame([{"x_i": 0.0, "x_f": 6.0, "q (kN/m)": 3.0}]), num_rows="dynamic", key="q_editor")
 
 if st.button("🚀 CALCULAR ESTRUCTURA", use_container_width=True):
     try:
-        # SOLUCIÓN AL ERROR DE DICCIONARIOS: Convertir el editor a DataFrame limpio
-        p_v = pd.DataFrame(df_p).dropna()
-        q_v = pd.DataFrame(df_q).dropna()
+        # FORZAR CONVERSIÓN A FLOTANTES PARA EVITAR NULOS
+        p_v = pd.DataFrame(df_p).apply(pd.to_numeric, errors='coerce').dropna()
+        q_v = pd.DataFrame(df_q).apply(pd.to_numeric, errors='coerce').dropna()
         
-        # Filtro para ignorar ceros
         p_v = p_v[p_v["P (kN)"] != 0]
         q_v = q_v[q_v["q (kN/m)"] != 0]
 
         ss = SystemElements(EA=E*area, EI=E*I)
-        
-        # Segmentación
         puntos = {0.0, float(L)}
-        for x in p_v["x"]: puntos.add(round(float(x), 4))
+        for x in p_v["x"]: puntos.add(round(float(x), 3))
         for _, r in q_v.iterrows(): 
-            puntos.add(round(float(r["x_i"]), 4))
-            puntos.add(round(float(r["x_f"]), 4))
+            puntos.add(round(float(r["x_i"]), 3))
+            puntos.add(round(float(r["x_f"]), 3))
         
         pts = sorted([x for x in puntos if 0 <= x <= L])
         for i in range(len(pts)-1):
             ss.add_element(location=[[pts[i], 0], [pts[i+1], 0]])
         
-        # Apoyos
         nf = len(pts)
         if t_izq == "Fijo": ss.add_support_hinged(1)
         elif t_izq == "Empotrado": ss.add_support_fixed(1)
@@ -70,46 +65,37 @@ if st.button("🚀 CALCULAR ESTRUCTURA", use_container_width=True):
         elif t_der == "Fijo": ss.add_support_hinged(nf)
         elif t_der == "Empotrado": ss.add_support_fixed(nf)
 
-        # Cargas
         for _, r in p_v.iterrows():
-            ss.point_load(Fy=-float(r["P (kN)"]), node_id=pts.index(round(float(r["x"]), 4)) + 1)
+            ss.point_load(Fy=-float(r["P (kN)"]), node_id=pts.index(round(float(r["x"]), 3)) + 1)
         for _, r in q_v.iterrows():
             xi, xf, val_q = float(r["x_i"]), float(r["x_f"]), float(r["q (kN/m)"])
             for i in range(len(pts)-1):
-                mid = round((pts[i] + pts[i+1]) / 2, 4)
+                mid = (pts[i] + pts[i+1]) / 2
                 if xi <= mid <= xf:
                     ss.q_load(q=-val_q, element_id=i+1)
 
         ss.solve()
         
-        # --- CÁLCULOS Y DIBUJO ---
-        m_max = max([abs(r['Mmax']) for r in ss.get_element_results()])
+        # --- EXTRACCIÓN DE DATOS REALES ---
+        res = ss.get_element_results()
+        # Buscamos el valor máximo real en todos los tramos
+        m_max = max([abs(r['Mmax']) for r in res]) if res else 0
         sigma_mpa = (m_max * 1000 * c / I) / 1e6
         util = (sigma_mpa / Fy) * 100
 
         st.header("📊 Informe de Ingeniería")
-        col_txt, col_img = st.columns([2,1])
-        
-        with col_txt:
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Momento Máx", f"{m_max:.2f} kNm")
-            c2.metric("Esfuerzo Máx", f"{sigma_mpa:.2f} MPa")
-            c3.metric("Utilización", f"{util:.1f}%")
-            if util > 100: st.error("❌ FALLA ESTRUCTURAL")
-            else: st.success("✅ SECCIÓN SEGURA")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Momento Máx", f"{m_max:.2f} kNm")
+        c2.metric("Esfuerzo Máx", f"{sigma_mpa:.2f} MPa")
+        c3.metric("Utilización", f"{util:.1f}%")
 
-        with col_img:
-            fig_s, ax_s = plt.subplots(figsize=(2,2))
-            if forma == "Rectangular":
-                ax_s.add_patch(plt.Rectangle((-base/2,-altura/2), base, altura, color='skyblue', ec='blue'))
-                ax_s.set_xlim(-base, base); ax_s.set_ylim(-altura, altura)
-            else:
-                ax_s.add_patch(plt.Circle((0,0), radio, color='skyblue', ec='blue'))
-                ax_s.set_xlim(-radio*2, radio*2); ax_s.set_ylim(-radio*2, radio*2)
-            ax_s.set_aspect('equal'); ax_s.set_title("Sección")
-            st.pyplot(fig_s)
-
-        st.pyplot(ss.show_bending_moment(show=False))
+        if m_max > 0:
+            st.success("✅ Datos procesados correctamente.")
+            col_a, col_b = st.columns(2)
+            with col_a: st.pyplot(ss.show_bending_moment(show=False))
+            with col_b: st.pyplot(ss.show_displacement(show=False))
+        else:
+            st.error("⚠️ El cálculo sigue dando 0. Prueba a pulsar 'Enter' en las celdas de la tabla antes de calcular.")
 
     except Exception as e:
         st.error(f"Error: {e}")
