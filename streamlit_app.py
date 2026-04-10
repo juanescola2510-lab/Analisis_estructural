@@ -30,35 +30,35 @@ if st.button("🚀 Calcular Estructura", use_container_width=True):
     try:
         ss = SystemElements()
         
-        # 1. Crear geometría (Viga)
-        if usa_p and 0 < x_p < L:
-            # Dividimos en dos tramos para asegurar un nodo en la carga puntual
-            ss.add_element(location=[[0, 0], [x_p, 0]])
-            ss.add_element(location=[[x_p, 0], [L, 0]])
+        # Ajuste de seguridad: si x_p coincide con los extremos, lo movemos un milímetro
+        x_p_adj = x_p
+        if x_p == 0: x_p_adj = 0.001
+        if x_p == L: x_p_adj = L - 0.001
+
+        # 1. Crear geometría
+        if usa_p:
+            ss.add_element(location=[[0, 0], [x_p_adj, 0]])
+            ss.add_element(location=[[x_p_adj, 0], [L, 0]])
         else:
-            # Viga de un solo tramo
             ss.add_element(location=[[0, 0], [L, 0]])
         
         # 2. Asignar Apoyos
         id_izq = ss.find_node_id([0, 0])
         id_der = ss.find_node_id([L, 0])
         
-        # Lógica para apoyo izquierdo
         if tipo_izq == "Fijo": ss.add_support_hinged(node_id=id_izq)
         elif tipo_izq == "Empotrado": ss.add_support_fixed(node_id=id_izq)
             
-        # Lógica para apoyo derecho
         if tipo_der == "Móvil (Rodillo)": ss.add_support_roll(node_id=id_der, direction=2)
         elif tipo_der == "Fijo": ss.add_support_hinged(node_id=id_der)
         elif tipo_der == "Empotrado": ss.add_support_fixed(node_id=id_der)
 
         # 3. Aplicar Cargas
         if usa_p:
-            nodo_p = ss.find_node_id([x_p, 0])
+            nodo_p = ss.find_node_id([x_p_adj, 0])
             ss.point_load(Fy=-P, node_id=nodo_p)
             
         if usa_q:
-            # Aplicar a todos los elementos creados
             for i in range(1, len(ss.element_map) + 1):
                 ss.q_load(q=-q_val, element_id=i)
 
@@ -66,36 +66,36 @@ if st.button("🚀 Calcular Estructura", use_container_width=True):
         ss.solve()
 
         # --- RESULTADOS ---
-        col1, col2 = st.columns(2)
+        st.subheader("📍 Reacciones")
+        reacciones = ss.get_node_results_system()
+        res_list = []
         
-        with col1:
-            st.subheader("📍 Reacciones")
-            reacciones = ss.get_node_results_system()
-            res_list = []
-            for r in reacciones:
-                # Solo mostrar nodos con reacciones significativas
-                if abs(r['fy']) > 0.01 or abs(r['m']) > 0.01:
-                    res_list.append({
-                        "Nodo": r['id'],
-                        "X (m)": r['x'],
-                        "Vertical (kN)": round(r['fy'], 2),
-                        "Momento (kNm)": round(r['m'], 2)
-                    })
-            if res_list:
-                st.table(pd.DataFrame(res_list))
+        for r in reacciones:
+            # Usamos .get() para evitar el error 'fy' si la etiqueta no existe
+            f_vert = r.get('fy', 0.0)
+            m_reac = r.get('m', 0.0)
+            if abs(f_vert) > 0.01 or abs(m_reac) > 0.01:
+                res_list.append({
+                    "Ubicación (x)": f"{round(r['x'], 2)} m",
+                    "Vertical (kN)": round(f_vert, 2),
+                    "Momento (kNm)": round(m_reac, 2)
+                })
+        
+        if res_list:
+            st.table(pd.DataFrame(res_list))
+        else:
+            st.info("No hay reacciones verticales detectadas (viga en voladizo o apoyos libres).")
 
-        with col2:
-            st.subheader("📈 Diagramas")
-            # Cortante
-            st.write("**Fuerza Cortante (V)**")
+        # --- DIAGRAMAS ---
+        st.subheader("📈 Diagramas Estructurales")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write("**Corte (V)**")
             st.pyplot(ss.show_shear_force(show=False))
-            # Momento
-            st.write("**Momento Flector (M)**")
+        with col2:
+            st.write("**Momento (M)**")
             st.pyplot(ss.show_bending_moment(show=False))
 
-        st.success("✅ ¡Análisis completado!")
-
     except Exception as e:
-        st.error(f"Error: {e}")
-else:
-    st.info("Configura los parámetros y presiona Calcular.")
+        st.error(f"Error en el análisis: {e}")
+        st.info("Asegúrate de que la estructura sea estable (no dejes ambos extremos 'Libre').")
