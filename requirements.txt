@@ -4,3 +4,4 @@ numpy
 matplotlib
 PyNiteFEA>=2.4.1
 plotly
+pynitefea
