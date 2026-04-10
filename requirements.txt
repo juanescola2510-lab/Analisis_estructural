@@ -1,3 +1,3 @@
-PyNiteFEA==0.0.98
-pandas==2.2.1
-matplotlib==3.8.3
+pynitefea
+pandas
+matplotlib
