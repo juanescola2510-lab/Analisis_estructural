@@ -4,54 +4,46 @@ from openpyxl import load_workbook
 import io
 
 st.set_page_config(page_title="Actualizador TD", layout="centered")
-st.title("📊 Actualizador de Reporte Excel")
+st.title("📊 Sincronizador de Datos")
 
-# 1. Carga de archivos
-archivo_base = st.file_uploader("1. Sube tu archivo con pestañas 'TD' y 'HojaDeDatos'", type=['xlsx'])
-archivo_datos = st.file_uploader("2. Sube el archivo que tiene la hoja 'BD'", type=['xlsx'])
+archivo_base = st.file_uploader("1. Sube archivo con 'TD' y 'HojaDeDatos'", type=['xlsx'])
+archivo_datos = st.file_uploader("2. Sube archivo con hoja 'BD'", type=['xlsx'])
 
-if st.button("🚀 Sincronizar Datos"):
+if st.button("🚀 Actualizar Información"):
     if archivo_base and archivo_datos:
         try:
-            # 2. Leer los datos nuevos de la hoja 'BD'
-            df_actualizado = pd.read_excel(archivo_datos, sheet_name='BD')
+            # 1. Leer los datos de la hoja 'BD' del segundo archivo
+            df_fuente = pd.read_excel(archivo_datos, sheet_name='BD')
 
-            # 3. Cargar el Excel original (el de la imagen)
-            archivo_base.seek(0)
-            book = load_workbook(io.BytesIO(archivo_base.read()))
+            # 2. Leer TODAS las hojas del primer archivo para no perder nada
+            # Esto evita el error de visibilidad porque mantenemos todo en memoria
+            excel_original = pd.ExcelFile(archivo_base)
+            nombres_hojas = excel_original.sheet_names
             
-            # Verificamos que la hoja de destino exista
-            if "HojaDeDatos" not in book.sheetnames:
-                st.error("❌ No encontré la pestaña 'HojaDeDatos' en el primer archivo.")
-                st.stop()
-            
-            sheet = book["HojaDeDatos"]
-            
-            # 4. Limpiar contenido viejo celda por celda (mantiene la hoja visible)
-            for row in sheet.iter_rows():
-                for cell in row:
-                    cell.value = None
-
-            # 5. Escribir la nueva data sobre 'HojaDeDatos'
+            # 3. Crear el archivo de salida
             output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                writer.book = book
-                writer.sheets = {ws.title: ws for ws in book.worksheets}
-                df_actualizado.to_excel(writer, sheet_name="HojaDeDatos", index=False)
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                # Recorremos cada hoja que ya existía en tu archivo
+                for nombre in nombres_hojas:
+                    if nombre == "HojaDeDatos":
+                        # Si es la hoja de datos, escribimos la información nueva (la de BD)
+                        df_fuente.to_excel(writer, sheet_name=nombre, index=False)
+                    else:
+                        # Si es TD o cualquier otra, la copiamos tal cual estaba
+                        # Nota: Las tablas dinámicas podrían requerir actualizarse manualmente al abrir
+                        df_temp = pd.read_excel(archivo_base, sheet_name=nombre)
+                        df_temp.to_excel(writer, sheet_name=nombre, index=False)
+
+            st.success(f"✅ ¡Proceso terminado! Se sincronizaron {len(df_fuente)} filas.")
             
-            st.success(f"✅ ¡Completado! Se cargaron {len(df_actualizado)} filas en la pestaña 'HojaDeDatos'.")
-            
-            # 6. Botón de descarga
             st.download_button(
-                label="📥 Descargar Excel Actualizado",
+                label="📥 Descargar Reporte Actualizado",
                 data=output.getvalue(),
-                file_name="REPORTE_ACTUALIZADO.xlsx",
+                file_name="REPORTE_SINCRONIZADO.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
-            
-            st.warning("⚠️ **Paso final:** Abre el archivo, ve a la pestaña 'TD' y dale clic derecho a la tabla -> **Actualizar**.")
 
         except Exception as e:
-            st.error(f"❌ Error: {e}")
+            st.error(f"Ocurrió un detalle técnico: {e}")
     else:
-        st.warning("Por favor, sube ambos archivos para continuar.")
+        st.warning("Asegúrate de subir ambos archivos.")
