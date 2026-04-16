@@ -3,53 +3,44 @@ import pandas as pd
 from openpyxl import load_workbook
 import io
 
-st.set_page_config(page_title="Actualizador TABLA DINAMICA", layout="centered")
+st.set_page_config(page_title="Actualizador Express", layout="centered")
 
-st.title("📊 Actualizador de Reporte")
-st.write("Sube los archivos para actualizar la hoja **BaseDeDatos**.")
+st.title("📊 Actualizador de Tabla Dinámica")
+st.write("Sube los dos archivos para sincronizar la información.")
 
-# 1. Carga de archivos
-archivo_base = st.file_uploader("Subir archivo 'TABLA DINAMICA'", type=['xlsx'])
-archivo_datos = st.file_uploader("Subir segundo archivo con hoja 'BD'", type=['xlsx'])
-extra_1 = st.file_uploader("Subir Archivo Extra 1", type=['xlsx'])
-extra_2 = st.file_uploader("Subir Archivo Extra 2", type=['xlsx'])
+# 1. Carga de los dos archivos únicos
+archivo_base = st.file_uploader("1. Subir archivo 'TABLA DINAMICA'", type=['xlsx'])
+archivo_datos = st.file_uploader("2. Subir archivo con hoja 'BD'", type=['xlsx'])
 
-if st.button("🚀 Actualizar Base de Datos"):
-    if all([archivo_base, archivo_datos, extra_1, extra_2]):
+if st.button("🚀 Actualizar BaseDeDatos"):
+    if archivo_base and archivo_datos:
         try:
-            # 2. Lectura específica de la hoja 'BD' del segundo archivo
-            df_principal = pd.read_excel(archivo_datos, sheet_name='BD')
-            df_e1 = pd.read_excel(extra_1)
-            df_e2 = pd.read_excel(extra_2)
+            # 2. Leer los datos de la hoja 'BD'
+            df_actualizado = pd.read_excel(archivo_datos, sheet_name='BD')
 
-            # 3. Consolidación de los 3 orígenes
-            df_consolidado = pd.concat([df_principal, df_e1, df_e2], ignore_index=True)
-
-            # 4. Proceso de inyección en la hoja 'BaseDeDatos'
+            # 3. Preparar el archivo de destino en memoria
             output = io.BytesIO()
             book = load_workbook(archivo_base)
             
-            # Si la hoja BaseDeDatos existe, la reemplazamos con la nueva data
+            # Borrar la hoja antigua 'BaseDeDatos' para insertar la nueva
             if "BaseDeDatos" in book.sheetnames:
                 del book["BaseDeDatos"]
             
-            # Usamos ExcelWriter para insertar el DataFrame consolidado
+            # Escribir el nuevo contenido manteniendo la hoja de la Tabla Dinámica intacta
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
                 writer.book = book
-                df_consolidado.to_excel(writer, sheet_name="BaseDeDatos", index=False)
+                df_actualizado.to_excel(writer, sheet_name="BaseDeDatos", index=False)
             
-            # 5. Botón de descarga
-            st.success("✅ ¡Hoja 'BaseDeDatos' actualizada!")
+            # 4. Resultado y Descarga
+            st.success("✅ ¡Datos transferidos con éxito!")
             st.download_button(
-                label="📥 Descargar TABLA DINAMICA Actualizada",
+                label="📥 Descargar Archivo Actualizado",
                 data=output.getvalue(),
-                file_name="TABLA_DINAMICA_ACTUALIZADA.xlsx",
+                file_name="TABLA_DINAMICA_FINAL.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
-            
-            st.info("💡 **Recuerda:** Al abrir el archivo, ve a la hoja de la Tabla Dinámica, haz clic derecho sobre ella y selecciona **'Actualizar'**.")
 
         except Exception as e:
-            st.error(f"Error: Asegúrate de que el segundo archivo tenga una hoja llamada 'BD'. Detalles: {e}")
+            st.error(f"Error: Verifica que el segundo archivo tenga la hoja 'BD'. {e}")
     else:
-        st.warning("Por favor, sube todos los archivos para proceder.")
+        st.warning("Por favor, sube ambos archivos para continuar.")
