@@ -4,3 +4,5 @@ openpyxl
 xlsxwriter
 datetime
 plotly
+streamlit
+streamlit-flow
