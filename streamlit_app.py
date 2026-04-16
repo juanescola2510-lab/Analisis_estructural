@@ -1,84 +1,96 @@
 import streamlit as st
 import pandas as pd
-from openpyxl import load_workbook
-from openpyxl.utils.dataframe import dataframe_to_rows
-import io
+import datetime
+import plotly.express as px
 
-st.set_page_config(page_title="Sincronizador Inteligente", layout="centered")
-st.title("📊 Actualizador de Reporte y Porcentajes")
+# Configuración de la página
+st.set_page_config(page_title="OEE Molino Vertical - UNACEM", layout="wide")
 
-# 1. Carga de archivos
-archivo_base = st.file_uploader("1. Archivo Principal (TD, HojaDeDatos, RT)", type=['xlsx'])
-archivo_datos = st.file_uploader("2. Archivo con hoja 'BD'", type=['xlsx'])
-archivo_porcentaje = st.file_uploader("3. Archivo con hoja 'porcentaje'", type=['xlsx'])
+# Inicializar historial en la sesión si no existe
+if 'historial_oee' not in st.session_state:
+    # Creamos unos datos de ejemplo para que la gráfica no nazca vacía (opcional)
+    st.session_state.historial_oee = []
 
-if st.button("🚀 Iniciar Actualización"):
-    if all([archivo_base, archivo_datos, archivo_porcentaje]):
-        try:
-            # --- PROCESO 1: DATOS PARA HOJADEDATOS ---
-            df_bd = pd.read_excel(archivo_datos, sheet_name='BD')
-            
-            # --- PROCESO 2: DATOS PARA HOJA RT ---
-            df_porcentajes_nuevos = pd.read_excel(archivo_porcentaje, sheet_name='porcentaje')
-            
-            # Aseguramos que las columnas no tengan espacios extra
-            df_porcentajes_nuevos.columns = df_porcentajes_nuevos.columns.str.strip()
+st.title("🏭 Gestión de Activos: Monitor OEE")
+st.subheader("Optimización de Molinos Verticales de Rodillos")
 
-            # Cargamos el libro original en memoria
-            archivo_base.seek(0)
-            book = load_workbook(io.BytesIO(archivo_base.read()))
-            
-            # ACTUALIZACIÓN DE HOJADEDATOS
-            if "HojaDeDatos" in book.sheetnames:
-                sheet_db = book["HojaDeDatos"]
-                sheet_db.delete_rows(1, sheet_db.max_row + 1)
-                for r in dataframe_to_rows(df_bd, index=False, header=True):
-                    sheet_db.append(r)
-            
-            # ACTUALIZACIÓN DE HOJA RT CON CRUCE INTELIGENTE
-            if "RT" in book.sheetnames:
-                sheet_rt = book["RT"]
-                
-                # Leemos lo que hay actualmente en RT
-                data_rt = list(sheet_rt.values)
-                if len(data_rt) > 0:
-                    cols = data_rt[0]
-                    df_rt_actual = pd.DataFrame(data_rt[1:], columns=cols)
-                else:
-                    df_rt_actual = pd.DataFrame(columns=['nombre', 'porcentaje'])
+# --- BARRA LATERAL: ENTRADA DE DATOS ---
+st.sidebar.header("📥 Datos del Turno")
+fecha = st.sidebar.date_input("Fecha de Reporte", datetime.date.today())
+molino = st.sidebar.selectbox("Equipo", ["Molino de Crudo 1", "Molino de Cemento 1", "Molino de Cemento 2"])
 
-                # Limpieza de nombres para comparar sin errores
-                df_rt_actual['nombre'] = df_rt_actual['nombre'].astype(str).str.strip()
-                df_porcentajes_nuevos['nombre'] = df_porcentajes_nuevos['nombre'].astype(str).str.strip()
+st.sidebar.divider()
+st.sidebar.write("**1. Disponibilidad**")
+t_programado = st.sidebar.number_input("Tiempo Programado (Horas)", min_value=0.1, value=24.0)
+t_paradas = st.sidebar.number_input("Paradas No Programadas (Horas)", min_value=0.0, value=2.0)
 
-                # CRUCE (Outer Join): 
-                # 1. Actualiza si existe. 
-                # 2. Agrega si el nombre es nuevo.
-                df_rt_final = pd.merge(
-                    df_rt_actual.drop(columns=['porcentaje'], errors='ignore'), 
-                    df_porcentajes_nuevos[['nombre', 'porcentaje']], 
-                    on='nombre', 
-                    how='outer'
-                )
+st.sidebar.write("**2. Rendimiento**")
+capacidad_diseno = st.sidebar.number_input("Capacidad Diseño (TM/h)", min_value=1.0, value=150.0)
+tm_totales = st.sidebar.number_input("Toneladas Producidas (TM)", min_value=0.0, value=3100.0)
 
-                # Limpiamos la hoja RT y escribimos el resultado final
-                sheet_rt.delete_rows(1, sheet_rt.max_row + 1)
-                for r in dataframe_to_rows(df_rt_final, index=False, header=True):
-                    sheet_rt.append(r)
-            
-            # 3. Guardar y Descargar
-            output = io.BytesIO()
-            book.save(output)
-            
-            st.success("✅ ¡Sincronización completa! Se actualizaron datos y se añadieron nombres nuevos en RT.")
-            st.download_button(
-                label="📥 Descargar Reporte Final",
-                data=output.getvalue(),
-                file_name="REPORTE_SISTEMA_COMPLETO.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+st.sidebar.write("**3. Calidad**")
+tm_rechazo = st.sidebar.number_input("TM Fuera de Especificación", min_value=0.0, value=30.0)
 
-        except Exception as e:
-            st.error(f"Error técnico: {e}")
+# --- CÁLCULOS LÓGICOS ---
+t_operativo = t_programado - t_paradas
+disponibilidad = (t_operativo / t_programado) if t_programado > 0 else 0
+tm_teoricas = t_operativo * capacidad_diseno
+rendimiento = (tm_totales / tm_teoricas) if tm_teoricas > 0 else 0
+calidad = ((tm_totales - tm_rechazo) / tm_totales) if tm_totales > 0 else 0
+oee = disponibilidad * rendimiento * calidad
+
+# --- PANTALLA PRINCIPAL: INDICADORES ---
+m1, m2, m3, m4 = st.columns(4)
+m1.metric("OEE TOTAL", f"{oee:.1%}")
+m2.metric("Disponibilidad", f"{disponibilidad:.1%}")
+m3.metric("Rendimiento", f"{rendimiento:.1%}")
+m4.metric("Calidad", f"{calidad:.1%}")
+
+# --- SECCIÓN DE GRÁFICAS ---
+col_graf1, col_graf2 = st.columns(2)
+
+with col_graf1:
+    st.write("### Desglose de Pilares (%)")
+    df_stats = pd.DataFrame({
+        'Indicador': ['Disponibilidad', 'Rendimiento', 'Calidad'],
+        'Valor': [disponibilidad * 100, rendimiento * 100, calidad * 100]
+    })
+    fig_bar = px.bar(df_stats, x='Indicador', y='Valor', color='Indicador', range_y=[0,110])
+    st.plotly_chart(fig_bar, use_container_width=True)
+
+with col_graf2:
+    st.write("### 📈 Tendencia Histórica del OEE")
+    if len(st.session_state.historial_oee) > 0:
+        df_hist = pd.DataFrame(st.session_state.historial_oee)
+        # Convertir OEE de texto "85.0%" a flotante 0.85 para graficar
+        df_hist['OEE_Float'] = df_hist['OEE'].str.rstrip('%').astype('float')
+        
+        fig_line = px.line(df_hist, x='Fecha', y='OEE_Float', markers=True, title="Evolución OEE")
+        fig_line.update_yaxes(range=[0, 110])
+        st.plotly_chart(fig_line, use_container_width=True)
     else:
-        st.warning("Faltan archivos por subir.")
+        st.info("Guarda el primer registro para ver la tendencia.")
+
+# --- BOTÓN PARA GUARDAR ---
+if st.button("💾 Guardar Datos del Turno"):
+    nuevo_registro = {
+        "Fecha": str(fecha),
+        "Molino": molino,
+        "OEE": f"{oee*100:.1f}%",
+        "Disp": f"{disponibilidad*100:.1f}%",
+        "Rend": f"{rendimiento*100:.1f}%",
+        "Cal": f"{calidad*100:.1f}%",
+        "TM": tm_totales
+    }
+    st.session_state.historial_oee.append(nuevo_registro)
+    st.rerun() # Refrescar para mostrar la gráfica inmediatamente
+
+# --- TABLA DE DATOS ---
+st.divider()
+if st.session_state.historial_oee:
+    st.subheader("📋 Registro de Mediciones")
+    st.dataframe(pd.DataFrame(st.session_state.historial_oee), use_container_width=True)
+    
+    if st.button("🗑️ Limpiar Historial"):
+        st.session_state.historial_oee = []
+        st.rerun()
