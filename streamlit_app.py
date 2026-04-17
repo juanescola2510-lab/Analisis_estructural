@@ -4,71 +4,74 @@ import plotly.graph_objects as go
 import time
 
 # 1. Configuración de página
-st.set_page_config(page_title="UNACEM - Control Maestro", layout="centered")
+st.set_page_config(page_title="UNACEM - Control Maestro v4.0", layout="centered")
 
-st.title("🏭 Simulador de Molienda Avanzado")
-st.subheader("Análisis de Finura y Eficiencia")
+st.title("🏭 Simulador de Molienda con Reductor")
+st.subheader("Análisis de Potencia de Accionamiento")
 
 # --- PANEL DE CONTROL ---
 with st.sidebar:
-    st.header("⚙️ Geometría y Operación")
+    st.header("⚙️ Tren de Potencia")
     radio = st.number_input("Radio del Molino (m)", value=2.0)
     largo_total = st.number_input("Largo Total (m)", value=12.0)
-    rpm = st.slider("Velocidad (RPM)", 5, 50, 18)
+    rpm_molino = st.slider("Velocidad Molino (RPM)", 5, 45, 18)
     
     st.divider()
-    st.header("📦 Cámara 1")
+    st.header("⚙️ Reductor de Velocidad")
+    # Eficiencia típica de reductores industriales pesados
+    eficiencia_reductor = st.slider("Eficiencia Mecánica (%)", 90, 99, 96) / 100
+    rpm_motor = st.number_input("RPM del Motor Eléctrico", value=1180) # Ejemplo motor 6 polos
+    
+    st.divider()
+    st.header("📦 Configuración de Cámaras")
     j1 = st.slider("Llenado J1 (%)", 0, 100, 30)
     d_bola1 = st.selectbox("Ø Bola C1 (mm)", [90, 75, 60], index=1)
-    
-    st.divider()
-    st.header("📦 Cámara 2")
     j2 = st.slider("Llenado J2 (%)", 0, 100, 35)
-    d_bola2 = st.selectbox("Ø Bola C2 (mm)", [40, 30, 25, 17], index=2)
+    d_bola2 = st.selectbox("Ø Bola C2 (mm)", [40, 30, 20, 15], index=2)
     
-    st.divider()
     run = st.checkbox("▶️ INICIAR SIMULACIÓN", value=True)
 
 # --- LÓGICA DE INGENIERÍA ---
 D = radio * 2
 v_critica = 42.3 / np.sqrt(D) if D > 0 else 1
-phi = (rpm / v_critica)
+phi = (rpm_molino / v_critica)
 
-blaine_entrada = 800
-delta_c1 = (j1 * phi * (100/d_bola1)) * 10
-delta_c2 = (j2 * phi * (40/d_bola2)) * 30
-blaine_salida = blaine_entrada + delta_c1 + delta_c2
-
+# Potencia demandada por la carga (Power Draw)
 ton_total = (np.pi * radio**2 * largo_total) * ((j1+j2)/200) * 4.6
-potencia_kw = 10.6 * (D**0.3) * ((j1+j2)/200) * phi * ton_total
+# Potencia en el eje del molino (kW)
+potencia_eje = 10.6 * (D**0.3) * ((j1+j2)/200) * phi * ton_total
+# Potencia real del motor considerando el reductor
+potencia_motor = potencia_eje / eficiencia_reductor
+
+# Relación de transmisión del reductor (i)
+relacion_i = rpm_motor / rpm_molino if rpm_molino > 0 else 0
+# Torque en el eje del molino (Nm) -> P(kW) = (T*w)/9550
+torque_molino = (9550 * potencia_eje) / rpm_molino if rpm_molino > 0 else 0
 
 # --- DASHBOARD ---
 c1, c2, c3 = st.columns(3)
-c1.metric("Finura Salida", f"{int(blaine_salida)} cm²/g")
-c2.metric("Potencia Total", f"{potencia_kw:.1f} kW")
-c3.metric("% Vel. Crítica", f"{phi:.1%}")
+c1.metric("Potencia Motor (Consumo)", f"{potencia_motor:.1f} kW", f"{potencia_motor - potencia_eje:.1f} kW pérdida")
+c2.metric("Torque en el Eje", f"{int(torque_molino):,} Nm")
+c3.metric("Relación Reductor (i)", f"{relacion_i:.2f}:1")
 
-# --- MOTOR DE ANIMACIÓN ANTI-ERRORES ---
+# --- MOTOR DE ANIMACIÓN ---
 placeholder_sim = st.empty()
-placeholder_bar = st.empty()
+g = 9.81
+w = (rpm_molino * 2 * np.pi) / 60
+iteracion = 0
 
-# Generación de partículas
+# Partículas
 def crear_p(j, r_m, d_b):
-    n = int(min(j, 40) * 2) 
+    n = int(min(j, 30) * 2) 
     return np.random.uniform(r_m*0.3, r_m*0.95, n), np.random.uniform(0, 2*np.pi, n), d_b/8
 
 r1, f1, s1 = crear_p(j1, radio, d_bola1)
 r2, f2, s2 = crear_p(j2, radio, d_bola2)
 
-g = 9.81
-w = (rpm * 2 * np.pi) / 60
-iteracion = 0 # Contador para evitar el error de ID duplicado
-
 while run:
     t_loop = time.time()
-    iteracion += 1 # Aumentamos el ID en cada vuelta
+    iteracion += 1
     
-    # --- 1. SIMULACIÓN VISUAL ---
     fig_sim = go.Figure()
 
     def calc_camara(radios, fases, off_x, col, sz):
@@ -106,17 +109,5 @@ while run:
         margin=dict(l=0, r=0, t=10, b=0),
         template="plotly_white"
     )
-    # ASIGNAMOS KEY ÚNICA PARA EVITAR EL ERROR DE LA IMAGEN
-    placeholder_sim.plotly_chart(fig_sim, use_container_width=False, key=f"sim_{iteracion}")
-
-    # --- 2. GRÁFICO DE BARRAS ---
-    fig_bar = go.Figure(data=[
-        go.Bar(name='Entrada', x=['Puzolana/Clínker'], y=[blaine_entrada], marker_color='#FFA07A'),
-        go.Bar(name='Salida Final', x=['Puzolana/Clínker'], y=[blaine_salida], marker_color='#2ca02c')
-    ])
-    fig_bar.update_layout(height=300, barmode='group', template="plotly_white")
-    
-    # ASIGNAMOS KEY ÚNICA PARA EVITAR EL ERROR DE LA IMAGEN
-    placeholder_bar.plotly_chart(fig_bar, use_container_width=True, key=f"bar_{iteracion}")
-
+    placeholder_sim.plotly_chart(fig_sim, use_container_width=False, key=f"v4_{iteracion}")
     time.sleep(0.01)
