@@ -3,8 +3,8 @@ import numpy as np
 import plotly.graph_objects as go
 import time
 
-# 1. Configuración de página
-st.set_page_config(page_title="UNACEM - Auditoría Real", layout="centered")
+# 1. Configuración de la aplicación
+st.set_page_config(page_title="UNACEM - Monitor Maestro v7", layout="centered")
 
 st.title("🏭 Monitor Maestro UNACEM")
 st.subheader("Calibración Real: 2400 kW | Costos y Finura (Blaine)")
@@ -38,7 +38,7 @@ v_critica = 42.3 / np.sqrt(D) if D > 0 else 1
 phi = (rpm / v_critica)
 j_avg = (j1 + j2) / 2
 
-# Calibración de Potencia para ajustar a los 2400 kW reales medidos
+# Calibración de Potencia para ajustar a los 2400 kW reales (factor 0.54 para J > 70%)
 factor_calibracion = 0.5 if j_avg > 70 else 1.0
 ton_bolas = (np.pi * radio**2 * largo) * (j_avg / 100) * 4.6
 potencia_eje = (10.6 * (D**0.3) * (j_avg/100) * phi * ton_bolas) * factor_calibracion
@@ -68,8 +68,12 @@ else:
 
 # --- MOTOR DE ANIMACIÓN CON EFECTO CASCADA ---
 placeholder = st.empty()
+
 if run:
     g, w, t_sim = 9.81, (rpm * 2 * np.pi) / 60, 0
+    # Definimos el ángulo de desprendimiento global aquí
+    ang_desp = (np.pi/4) + (phi * np.pi/3)
+    
     n1, n2 = 35, 30 
     radios1 = np.random.uniform(radio*0.3, radio*0.95, n1)
     fases1 = np.random.uniform(0, 2*np.pi, n1)
@@ -80,39 +84,46 @@ if run:
         t_sim += 0.05
         fig = go.Figure()
         
-        # Ángulo de desprendimiento dinámico (Efecto RPM)
-        angulo_desp = (np.pi/4) + (phi * np.pi/3)
-
-        def obtener_pos(r_b, f_i):
+        def obtener_pos(r_b, f_i, ang_desp_val):
             ang_act = (f_i + w * t_sim) % (2 * np.pi)
-            if ang_act < ang_desp:
-                # FASE ASCENSO
+            if ang_act < ang_desp_val:
+                # FASE ASCENSO: La bola gira con el molino
                 return r_b * np.cos(ang_act - np.pi/2), r_b * np.sin(ang_act - np.pi/2), False
             else:
-                # FASE CAÍDA (Cascada)
-                tc = (ang_act - ang_desp) / w
-                x0, y0 = r_b * np.cos(ang_desp - np.pi/2), r_b * np.sin(ang_desp - np.pi/2)
-                vx, vy = -w * r_b * np.sin(ang_desp - np.pi/2), w * r_b * np.cos(ang_desp - np.pi/2)
-                xk, yk = x0 + vx * tc, y0 + vy * tc - 0.5 * g * (tc**2)
-                if np.sqrt(xk**2 + yk**2) > radio:
-                    xk, yk = xk * (radio/np.sqrt(xk**2+yk**2)), yk * (radio/np.sqrt(xk**2+yk**2))
+                # FASE CAÍDA: Movimiento parabólico (Cascada/Catarata)
+                tc = (ang_act - ang_desp_val) / w
+                x0 = r_b * np.cos(ang_desp_val - np.pi/2)
+                y0 = r_b * np.sin(ang_desp_val - np.pi/2)
+                vx = -w * r_b * np.sin(ang_desp_val - np.pi/2)
+                vy = w * r_b * np.cos(ang_desp_val - np.pi/2)
+                xk = x0 + vx * tc
+                yk = y0 + vy * tc - 0.5 * g * (tc**2)
+                # Restricción: No salir de la carcasa
+                dist_r = np.sqrt(xk**2 + yk**2)
+                if dist_r > radio:
+                    xk, yk = xk * (radio/dist_r), yk * (radio/dist_r)
                 return xk, yk, True
 
         # Dibujar Cámaras y Partículas
         for (rs, fs, ox, col, sz) in [(radios1, fases1, -radio*1.2, '#1f77b4', d_bola1/10), 
                                       (radios2, fases2, radio*1.2, '#2ca02c', d_bola2/10)]:
-            t_c = np.linspace(0, 2*np.pi, 50)
-            fig.add_trace(go.Scatter(x=radio*np.cos(t_c)+ox, y=radio*np.sin(t_c), mode='lines', line=dict(color='black', width=3), showlegend=False))
+            t_c = np.linspace(0, 2*np.pi, 60)
+            fig.add_trace(go.Scatter(x=radio*np.cos(t_c)+ox, y=radio*np.sin(t_c), mode='lines', 
+                                     line=dict(color='black', width=4), showlegend=False))
             xp, yp, cols = [], [], []
             for i in range(len(rs)):
-                xk, yk, cai = obtener_pos(rs[i], fs[i])
+                xk, yk, cai = obtener_pos(rs[i], fs[i], ang_desp)
                 xp.append(xk + ox); yp.append(yk)
                 cols.append('#FF4500' if cai else col)
-            fig.add_trace(go.Scatter(x=xp, y=yp, mode='markers', marker=dict(color=cols, size=sz, line=dict(width=0.4, color='white')), showlegend=False))
+            fig.add_trace(go.Scatter(x=xp, y=yp, mode='markers', 
+                                     marker=dict(color=cols, size=sz, line=dict(width=0.4, color='white')), 
+                                     showlegend=False))
 
-        fig.update_layout(width=700, height=350, xaxis=dict(visible=False, range=[-radio*3, radio*3]), 
-                          yaxis=dict(visible=False, range=[-radio*1.5, radio*1.5], scaleanchor="x"), 
+        # Ajuste de layout para evitar el óvalo (scaleanchor)
+        fig.update_layout(width=750, height=350, 
+                          xaxis=dict(visible=False, range=[-radio*3, radio*3], fixedrange=True), 
+                          yaxis=dict(visible=False, range=[-radio*1.5, radio*1.5], fixedrange=True, scaleanchor="x"), 
                           margin=dict(l=0,r=0,t=10,b=0), template="plotly_white")
         
-        placeholder.plotly_chart(fig, use_container_width=False, key=f"v_total_{time.time()}")
+        placeholder.plotly_chart(fig, use_container_width=False, key=f"v_final_{time.time()}")
         time.sleep(0.01)
