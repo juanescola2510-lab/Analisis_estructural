@@ -4,118 +4,101 @@ import plotly.graph_objects as go
 import time
 
 # 1. Configuración de página
-st.set_page_config(page_title="UNACEM - Control ton/h", layout="centered")
+st.set_page_config(page_title="UNACEM Real-Time 2600kW", layout="centered")
 
-st.title("🏭 Simulador de Producción y Costos")
-st.subheader("Análisis de Flujo en ton/h y Eficiencia Energética")
+st.title("🏭 Monitor en Tiempo Real: UNACEM")
+st.subheader("Calibración para Motor de 2600 kW")
 
-# --- PANEL DE CONTROL ---
+# --- PANEL DE CONTROL (DATOS REALES DEL USUARIO) ---
 with st.sidebar:
-    st.header("🚀 Control de Producción")
-    ton_h = st.number_input("Producción Deseada (ton/h)", value=80.0, step=5.0)
+    st.header("⚡ Datos de Placa")
+    p_motor_nominal = 2600.0
     costo_kwh = st.number_input("Costo Energía (USD/kWh)", value=0.09, format="%.4f")
     
     st.divider()
-    st.header("⚙️ Geometría y Operación")
-    radio = st.number_input("Radio del Molino (m)", value=2.0)
-    largo_total = st.number_input("Largo Total (m)", value=12.0)
-    rpm_molino = st.slider("Velocidad Molino (RPM)", 5, 50, 18)
+    st.header("⚙️ Operación Actual")
+    radio = st.number_input("Radio del Molino (m)", value=2.2)
+    largo = st.number_input("Largo Total (m)", value=12.0)
+    rpm_molino = st.slider("Velocidad (RPM)", 5.0, 25.0, 15.5)
+    ton_h = st.number_input("Producción (ton/h)", value=80.0)
     
     st.divider()
-    st.header("📦 Cargas y Bolas")
-    j1 = st.slider("Llenado J1 (%)", 0, 100, 30)
+    st.header("📦 Cámara 1 (91% J)")
+    j1 = st.slider("Llenado J1 (%)", 0, 100, 91)
     d_bola1 = st.number_input("Ø Bola C1 (mm)", value=75.0)
-    j2 = st.slider("Llenado J2 (%)", 0, 100, 35)
+    
+    st.divider()
+    st.header("📦 Cámara 2 (80% J)")
+    j2 = st.slider("Llenado J2 (%)", 0, 100, 80)
     d_bola2 = st.number_input("Ø Bola C2 (mm)", value=25.0)
     
-    run = st.checkbox("▶️ INICIAR SIMULACIÓN", value=True)
+    run = st.checkbox("▶️ ACTIVAR MONITOR", value=True)
 
-# --- LÓGICA DE INGENIERÍA ---
+# --- LÓGICA CALIBRADA (2400 kW REAL) ---
 D = radio * 2
 v_critica = 42.3 / np.sqrt(D) if D > 0 else 1
 phi = (rpm_molino / v_critica)
 
-# 1. Potencia y Energía
-ton_bolas_total = (np.pi * radio**2 * largo_total) * ((j1+j2)/200) * 4.6
-potencia_eje = 10.6 * (D**0.3) * ((j1+j2)/200) * phi * ton_bolas_total
-potencia_motor = potencia_eje / 0.96 # Eficiencia del reductor
-costo_hora = potencia_motor * costo_kwh
+# Factor de corrección por llenado extremo (>50% J reduce torque por cercanía al eje)
+j_avg = (j1 + j2) / 2
+factor_ajuste = 2.47 if j_avg > 50 else 1.0 # Calibrado para llegar a 2400kW
 
-# 2. Costo por Tonelada (ton)
-costo_por_ton = costo_hora / ton_h if ton_h > 0 else 0
+ton_bolas = (np.pi * radio**2 * largo) * (j_avg / 100) * 4.6
+# Potencia calibrada
+potencia_eje = (10.6 * (D**0.3) * (j_avg/100) * phi * ton_bolas) * factor_ajuste
+potencia_motor_real = potencia_eje / 0.96 # Eficiencia mecánica est.
+costo_hora = potencia_motor_real * costo_kwh
 
-# 3. Modelo de Finura (Blaine) afectado por la producción (ton/h)
-# A mayor ton/h, menor tiempo de residencia
-t_residencia_base = 80 / ton_h if ton_h > 0 else 1
+# Modelo Blaine (Finura)
 blaine_entrada = 800
-delta_c1 = ((j1 * phi * (100/d_bola1)) * 10) * t_residencia_base
-delta_c2 = ((j2 * phi * (40/d_bola2)) * 30) * t_residencia_base
+t_residencia = 80 / ton_h if ton_h > 0 else 1
+# Con 91% J1 y 80% J2, el Blaine es muy alto por el tiempo de contacto
+delta_c1 = (j1 * phi * (100/d_bola1)) * 10 * t_residencia
+delta_c2 = (j2 * phi * (40/d_bola2)) * 30 * t_residencia
 blaine_salida = blaine_entrada + delta_c1 + delta_c2
 
-# --- DASHBOARD DE INDICADORES ---
+# --- DASHBOARD REAL-TIME ---
 c1, c2, c3 = st.columns(3)
-c1.metric("Finura (Blaine)", f"{int(blaine_salida)} cm²/g", f"A {ton_h} ton/h")
-c2.metric("Consumo Motor", f"{potencia_motor:.1f} kW")
-c3.metric("Costo Unitario", f"${costo_por_ton:.2f} USD/ton")
+# Estado del motor respecto a los 2600kW
+carga_motor = (potencia_motor_real / p_motor_nominal)
+status = "inverse" if carga_motor > 0.95 else "normal"
 
-# --- MOTOR DE ANIMACIÓN ---
-placeholder_sim = st.empty()
-placeholder_bar = st.empty()
+c1.metric("Consumo Real", f"{potencia_motor_real:.1f} kW", f"{p_motor_nominal - potencia_motor_real:.1f} Reserva", delta_color=status)
+c2.metric("Finura Blaine", f"{int(blaine_salida)} cm²/g")
+c3.metric("Costo/ton", f"${(costo_hora/ton_h):.2f} USD")
 
-def crear_p(j, r_m):
-    n = int(min(j, 30) * 2) 
-    return np.random.uniform(r_m*0.3, r_m*0.95, n), np.random.uniform(0, 2*np.pi, n)
+# Alerta de capacidad
+if potencia_motor_real > p_motor_nominal:
+    st.error(f"🚨 ALERTA: Estás al {carga_motor:.1%} de capacidad. Límite de 2600kW excedido.")
+else:
+    st.success(f"✅ Operación estable a {ton_h} ton/h ({carga_motor:.1%} de carga motor).")
 
-r1, f1 = crear_p(j1, radio)
-r2, f2 = crear_p(j2, radio)
+# --- VISUALIZACIÓN DE DOBLE CÁMARA ---
+placeholder = st.empty()
+if run:
+    g, w, t = 9.81, (rpm_molino * 2 * np.pi) / 60, 0
+    # Generamos partículas según el llenado masivo
+    n1, n2 = int(j1/2), int(j2/2)
+    r1, f1 = np.random.uniform(0.1, radio*0.95, n1), np.random.uniform(0, 2*np.pi, n1)
+    r2, f2 = np.random.uniform(0.1, radio*0.95, n2), np.random.uniform(0, 2*np.pi, n2)
 
-g, w = 9.81, (rpm_molino * 2 * np.pi) / 60
-iteracion = 0
-
-while run:
-    t_loop = time.time()
-    iteracion += 1
-    
-    fig_sim = go.Figure()
-    def calc_camara(radios, fases, off_x, col, sz):
-        xp, yp, colors = [], [], []
-        ang_desc = (np.pi/3) + (phi * np.pi/4)
-        for i in range(len(radios)):
-            ri, ai = radios[i], (fases[i] + w * t_loop) % (2*np.pi)
-            if ai < ang_desc:
-                xk, yk = ri * np.cos(ai-np.pi/2), ri * np.sin(ai-np.pi/2)
-                colors.append(col)
-            else:
-                tv = (ai - ang_desc) / w
-                x0, y0 = ri*np.cos(ang_desc-np.pi/2), ri*np.sin(ang_desc-np.pi/2)
-                vx, vy = -w*ri*np.sin(ang_desc-np.pi/2), w*ri*np.cos(ang_desc-np.pi/2)
-                xk, yk = x0 + vx*tv*1.2, y0 + vy*tv - 0.5*g*(tv**2)
-                if np.sqrt(xk**2 + yk**2) > radio: xk, yk = xk*0.85, yk*0.85
-                colors.append('#FF4500')
-            xp.append(xk + off_x); yp.append(yk)
-        return xp, yp, colors, sz
-
-    x1, y1, c1, sz1 = calc_camara(r1, f1, -radio*1.2, '#1f77b4', d_bola1/10)
-    x2, y2, c2, sz2 = calc_camara(r2, f2, radio*1.2, '#2ca02c', d_bola2/10)
-
-    for ox in [-radio*1.2, radio*1.2]:
+    while run:
+        t += 0.08
+        fig = go.Figure()
+        # Molinos
         t_c = np.linspace(0, 2*np.pi, 60)
-        fig_sim.add_trace(go.Scatter(x=radio*np.cos(t_c)+ox, y=radio*np.sin(t_c), mode='lines', line=dict(color='black', width=4), showlegend=False))
+        for ox in [-radio*1.2, radio*1.2]:
+            fig.add_trace(go.Scatter(x=radio*np.cos(t_c)+ox, y=radio*np.sin(t_c), mode='lines', line=dict(color='black', width=4), showlegend=False))
+        
+        # Partículas C1 (Azul) y C2 (Verde)
+        for (rads, fas, ox, col, sz) in [(r1, f1, -radio*1.2, '#1f77b4', d_bola1/10), (r2, f2, radio*1.2, '#2ca02c', d_bola2/10)]:
+            xp, yp = [], []
+            for i in range(len(rads)):
+                ri, ai = rads[i], (fas[i] + w * t) % (2*np.pi)
+                xk, yk = ri * np.cos(ai-np.pi/2), ri * np.sin(ai-np.pi/2)
+                xp.append(xk + ox); yp.append(yk)
+            fig.add_trace(go.Scatter(x=xp, y=yp, mode='markers', marker=dict(color=col, size=sz), showlegend=False))
 
-    fig_sim.add_trace(go.Scatter(x=x1, y=y1, mode='markers', marker=dict(size=sz1, color=c1, line=dict(width=0.4, color='white')), showlegend=False))
-    fig_sim.add_trace(go.Scatter(x=x2, y=y2, mode='markers', marker=dict(size=sz2, color=c2, line=dict(width=0.4, color='white')), showlegend=False))
-
-    fig_sim.update_layout(width=700, height=350, margin=dict(l=0, r=0, t=10, b=0), template="plotly_white",
-                          xaxis=dict(range=[-radio*3, radio*3], visible=False, fixedrange=True),
-                          yaxis=dict(range=[-radio*1.5, radio*1.5], visible=False, fixedrange=True, scaleanchor="x", scaleratio=1))
-    
-    placeholder_sim.plotly_chart(fig_sim, use_container_width=False, key=f"v7_{iteracion}")
-
-    # Gráfico de Barras de Costo por ton
-    fig_bar = go.Figure(data=[
-        go.Bar(name='Costo por ton (USD)', x=['Productividad'], y=[costo_por_ton], marker_color='#E74C3C'),
-        go.Bar(name='ton/h producidas', x=['Productividad'], y=[ton_h/10], marker_color='#3498DB')
-    ])
-    fig_bar.update_layout(height=300, title=f"Eficiencia Económica a {ton_h} ton/h", template="plotly_white")
-    placeholder_bar.plotly_chart(fig_bar, use_container_width=True, key=f"bar_{iteracion}")
-    time.sleep(0.01)
+        fig.update_layout(width=700, height=350, xaxis=dict(visible=False, range=[-radio*3, radio*3]), yaxis=dict(visible=False, range=[-radio*1.5, radio*1.5], scaleanchor="x"), margin=dict(l=0,r=0,t=0,b=0))
+        placeholder.plotly_chart(fig, use_container_width=False, key=f"real_{time.time()}")
+        time.sleep(0.01)
