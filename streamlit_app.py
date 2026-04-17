@@ -3,64 +3,85 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
-st.title("🎥 Simulador de Trayectoria de Bolas")
-st.write("Visualiza el rastro de las bolas para optimizar el punto de impacto.")
+st.set_page_config(page_title="Simulador Animado UNACEM", layout="wide")
 
-# --- PARÁMETROS ---
-rpm = st.slider("Velocidad (RPM)", 5, 35, 18)
-r_molino = 2.0  # metros
+st.title("🎥 Simulación Animada: Caída de Bolas")
+st.subheader("Visualización de Trayectoria y Punto de Impacto")
+
+# --- PARÁMETROS EN LA BARRA LATERAL ---
+with st.sidebar:
+    st.header("⚙️ Ajustes del Molino")
+    rpm = st.slider("Velocidad de Rotación (RPM)", 5, 35, 16)
+    radio = st.number_input("Radio del Molino (m)", value=2.0)
+    num_frames = 30 # Duración de la animación
+
+# --- LÓGICA FÍSICA ---
 g = 9.81
-
-# --- CÁLCULO DE FÍSICA (PUNTO DE DESPRENDIMIENTO) ---
 w = (rpm * 2 * np.pi) / 60
-v_critica = np.sqrt(g / r_molino)
-ratio = w / v_critica
+t_vuelo = np.linspace(0, 0.8, num_frames)
 
-# Lógica de la trayectoria parabólica
-def calcular_trayectoria(t_array, angulo_inicio):
-    # Punto de desprendimiento (simplificado para visualización)
-    x0 = r_molino * np.cos(angulo_inicio)
-    y0 = r_molino * np.sin(angulo_inicio)
-    vx = -w * r_molino * np.sin(angulo_inicio)
-    vy = w * r_molino * np.cos(angulo_inicio)
-    
-    x = x0 + vx * t_array
-    y = y0 + vy * t_array - 0.5 * g * t_array**2
-    return x, y
+# Ángulos de las capas de bolas
+capas = [np.pi/3, np.pi/4, np.pi/6]
 
-# --- GENERAR RASTROS ---
+# --- CREACIÓN DE LA ANIMACIÓN CON PLOTLY ---
 fig = go.Figure()
 
-# 1. Dibujar Carcasa del Molino
+# 1. Dibujar el cuerpo del molino (Estático)
 t_circ = np.linspace(0, 2*np.pi, 100)
-fig.add_trace(go.Scatter(x=r_molino*np.cos(t_circ), y=r_molino*np.sin(t_circ), 
-                         mode='lines', line=dict(color='black', width=3), name="Carcasa"))
+fig.add_trace(go.Scatter(x=radio*np.cos(t_circ), y=radio*np.sin(t_circ), 
+                         mode='lines', line=dict(color='black', width=4), 
+                         showlegend=False))
 
-# 2. Dibujar Trayectorias (Rastros)
-tiempos = np.linspace(0, 0.8, 20) # Duración del rastro
-angulos_lanzamiento = [np.pi/4, np.pi/3, np.pi/6] # Diferentes capas de bolas
+# 2. Configurar frames (el movimiento)
+frames = []
+for k in range(len(t_vuelo)):
+    frame_data = []
+    # Dibujar la carcasa en cada frame para que no desaparezca
+    frame_data.append(go.Scatter(x=radio*np.cos(t_circ), y=radio*np.sin(t_circ), mode='lines', line=dict(color='black', width=4)))
+    
+    for ang in capas:
+        # Ecuaciones de movimiento parabólico
+        x0, y0 = radio * np.cos(ang), radio * np.sin(ang)
+        vx, vy = -w * radio * np.sin(ang), w * radio * np.cos(ang)
+        
+        # Posición actual de la bola en el frame k
+        tk = t_vuelo[k]
+        xk = x0 + vx * tk
+        yk = y0 + vy * tk - 0.5 * g * tk**2
+        
+        # Rastro (posiciones anteriores hasta k)
+        trastro = t_vuelo[:k+1]
+        xrastro = x0 + vx * trastro
+        yrastro = y0 + vy * trastro - 0.5 * g * trastro**2
+        
+        # Añadir rastro y bola al frame
+        frame_data.append(go.Scatter(x=xrastro, y=yrastro, mode='lines', line=dict(dash='dot', width=1)))
+        frame_data.append(go.Scatter(x=[xk], y=[yk], mode='markers', marker=dict(size=12, color='red')))
+        
+    frames.append(go.Frame(data=frame_data, name=str(k)))
 
-for i, ang in enumerate(angulos_lanzamiento):
-    tx, ty = calcular_trayectoria(tiempos, ang)
-    # Dibujar la línea del rastro (trayectoria)
-    fig.add_trace(go.Scatter(x=tx, y=ty, mode='lines', 
-                             line=dict(width=i+1, dash='dot'), 
-                             name=f"Capa {i+1}"))
-    # Dibujar la bola al final del rastro
-    fig.add_trace(go.Scatter(x=[tx[-1]], y=[ty[-1]], mode='markers', 
-                             marker=dict(size=12, symbol='circle'), 
-                             showlegend=False))
+# 3. Configurar el Layout y Botones de Play
+fig.frames = frames
+fig.update_layout(
+    width=700, height=700,
+    xaxis=dict(range=[-3, 3], showgrid=False, zeroline=False),
+    yaxis=dict(range=[-3, 3], showgrid=False, zeroline=False),
+    updatemenus=[{
+        "buttons": [
+            {"args": [None, {"frame": {"duration": 50, "redraw": True}, "fromcurrent": True}],
+             "label": "▶️ Iniciar Simulación", "method": "animate"},
+            {"args": [[None], {"frame": {"duration": 0, "redraw": True}, "mode": "immediate", "transition": {"duration": 0}}],
+             "label": "⏸️ Pausar", "method": "animate"}
+        ],
+        "type": "buttons", "direction": "left", "pad": {"r": 10, "t": 87}, "showactive": False, "x": 0.1, "y": 0
+    }]
+)
 
-fig.update_layout(width=600, height=600, template="plotly_white",
-                  xaxis=dict(range=[-2.5, 2.5], showgrid=False),
-                  yaxis=dict(range=[-2.5, 2.5], showgrid=False))
+st.plotly_chart(fig, use_container_width=True)
 
-st.plotly_chart(fig)
-
-# --- ANALISIS MECÁNICO ---
-if ratio > 0.75:
-    st.error("⚠️ IMPACTO DIRECTO AL BLINDAJE: El rastro muestra que las bolas caen muy alto.")
-elif ratio < 0.60:
-    st.warning("📉 EFECTO CASCADA: El rastro es muy corto, molienda por fricción.")
-else:
-    st.success("🎯 IMPACTO ÓPTIMO: Las bolas caen sobre el material en el pie de la carga.")
+# --- NOTA TÉCNICA ---
+st.info("""
+**Análisis de Trayectoria:** 
+El punto donde el rastro rojo termina indica el impacto. Si el impacto ocurre por encima de la línea media horizontal, 
+estás protegiendo los blindajes. Si el impacto es muy bajo, el efecto es puramente de fricción (cascada).
+""")
