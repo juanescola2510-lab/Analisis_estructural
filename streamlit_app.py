@@ -1,79 +1,66 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
-import time
-
-st.set_page_config(page_title="Simulador Físico de Molino", layout="centered")
-
-st.title("🏐 Simulación de Carga: Efecto Catarata")
-st.write("Ajusta la velocidad para ver cómo cambia la trayectoria de las bolas.")
-
-# --- PARÁMETROS DE CONTROL ---
-col1, col2 = st.columns(2)
-with col1:
-    rpm = st.slider("Velocidad de Rotación (RPM)", min_value=0, max_value=40, value=15)
-    num_bolas = st.slider("Cantidad de Bolas en simulación", 10, 100, 50)
-with col2:
-    radio_molino = 100 # Píxeles
-    gravedad = 9.8
-
-# --- LÓGICA DE FÍSICA SIMPLIFICADA ---
-# Calculamos la posición de cada bola basándonos en el ángulo de elevación
-# El ángulo donde la bola se desprende depende de la velocidad angular
-
-w = (rpm * 2 * np.pi) / 60 # Velocidad angular en rad/s
-v_critica = np.sqrt(gravedad / (radio_molino / 100)) # rad/s
-ratio_critico = w / v_critica if v_critica > 0 else 0
-
-# Crear DataFrame para las posiciones de las bolas
-angulos = np.linspace(0, 2 * np.pi, num_bolas)
-posiciones = []
-
-# Simulación de un "frame" de movimiento
-t = time.time()
-for i in range(num_bolas):
-    # Ángulo base + rotación en el tiempo
-    theta = angulos[i] + (w * t) 
-    
-    # Si la bola está en la zona de ascenso (derecha), sigue el círculo
-    # Si llega al punto de caída (arriba), simulamos parábola
-    x = radio_molino * np.cos(theta)
-    y = radio_molino * np.sin(theta)
-    
-    posiciones.append({'x': x, 'y': y})
-
-df = pd.DataFrame(posiciones)
-
-# --- VISUALIZACIÓN ---
-# Usamos un gráfico de dispersión para simular las bolas
 import plotly.graph_objects as go
 
+st.title("🎥 Simulador de Trayectoria de Bolas")
+st.write("Visualiza el rastro de las bolas para optimizar el punto de impacto.")
+
+# --- PARÁMETROS ---
+rpm = st.slider("Velocidad (RPM)", 5, 35, 18)
+r_molino = 2.0  # metros
+g = 9.81
+
+# --- CÁLCULO DE FÍSICA (PUNTO DE DESPRENDIMIENTO) ---
+w = (rpm * 2 * np.pi) / 60
+v_critica = np.sqrt(g / r_molino)
+ratio = w / v_critica
+
+# Lógica de la trayectoria parabólica
+def calcular_trayectoria(t_array, angulo_inicio):
+    # Punto de desprendimiento (simplificado para visualización)
+    x0 = r_molino * np.cos(angulo_inicio)
+    y0 = r_molino * np.sin(angulo_inicio)
+    vx = -w * r_molino * np.sin(angulo_inicio)
+    vy = w * r_molino * np.cos(angulo_inicio)
+    
+    x = x0 + vx * t_array
+    y = y0 + vy * t_array - 0.5 * g * t_array**2
+    return x, y
+
+# --- GENERAR RASTROS ---
 fig = go.Figure()
 
-# Dibujar cuerpo del molino
-theta_circ = np.linspace(0, 2*np.pi, 100)
-fig.add_trace(go.Scatter(x=radio_molino*np.cos(theta_circ), y=radio_molino*np.sin(theta_circ), 
-                         mode='lines', line=dict(color='black', width=4), name='Carcasa'))
+# 1. Dibujar Carcasa del Molino
+t_circ = np.linspace(0, 2*np.pi, 100)
+fig.add_trace(go.Scatter(x=r_molino*np.cos(t_circ), y=r_molino*np.sin(t_circ), 
+                         mode='lines', line=dict(color='black', width=3), name="Carcasa"))
 
-# Dibujar bolas
-fig.add_trace(go.Scatter(x=df['x'], y=df['y'], mode='markers', 
-                         marker=dict(size=10, color='blue'), name='Bolas'))
+# 2. Dibujar Trayectorias (Rastros)
+tiempos = np.linspace(0, 0.8, 20) # Duración del rastro
+angulos_lanzamiento = [np.pi/4, np.pi/3, np.pi/6] # Diferentes capas de bolas
 
-fig.update_layout(
-    width=500, height=500,
-    xaxis=dict(range=[-150, 150], showgrid=False, zeroline=False),
-    yaxis=dict(range=[-150, 150], showgrid=False, zeroline=False),
-    template="plotly_white"
-)
+for i, ang in enumerate(angulos_lanzamiento):
+    tx, ty = calcular_trayectoria(tiempos, ang)
+    # Dibujar la línea del rastro (trayectoria)
+    fig.add_trace(go.Scatter(x=tx, y=ty, mode='lines', 
+                             line=dict(width=i+1, dash='dot'), 
+                             name=f"Capa {i+1}"))
+    # Dibujar la bola al final del rastro
+    fig.add_trace(go.Scatter(x=[tx[-1]], y=[ty[-1]], mode='markers', 
+                             marker=dict(size=12, symbol='circle'), 
+                             showlegend=False))
+
+fig.update_layout(width=600, height=600, template="plotly_white",
+                  xaxis=dict(range=[-2.5, 2.5], showgrid=False),
+                  yaxis=dict(range=[-2.5, 2.5], showgrid=False))
 
 st.plotly_chart(fig)
 
-# --- ANÁLISIS TÉCNICO ---
-if ratio_critico > 0.8:
-    st.error(f"¡CENTRIFUGACIÓN! Las bolas se pegan a la pared. Eficiencia de molienda: 0%")
-elif ratio_critico > 0.6:
-    st.success(f"EFECTO CATARATA: Máximo impacto para puzolana gruesa.")
+# --- ANALISIS MECÁNICO ---
+if ratio > 0.75:
+    st.error("⚠️ IMPACTO DIRECTO AL BLINDAJE: El rastro muestra que las bolas caen muy alto.")
+elif ratio < 0.60:
+    st.warning("📉 EFECTO CASCADA: El rastro es muy corto, molienda por fricción.")
 else:
-    st.warning(f"EFECTO CASCADA: Molienda por atrición (fina).")
-
-st.info(f"Velocidad Relativa: {ratio_critico:.2%}")
+    st.success("🎯 IMPACTO ÓPTIMO: Las bolas caen sobre el material en el pie de la carga.")
