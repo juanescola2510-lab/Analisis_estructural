@@ -2,105 +2,115 @@ import streamlit as st
 import numpy as np
 import plotly.graph_objects as go
 
-st.set_page_config(page_title="Simulador de Potencia UNACEM", layout="wide")
+st.set_page_config(page_title="Simulador Rotativo UNACEM", layout="wide")
 
-st.title("🔄 Simulador Avanzado de Molienda y Potencia")
+st.title("🔄 Simulación de Molino Rotativo")
+st.write("Las bolas giran con la carcasa y caen según la velocidad de rotación.")
 
 # --- PANEL DE CONTROL ---
 with st.sidebar:
-    st.header("⚙️ Geometría")
+    st.header("⚙️ Configuración")
     radio = st.number_input("Radio del Molino (m)", value=2.0)
     largo = st.number_input("Largo del Molino (m)", value=6.0)
-    
-    st.header("⚖️ Carga de Bolas")
-    h_vacia = st.slider("Espacio vacío (m)", 0.1, float(radio*2), float(radio))
-    densidad_bolas = st.number_input("Densidad Aparente (TM/m³)", value=4.6)
-    
+    st.header("⚖️ Carga")
+    h_vacia = st.slider("Espacio vacío (m)", 0.1, float(radio*2), 2.2)
+    densidad_bolas = st.number_input("Densidad (TM/m³)", value=4.6)
     st.header("⚡ Operación")
-    rpm = st.slider("Velocidad (RPM)", 5, 40, 16)
+    rpm = st.slider("Velocidad (RPM)", 5, 40, 18)
 
-# --- CÁLCULOS TÉCNICOS ---
+# --- CÁLCULOS DE INGENIERÍA ---
 D = radio * 2
-# 1. Porcentaje de llenado (J)
 llenado_j = 113 - 126 * (h_vacia / D)
 llenado_j = max(0, min(100, llenado_j))
+ton_bolas = (np.pi * radio**2 * largo) * (llenado_j/100) * densidad_bolas
 
-# 2. Tonelaje de bolas
-vol_total = np.pi * (radio**2) * largo
-ton_bolas = vol_total * (llenado_j / 100) * densidad_bolas
-
-# 3. CONSUMO DE ENERGÍA (Fórmula de Austin/Bond simplificada)
-# La potencia depende de la carga, la velocidad y el diámetro
-# P (kW) = 10.6 * D^0.3 * (J/100) * (1 - 1.03 * J/100) * (RPM/Nc) * Ton_Bolas
+# Potencia estimada (kW)
 v_critica = 42.3 / np.sqrt(D) if D > 0 else 1
 phi = rpm / v_critica
 potencia_kw = 10.6 * (D**0.3) * (llenado_j/100) * (1 - 1.03 * (llenado_j/100)) * phi * ton_bolas
 
-# --- DASHBOARD DE INDICADORES ---
-c1, c2, c3, c4 = st.columns(4)
+# --- DASHBOARD ---
+c1, c2, c3 = st.columns(3)
 c1.metric("Llenado (J)", f"{llenado_j:.1f}%")
-c2.metric("Masa de Bolas", f"{ton_bolas:.1f} TM")
-c3.metric("Potencia Estimada", f"{potencia_kw:.1f} kW")
-c4.metric("Vel. Crítica", f"{phi:.1%}")
+c2.metric("Masa Total", f"{ton_bolas:.1f} TM")
+c3.metric("Consumo Motor", f"{potencia_kw:.1f} kW")
 
-# --- ANIMACIÓN DE TRAYECTORIAS MÚLTIPLES ---
+# --- LÓGICA DE ANIMACIÓN ROTATIVA ---
 g = 9.81
 w = (rpm * 2 * np.pi) / 60
-# Creamos 8 capas de bolas para mayor densidad
-capas = np.linspace(np.pi/6, np.pi/2.5, 8) 
-n_frames = 35
-tiempos = np.linspace(0, 1.2, n_frames)
+n_frames = 40
+t_total = np.linspace(0, 2, n_frames) # Tiempo de la animación
+
+# Definimos 10 capas de bolas en diferentes radios para llenar el fondo
+radios_capas = np.linspace(radio * 0.7, radio * 0.98, 8)
+angulos_base = np.linspace(-np.pi/2, 0, 8) 
 
 fig = go.Figure()
 
-# Dibujar Carcasa
-t_circ = np.linspace(0, 2*np.pi, 100)
-fig.add_trace(go.Scatter(x=radio*np.cos(t_circ), y=radio*np.sin(t_circ), mode='lines', line=dict(color='black', width=4), name='Carcasa'))
-
-# Dibujar Nivel de Carga (Estático)
-y_nivel = radio - h_vacia
-x_lim = np.sqrt(max(0, radio**2 - y_nivel**2))
-fig.add_trace(go.Scatter(x=[-x_lim, x_lim], y=[y_nivel, y_nivel], mode='lines', line=dict(color='blue', dash='dash'), name='Nivel Carga'))
-
-# Inicializar capas de bolas
-for i, ang in enumerate(capas):
-    x0, y0 = radio * np.cos(ang), radio * np.sin(ang)
-    fig.add_trace(go.Scatter(x=[x0], y=[y0], mode='lines', line=dict(dash='dot', width=1, color='rgba(255,0,0,0.3)'), showlegend=False))
-    fig.add_trace(go.Scatter(x=[x0], y=[y0], mode='markers', marker=dict(size=8, color='red'), showlegend=False))
-
-# Generar Frames
-frames = []
-for k in range(n_frames):
-    frame_data = [go.Scatter(x=radio*np.cos(t_circ), y=radio*np.sin(t_circ))] # Carcasa
-    frame_data.append(go.Scatter(x=[-x_lim, x_lim], y=[y_nivel, y_nivel])) # Nivel Carga
+# 1. Función para calcular posición
+def calcular_pos_bola(t, r_capa, ang_base):
+    # Ángulo de desprendimiento teórico (cos(alpha) = w^2 * r / g)
+    # Si la velocidad es alta, la bola se desprende más arriba
+    cos_alpha = (w**2 * r_capa) / g
+    ang_desprendimiento = np.arccos(min(1, cos_alpha))
     
-    for ang in capas:
-        x0, y0 = radio * np.cos(ang), radio * np.sin(ang)
-        vx, vy = -w * radio * np.sin(ang), w * radio * np.cos(ang)
-        tk = tiempos[k]
+    # Tiempo que tarda en llegar al punto de desprendimiento
+    ang_actual = ang_base + (w * t)
+    
+    if ang_actual < ang_desprendimiento:
+        # FASE 1: La bola gira pegada a la carcasa
+        xk = r_capa * np.cos(ang_actual)
+        yk = r_capa * np.sin(ang_actual)
+        return xk, yk, True
+    else:
+        # FASE 2: Caída parabólica (proyectil interior)
+        t_caida = (ang_actual - ang_desprendimiento) / w
+        x0 = r_capa * np.cos(ang_desprendimiento)
+        y0 = r_capa * np.sin(ang_desprendimiento)
+        vx = -w * r_capa * np.sin(ang_desprendimiento)
+        vy = w * r_capa * np.cos(ang_desprendimiento)
         
-        # Trayectoria parabólica
-        xk = x0 + vx * tk
-        yk = y0 + vy * tk - 0.5 * g * tk**2
+        xk = x0 + vx * t_caida
+        yk = y0 + vy * t_caida - 0.5 * g * t_caida**2
         
-        # Rastro
-        xr = x0 + vx * tiempos[:k+1]
-        yr = y0 + vy * tiempos[:k+1] - 0.5 * g * tiempos[:k+1]**2
+        # Si choca con el fondo del molino (r > radio), se detiene
+        if np.sqrt(xk**2 + yk**2) > radio:
+            xk = xk * (radio/np.sqrt(xk**2 + yk**2))
+            yk = yk * (radio/np.sqrt(xk**2 + yk**2))
+            
+        return xk, yk, False
+
+# --- CONSTRUCCIÓN DE FRAMES ---
+frames = []
+t_circ = np.linspace(0, 2*np.pi, 100)
+
+for k in range(n_frames):
+    data = []
+    # Carcasa giratoria (añadimos una marca para ver que gira)
+    ang_giro = w * t_total[k]
+    data.append(go.Scatter(x=radio*np.cos(t_circ), y=radio*np.sin(t_circ), mode='lines', line=dict(color='black', width=4)))
+    # Marca de rotación en la carcasa
+    data.append(go.Scatter(x=[radio*np.cos(ang_giro)], y=[radio*np.sin(ang_giro)], mode='markers', marker=dict(color='black', size=10)))
+    
+    for i, r_c in enumerate(radios_capas):
+        xk, yk, en_pared = calcular_pos_bola(t_total[k], r_c, angulos_base[i])
+        color = 'red' if not en_pared else 'darkred'
+        data.append(go.Scatter(x=[xk], y=[yk], mode='markers', marker=dict(color=color, size=10), showlegend=False))
         
-        frame_data.append(go.Scatter(x=xr, y=yr))
-        frame_data.append(go.Scatter(x=[xk], y=[yk]))
-        
-    frames.append(go.Frame(data=frame_data, name=str(k)))
+    frames.append(go.Frame(data=data, name=str(k)))
+
+# Inicialización
+fig.add_trace(go.Scatter(x=radio*np.cos(t_circ), y=radio*np.sin(t_circ), mode='lines', line=dict(color='black', width=4)))
 
 fig.frames = frames
 fig.update_layout(
-    width=700, height=600,
-    xaxis=dict(range=[-radio*1.4, radio*1.4], autorange=False, showgrid=False),
-    yaxis=dict(range=[-radio*1.4, radio*1.4], autorange=False, showgrid=False),
+    width=700, height=700,
+    xaxis=dict(range=[-radio*1.2, radio*1.2], autorange=False, showgrid=False),
+    yaxis=dict(range=[-radio*1.2, radio*1.2], autorange=False, showgrid=False),
     updatemenus=[{
         "type": "buttons",
         "buttons": [
-            {"label": "▶️ Simular Impacto", "method": "animate", "args": [None, {"frame": {"duration": 40, "redraw": True}}]},
+            {"label": "▶️ Iniciar Giro", "method": "animate", "args": [None, {"frame": {"duration": 50, "redraw": True}}]},
             {"label": "⏸️ Pausar", "method": "animate", "args": [[None], {"frame": {"duration": 0, "redraw": False}}]}
         ],
         "x": 0.1, "y": -0.1
@@ -109,8 +119,10 @@ fig.update_layout(
 
 st.plotly_chart(fig, use_container_width=True)
 
-# --- ANÁLISIS DE EFICIENCIA ---
 st.divider()
-st.subheader("💡 Análisis de Consumo Energético")
-st.write(f"Para mover **{ton_bolas:.1f} toneladas** de acero a **{rpm} RPM**, el motor principal demanda aproximadamente **{potencia_kw:.1f} kW**.")
-st.info("Esta estimación considera un molino de descarga por rebose. El consumo real puede variar según la viscosidad de la pulpa/puzolana.")
+st.info("""
+**Interpretación de Mantenimiento:**
+- **Bolas en Rojo Oscuro:** Están subiendo con la carcasa (fricción).
+- **Bolas en Rojo Brillante:** Están en fase de vuelo (impacto).
+- Si la velocidad es muy baja, verás un efecto de 'cascada' (poca caída). Si es óptima, verás la 'catarata' golpeando el pie de la carga.
+""")
