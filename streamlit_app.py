@@ -3,43 +3,50 @@ import numpy as np
 import plotly.graph_objects as go
 import time
 
-st.set_page_config(page_title="Simulador Rotativo UNACEM", layout="wide")
+st.set_page_config(page_title="Simulador Pro UNACEM", layout="wide")
 
-st.title("🔄 Simulador de Molino Rotativo (Versión Estable)")
+st.title("🔄 Simulador de Molienda Dinámico")
 
 # --- PANEL DE CONTROL ---
 with st.sidebar:
     st.header("⚙️ Configuración")
     radio = st.number_input("Radio del Molino (m)", value=2.0)
     largo = st.number_input("Largo del Molino (m)", value=6.0)
-    rpm = st.slider("Velocidad (RPM)", 5, 45, 18)
     st.divider()
-    run = st.checkbox("▶️ ACTIVAR ROTACIÓN", value=False)
-    st.info("Activa el check para iniciar el movimiento.")
+    st.header("⚖️ Carga de Bolas")
+    # Controlamos el llenado directamente
+    llenado_j = st.slider("Porcentaje de Llenado (J %)", 10, 50, 35)
+    st.header("⚡ Operación")
+    rpm = st.slider("Velocidad (RPM)", 5, 50, 18)
+    st.divider()
+    run = st.checkbox("▶️ ACTIVAR ROTACIÓN", value=True)
 
-# --- CÁLCULOS DE POTENCIA ---
+# --- CÁLCULOS TÉCNICOS ---
 D = radio * 2
 v_critica = 42.3 / np.sqrt(D) if D > 0 else 1
-phi = rpm / v_critica
-potencia_kw = 10.6 * (D**0.3) * 0.35 * (1 - 1.03 * 0.35) * phi * 100 # Estimación base
+phi = (rpm / v_critica) # Fracción de velocidad crítica
 
-c1, c2 = st.columns(2)
-c1.metric("Consumo Motor", f"{potencia_kw:.1f} kW")
-c2.metric("Velocidad Crítica", f"{phi:.1%}")
+# Potencia estimada usando el llenado J real
+ton_bolas = (np.pi * radio**2 * largo) * (llenado_j/100) * 4.6
+potencia_kw = 10.6 * (D**0.3) * (llenado_j/100) * (1 - 1.03 * (llenado_j/100)) * phi * ton_bolas
 
-# --- MOTOR DE ANIMACIÓN ---
-placeholder = st.empty() # Espacio reservado para el gráfico
+c1, c2, c3 = st.columns(3)
+c1.metric("Llenado Real", f"{llenado_j}%")
+c2.metric("Consumo Motor", f"{potencia_kw:.1f} kW")
+c3.metric("Vel. Crítica", f"{phi:.1%}")
+
+# --- MOTOR DE ANIMACIÓN DINÁMICO ---
+placeholder = st.empty()
 g = 9.81
 w = (rpm * 2 * np.pi) / 60
 
-# Definimos 12 capas de bolas para que se vea lleno
-radios_capas = np.linspace(radio * 0.5, radio * 0.95, 12)
-angulos_base = np.linspace(-np.pi, np.pi, 12)
+# El número de capas de bolas ahora depende del llenado J
+num_capas = int(llenado_j / 3) 
+radios_capas = np.linspace(radio * 0.4, radio * 0.95, num_capas)
 
 t = 0
 while run:
-    t += 0.1 # Incremento de tiempo para el movimiento
-    
+    t += 0.1
     fig = go.Figure()
     
     # 1. Dibujar Carcasa
@@ -47,43 +54,49 @@ while run:
     fig.add_trace(go.Scatter(x=radio*np.cos(t_circ), y=radio*np.sin(t_circ), 
                              mode='lines', line=dict(color='black', width=4), showlegend=False))
     
-    # 2. Calcular posición de cada bola
-    x_bolas = []
-    y_bolas = []
-    colores = []
+    # 2. Calcular posición con efecto de RPM (Ángulo de elevación)
+    x_bolas, y_bolas, colores = [], [], []
     
+    # El ángulo de desprendimiento cambia con las RPM (phi)
+    # A más RPM, las bolas suben más antes de caer
+    alfa_subida = np.pi * (0.2 + (phi * 0.4)) 
+
     for i, r_c in enumerate(radios_capas):
-        # Ángulo de desprendimiento (Física de molienda)
-        cos_alpha = (w**2 * r_c) / g
-        alfa_desc = np.arccos(min(1, cos_alpha))
-        
-        ang_actual = (angulos_base[i] + w * t) % (2 * np.pi)
-        
-        if ang_actual < alfa_desc or ang_actual > (2*np.pi - alfa_desc):
-            # Fase de rotación con la carcasa
-            xk = r_c * np.cos(ang_actual)
-            yk = r_c * np.sin(ang_actual)
-            colores.append('darkred')
-        else:
-            # Fase de caída parabólica simplificada para fluidez
-            xk = r_c * np.cos(ang_actual) * 0.8 # Contracción visual de caída
-            yk = r_c * np.sin(ang_actual) - (0.5 * g * 0.1)
-            colores.append('red')
+        # Generar varias bolas por capa para que se vea el área llena
+        for a_offset in np.linspace(0, np.pi, 5):
+            ang_actual = (a_offset + w * t) % (2 * np.pi)
             
-        x_bolas.append(xk)
-        y_bolas.append(yk)
+            # Lógica: Si la bola está en la zona de subida (derecha inferior a superior)
+            if ang_actual < alfa_subida:
+                xk = r_c * np.cos(ang_actual - np.pi/2)
+                yk = r_c * np.sin(ang_actual - np.pi/2)
+                colores.append('darkred')
+            else:
+                # Fase de caída: más abierta a medida que suben las RPM
+                distancia_caida = (ang_actual - alfa_subida)
+                xk = r_c * np.cos(alfa_subida - np.pi/2) - (distancia_caida * phi * 2)
+                yk = r_c * np.sin(alfa_subida - np.pi/2) - (0.5 * g * (distancia_caida**2) * 0.01)
+                
+                # Evitar que salgan de la carcasa
+                dist_r = np.sqrt(xk**2 + yk**2)
+                if dist_r > radio:
+                    xk, yk = xk*(radio/dist_r), yk*(radio/dist_r)
+                colores.append('red')
+            
+            x_bolas.append(xk)
+            y_bolas.append(yk)
 
     fig.add_trace(go.Scatter(x=x_bolas, y=y_bolas, mode='markers', 
-                             marker=dict(color=colores, size=12, line=dict(width=1, color='white')), 
+                             marker=dict(color=colores, size=10, line=dict(width=0.5, color='white')), 
                              showlegend=False))
 
     fig.update_layout(width=600, height=600, 
-                      xaxis=dict(range=[-radio*1.2, radio*1.2], showgrid=False, zeroline=False, visible=False),
-                      yaxis=dict(range=[-radio*1.2, radio*1.2], showgrid=False, zeroline=False, visible=False),
+                      xaxis=dict(range=[-radio*1.2, radio*1.2], visible=False),
+                      yaxis=dict(range=[-radio*1.2, radio*1.2], visible=False),
                       template="plotly_white")
 
     placeholder.plotly_chart(fig, use_container_width=True)
-    time.sleep(0.05) # Control de velocidad de la animación
+    time.sleep(0.04)
 
 if not run:
-    st.warning("La simulación está pausada. Activa el cuadro 'ACTIVAR ROTACIÓN' en la izquierda.")
+    st.info("Simulación en pausa. Ajusta los parámetros y activa 'ROTACIÓN'.")
