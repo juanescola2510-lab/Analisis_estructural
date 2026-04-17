@@ -4,15 +4,15 @@ import plotly.graph_objects as go
 import time
 
 # 1. Configuración de página
-st.set_page_config(page_title="UNACEM - Auditoría de Producción", layout="centered")
+st.set_page_config(page_title="UNACEM - Control ton/h", layout="centered")
 
 st.title("🏭 Simulador de Producción y Costos")
-st.subheader("Relación entre Flujo (TM/h), Finura y Energía")
+st.subheader("Análisis de Flujo en ton/h y Eficiencia Energética")
 
 # --- PANEL DE CONTROL ---
 with st.sidebar:
     st.header("🚀 Control de Producción")
-    tm_hora = st.number_input("Producción Deseada (TM/h)", value=80.0, step=5.0)
+    ton_h = st.number_input("Producción Deseada (ton/h)", value=80.0, step=5.0)
     costo_kwh = st.number_input("Costo Energía (USD/kWh)", value=0.09, format="%.4f")
     
     st.divider()
@@ -36,17 +36,17 @@ v_critica = 42.3 / np.sqrt(D) if D > 0 else 1
 phi = (rpm_molino / v_critica)
 
 # 1. Potencia y Energía
-ton_total = (np.pi * radio**2 * largo_total) * ((j1+j2)/200) * 4.6
-potencia_eje = 10.6 * (D**0.3) * ((j1+j2)/200) * phi * ton_total
-potencia_motor = potencia_eje / 0.96
+ton_bolas_total = (np.pi * radio**2 * largo_total) * ((j1+j2)/200) * 4.6
+potencia_eje = 10.6 * (D**0.3) * ((j1+j2)/200) * phi * ton_bolas_total
+potencia_motor = potencia_eje / 0.96 # Eficiencia del reductor
 costo_hora = potencia_motor * costo_kwh
 
-# 2. Costo por Tonelada
-costo_tonelada = costo_hora / tm_hora if tm_hora > 0 else 0
+# 2. Costo por Tonelada (ton)
+costo_por_ton = costo_hora / ton_h if ton_h > 0 else 0
 
-# 3. Modelo de Finura (Blaine) afectado por la producción
-# A mayor TM/h, menor tiempo de residencia -> factor_residencia
-t_residencia_base = 80 / tm_hora if tm_hora > 0 else 1
+# 3. Modelo de Finura (Blaine) afectado por la producción (ton/h)
+# A mayor ton/h, menor tiempo de residencia
+t_residencia_base = 80 / ton_h if ton_h > 0 else 1
 blaine_entrada = 800
 delta_c1 = ((j1 * phi * (100/d_bola1)) * 10) * t_residencia_base
 delta_c2 = ((j2 * phi * (40/d_bola2)) * 30) * t_residencia_base
@@ -54,16 +54,16 @@ blaine_salida = blaine_entrada + delta_c1 + delta_c2
 
 # --- DASHBOARD DE INDICADORES ---
 c1, c2, c3 = st.columns(3)
-c1.metric("Finura (Blaine)", f"{int(blaine_salida)} cm²/g", f"Ref: {tm_hora} TM/h")
-c2.metric("Costo por Hora", f"${costo_hora:.2f} USD")
-c3.metric("Costo por Tonelada", f"${costo_tonelada:.2f} USD/TM")
+c1.metric("Finura (Blaine)", f"{int(blaine_salida)} cm²/g", f"A {ton_h} ton/h")
+c2.metric("Consumo Motor", f"{potencia_motor:.1f} kW")
+c3.metric("Costo Unitario", f"${costo_por_ton:.2f} USD/ton")
 
 # --- MOTOR DE ANIMACIÓN ---
 placeholder_sim = st.empty()
 placeholder_bar = st.empty()
 
 def crear_p(j, r_m):
-    n = int(min(j, 35) * 2) 
+    n = int(min(j, 30) * 2) 
     return np.random.uniform(r_m*0.3, r_m*0.95, n), np.random.uniform(0, 2*np.pi, n)
 
 r1, f1 = crear_p(j1, radio)
@@ -109,13 +109,13 @@ while run:
                           xaxis=dict(range=[-radio*3, radio*3], visible=False, fixedrange=True),
                           yaxis=dict(range=[-radio*1.5, radio*1.5], visible=False, fixedrange=True, scaleanchor="x", scaleratio=1))
     
-    placeholder_sim.plotly_chart(fig_sim, use_container_width=False, key=f"v6_{iteracion}")
+    placeholder_sim.plotly_chart(fig_sim, use_container_width=False, key=f"v7_{iteracion}")
 
-    # Gráfico de Costos
+    # Gráfico de Barras de Costo por ton
     fig_bar = go.Figure(data=[
-        go.Bar(name='Costo/TM (USD)', x=['Eficiencia Económica'], y=[costo_tonelada], marker_color='#00CC96'),
-        go.Bar(name='Blaine Salida', x=['Eficiencia Económica'], y=[blaine_salida/100], marker_color='#636EFA')
+        go.Bar(name='Costo por ton (USD)', x=['Productividad'], y=[costo_por_ton], marker_color='#E74C3C'),
+        go.Bar(name='ton/h producidas', x=['Productividad'], y=[ton_h/10], marker_color='#3498DB')
     ])
-    fig_bar.update_layout(height=300, title="Análisis: Costo por Tonelada vs Finura (Escarla 1:100)", template="plotly_white")
+    fig_bar.update_layout(height=300, title=f"Eficiencia Económica a {ton_h} ton/h", template="plotly_white")
     placeholder_bar.plotly_chart(fig_bar, use_container_width=True, key=f"bar_{iteracion}")
     time.sleep(0.01)
