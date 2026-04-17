@@ -39,7 +39,7 @@ phi = (rpm / v_critica)
 j_avg = (j1 + j2) / 2
 
 # Calibración para los 2400 kW reales
-factor_calibracion = 0.54 if j_avg > 70 else 1.0
+factor_calibracion = 0.5 if j_avg > 70 else 1.0
 ton_bolas = (np.pi * radio**2 * largo) * (j_avg / 100) * 4.6
 potencia_eje = (10.6 * (D**0.3) * (j_avg/100) * phi * ton_bolas) * factor_calibracion
 potencia_motor_real = potencia_eje / 0.96 
