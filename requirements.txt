@@ -1,6 +1,5 @@
 streamlit
-pymunk
-pygame
 pandas
-numpy
-time
+plotly
+pymunk
+streamlit-flow
