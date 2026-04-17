@@ -1,7 +1,2 @@
-streamlit
-pandas
-openpyxl
-xlsxwriter
-datetime
-plotly
-streamlit-flow
+pymunk
+pygame
