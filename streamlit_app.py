@@ -1,117 +1,96 @@
 import streamlit as st
 import numpy as np
-import pandas as pd
 import plotly.graph_objects as go
 
-# Configuración de la página para que se vea bien en móviles y PC
-st.set_page_config(page_title="Simulador UNACEM - Caída de Bolas", layout="wide")
+# 1. Configuración inicial
+st.set_page_config(page_title="Simulador UNACEM v2", layout="centered")
 
-st.title("🎥 Simulación Animada: Caída de Bolas")
-st.write("Visualización de trayectoria y punto de impacto en el molino.")
+st.title("🎥 Simulación: Caída de Bolas")
+st.write("Si la animación no inicia, ajusta el control de RPM para refrescar el sistema.")
 
-# --- BARRA LATERAL: CONTROLES ---
+# 2. Parámetros (Ajustados para tu radio de 1.0m)
 with st.sidebar:
-    st.header("⚙️ Ajustes del Molino")
-    rpm = st.slider("Velocidad de Rotación (RPM)", 5, 40, 16)
-    radio = st.number_input("Radio del Molino (m)", value=1.0, step=0.1)
-    st.divider()
-    st.info("💡 Presiona el botón de Play debajo del gráfico para iniciar.")
+    st.header("⚙️ Parámetros")
+    rpm = st.slider("Velocidad (RPM)", 5, 40, 18)
+    radio = st.number_input("Radio (m)", value=1.0)
 
-# --- LÓGICA FÍSICA ---
+# 3. Lógica Física de Trayectoria
 g = 9.81
 w = (rpm * 2 * np.pi) / 60
-num_frames = 40
-t_vuelo = np.linspace(0, 0.8, num_frames)
+n_frames = 30
+tiempos = np.linspace(0, 0.7, n_frames)
 
-# Ángulos de lanzamiento (3 capas de bolas para ver el efecto)
-capas = [np.pi/3, np.pi/4, np.pi/6]
+# Definimos 3 capas de bolas
+angulos_lanzamiento = [np.pi/3, np.pi/4, np.pi/6]
 
-# --- CREACIÓN DE LA ANIMACIÓN ---
+# 4. Crear el Gráfico Base
 fig = go.Figure()
 
-# 1. Dibujar el cuerpo del molino (Círculo estático)
+# Dibujar Carcasa (Círculo)
 t_circ = np.linspace(0, 2*np.pi, 100)
-x_circ = radio * np.cos(t_circ)
-y_circ = radio * np.sin(t_circ)
+fig.add_trace(go.Scatter(
+    x=radio * np.cos(t_circ), 
+    y=radio * np.sin(t_circ), 
+    mode='lines', 
+    line=dict(color='black', width=4),
+    name='Carcasa'
+))
 
-# Añadimos la traza inicial (Frame 0)
-fig.add_trace(go.Scatter(x=x_circ, y=y_circ, mode='lines', line=dict(color='black', width=4), name="Carcasa"))
-
-# 2. Construcción de los Frames de la animación
+# 5. Crear los Frames de Animación
 frames = []
-for k in range(num_frames):
+for k in range(n_frames):
     frame_data = []
-    # Dibujar siempre la carcasa
-    frame_data.append(go.Scatter(x=x_circ, y=y_circ, mode='lines', line=dict(color='black', width=4)))
+    # Añadimos la carcasa a cada frame
+    frame_data.append(go.Scatter(x=radio*np.cos(t_circ), y=radio*np.sin(t_circ), mode='lines', line=dict(color='black', width=4)))
     
-    for i, ang in enumerate(capas):
-        # Punto de desprendimiento
+    for ang in angulos_lanzamiento:
+        # Ecuación de proyectil
         x0, y0 = radio * np.cos(ang), radio * np.sin(ang)
         vx, vy = -w * radio * np.sin(ang), w * radio * np.cos(ang)
         
-        # Posición en el tiempo k
-        tk = t_vuelo[k]
+        tk = tiempos[k]
         xk = x0 + vx * tk
         yk = y0 + vy * tk - 0.5 * g * tk**2
         
-        # Rastro punteado hasta la posición actual
-        trastro = t_vuelo[:k+1]
-        xrastro = x0 + vx * trastro
-        yrastro = y0 + vy * trastro - 0.5 * g * trastro**2
+        # Rastro
+        tr = tiempos[:k+1]
+        xr = x0 + vx * tr
+        yr = y0 + vy * tr - 0.5 * g * tr**2
         
-        # Añadir rastro y bola
-        frame_data.append(go.Scatter(x=xrastro, y=yrastro, mode='lines', line=dict(dash='dot', width=1, color='gray'), showlegend=False))
-        frame_data.append(go.Scatter(x=[xk], y=[yk], mode='markers', marker=dict(size=12, color='red'), showlegend=False))
-        
+        frame_data.append(go.Scatter(x=xr, y=yr, mode='lines', line=dict(dash='dot', color='gray')))
+        frame_data.append(go.Scatter(x=[xk], y=[yk], mode='markers', marker=dict(size=12, color='red')))
+    
     frames.append(go.Frame(data=frame_data, name=str(k)))
 
-# 3. Configuración del Layout y Controles de Animación
 fig.frames = frames
+
+# 6. Configuración de botones (Versión Simplificada)
 fig.update_layout(
-    width=650, height=650,
-    # Ejes fijos para evitar que el gráfico se "mueva" o desaparezca
-    xaxis=dict(range=[-radio*1.5, radio*1.5], autorange=False, showgrid=False, zeroline=True),
-    yaxis=dict(range=[-radio*1.5, radio*1.5], autorange=False, showgrid=False, zeroline=True),
+    width=600, height=600,
+    xaxis=dict(range=[-1.5, 1.5], autorange=False, showgrid=False),
+    yaxis=dict(range=[-1.5, 1.5], autorange=False, showgrid=False),
     updatemenus=[{
+        "type": "buttons",
         "buttons": [
             {
-                "args": [None, {"frame": {"duration": 40, "redraw": True}, "fromcurrent": True, "transition": {"duration": 0}}],
-                "label": "▶️ Iniciar Simulación", 
-                "method": "animate"
+                "label": "▶️ PLAY",
+                "method": "animate",
+                "args": [None, {"frame": {"duration": 30, "redraw": True}, "fromcurrent": True}]
             },
             {
-                "args": [[None], {"frame": {"duration": 0, "redraw": True}, "mode": "immediate", "transition": {"duration": 0}}],
-                "label": "⏸️ Pausar", 
-                "method": "animate"
+                "label": "⏸️ PAUSE",
+                "method": "animate",
+                "args": [[None], {"frame": {"duration": 0, "redraw": False}, "mode": "immediate"}]
             }
         ],
-        "type": "buttons",
         "direction": "left",
-        "pad": {"r": 10, "t": 85},
-        "showactive": False,
-        "x": 0.1,
-        "y": 0
-    }],
-    template="plotly_white"
+        "x": 0.1, "y": -0.1
+    }]
 )
 
-# Renderizar el gráfico
+# 7. Forzar renderizado
 st.plotly_chart(fig, use_container_width=True)
 
-# --- PANEL DE ANÁLISIS ---
-st.divider()
+# 8. Información técnica extra
 v_critica = 42.3 / np.sqrt(radio * 2) if radio > 0 else 0
-porcentaje = (rpm / v_critica) * 100 if v_critica > 0 else 0
-
-col1, col2 = st.columns(2)
-with col1:
-    st.metric("Velocidad Crítica Calculada", f"{v_critica:.2f} RPM")
-with col2:
-    st.metric("% de Velocidad Crítica", f"{porcentaje:.1f}%")
-
-if porcentaje > 80:
-    st.error("🚨 ALERTA: Centrifugación detectada. Las bolas no caerán, dañando los blindajes.")
-elif 65 <= porcentaje <= 75:
-    st.success("🎯 ZONA ÓPTIMA: Efecto catarata máximo para molienda de puzolana.")
-else:
-    st.warning("⚠️ Molienda ineficiente: Poca energía de impacto.")
+st.write(f"**Velocidad Crítica:** {v_critica:.2f} RPM | **Estado:** {'Óptimo' if 65 < (rpm/v_critica)*100 < 80 else 'Revisar'}")
