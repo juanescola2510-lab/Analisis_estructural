@@ -1,2 +1,5 @@
 pymunk
 pygame
+pandas
+numpy
+
