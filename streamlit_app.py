@@ -40,7 +40,7 @@ j_avg = (j1 + j2) / 2
 
 # CALIBRACIÓN DE POTENCIA: Factor para ajustar a los 2400 kW reales medidos
 # Con llenados > 70%, el centro de gravedad se equilibra y el torque cae
-factor_calibracion = 0.54 if j_avg > 70 else 1.0
+factor_calibracion = 0.5 if j_avg > 70 else 1.0
 
 ton_bolas = (np.pi * radio**2 * largo) * (j_avg / 100) * 4.6
 potencia_eje = (10.6 * (D**0.3) * (j_avg/100) * phi * ton_bolas) * factor_calibracion
