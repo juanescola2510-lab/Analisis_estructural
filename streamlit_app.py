@@ -2,26 +2,31 @@ import streamlit as st
 import gspread
 from google.oauth2.service_account import Credentials
 
-# --- FUNCIÓN DE CONEXIÓN ROBUSTA ---
 def get_gspread_client():
-    # Definir alcances
-    scopes = [
-        "https://googleapis.com",
-        "https://googleapis.com"
-    ]
-    
-    # Extraer de [connections.gsheets] de tus Secrets
+    # 1. Extraer datos de st.secrets
     gs_secrets = st.secrets["connections"]["gsheets"]
     
-    # Limpieza profunda de la llave privada
-    private_key = gs_secrets["private_key"].replace("\\n", "\n")
+    # 2. RECONSTRUCCIÓN CRÍTICA DE LA LLAVE (Soluciona el error de Token/Decoder)
+    raw_key = gs_secrets["private_key"].strip()
+    header = "-----BEGIN PRIVATE KEY-----"
+    footer = "-----END PRIVATE KEY-----"
     
-    # Crear diccionario de credenciales
+    # Extraemos solo el contenido base64 y eliminamos cualquier espacio o salto de línea previo
+    content = raw_key.replace(header, "").replace(footer, "").replace(" ", "").replace("\n", "").replace("\r", "")
+    
+    # Google requiere líneas de 64 caracteres
+    formatted_content = "\n".join([content[i:i+64] for i in range(0, len(content), 64)])
+    
+    # Ensamblamos la llave final con el formato correcto
+    fixed_key = f"{header}\n{formatted_content}\n{footer}\n"
+
+    # 3. Configurar credenciales
+    scopes = ["https://googleapis.com", "https://googleapis.com"]
     creds_info = {
         "type": gs_secrets["type"],
         "project_id": gs_secrets["project_id"],
         "private_key_id": gs_secrets["private_key_id"],
-        "private_key": private_key,
+        "private_key": fixed_key,
         "client_email": gs_secrets["client_email"],
         "client_id": gs_secrets["client_id"],
         "auth_uri": gs_secrets["auth_uri"],
@@ -30,15 +35,14 @@ def get_gspread_client():
         "client_x509_cert_url": gs_secrets["client_x509_cert_url"]
     }
     
-    # Autenticación con Google Auth
     creds = Credentials.from_service_account_info(creds_info, scopes=scopes)
     return gspread.authorize(creds)
 
-# --- INTERFAZ ---
-st.set_page_config(page_title="UNACEM - Registro", layout="centered")
-st.title("📝 Registro de Fugas - UNACEM")
+# --- INTERFAZ STREAMLIT ---
+st.set_page_config(page_title="UNACEM - Fugas", layout="centered")
+st.title("🏭 Reporte de Fugas - UNACEM")
 
-with st.form("form_registro", clear_on_submit=True):
+with st.form("form_fugas", clear_on_submit=True):
     col1, col2 = st.columns(2)
     with col1:
         area = st.selectbox("ÁREA", ["PRETRITURACIÓN", "MOLIENDA", "HORNOS", "CRIBADO"])
@@ -50,30 +54,31 @@ with st.form("form_registro", clear_on_submit=True):
         prioridad = st.selectbox("PRIORIDAD", ["1", "2", "3"])
     
     comentario = st.text_input("COMENTARIO ADICIONAL")
-    enviar = st.form_submit_button("GUARDAR EN EXCEL")
+    enviar = st.form_submit_button("💾 GUARDAR EN EXCEL")
 
 if enviar:
     if not ubicacion or not novedad:
-        st.warning("⚠️ Completa los campos obligatorios.")
+        st.warning("⚠️ Los campos Ubicación y Hallazgo son obligatorios.")
     else:
         try:
-            with st.spinner("Conectando con Google..."):
+            with st.spinner("Conectando con Google Sheets..."):
                 client = get_gspread_client()
-                # Abrir por URL (la que tienes en tus secrets)
+                # Abrir usando la URL de tus secretos
                 url = st.secrets["connections"]["gsheets"]["spreadsheet"]
                 sh = client.open_by_url(url)
-                # Seleccionar pestaña "BD"
-                worksheet = sh.worksheet("BD")
                 
-                # Calcular Item (Número de fila)
+                # Acceder a la pestaña (Verifica que se llame BD)
+                try:
+                    worksheet = sh.worksheet("BD")
+                except:
+                    worksheet = sh.get_worksheet(0) # Si falla, usa la primera pestaña
+                
+                # Calcular Item y guardar
                 num_fila = len(worksheet.get_all_values())
-                
-                # Datos
                 fila_datos = [num_fila, area, ubicacion, equipo, novedad, propuesta, prioridad, comentario]
                 
                 worksheet.append_row(fila_datos)
-                st.success(f"✅ ¡Registro #{num_fila} guardado exitosamente!")
+                st.success(f"✅ ¡Registro #{num_fila} guardado con éxito!")
                 st.balloons()
         except Exception as e:
-            st.error(f"❌ Error de autenticación: {e}")
-            st.info("Revisa que la 'private_key' en Secrets no tenga espacios extra al inicio.")
+            st.error(f"❌ Error de acceso: {e}")
