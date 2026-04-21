@@ -1,20 +1,30 @@
 import streamlit as st
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+import re
+
+# --- FUNCIÓN DE LIMPIEZA TOTAL DE LLAVE ---
+def fix_private_key(key):
+    # Eliminar espacios en blanco accidentales al inicio/final
+    key = key.strip()
+    # Si la llave viene en una sola línea larga, le devolvemos sus saltos de línea
+    if "-----BEGIN PRIVATE KEY-----" in key and "\n" not in key[26:-24]:
+        header = "-----BEGIN PRIVATE KEY-----"
+        footer = "-----END PRIVATE KEY-----"
+        content = key.replace(header, "").replace(footer, "").replace(" ", "").replace("\n", "")
+        # Google espera bloques de 64 caracteres por línea
+        chunks = [content[i:i+64] for i in range(0, len(content), 64)]
+        key = header + "\n" + "\n".join(chunks) + "\n" + footer
+    return key
 
 def get_gspread_client():
     scope = ["https://google.com", "https://googleapis.com"]
     
-    # 1. Extraemos los secretos del formato [connections.gsheets]
-    # Usamos .get() para evitar errores si algo falta
+    # Extraer de [connections.gsheets]
     gs_secrets = st.secrets["connections"]["gsheets"]
     
-    # 2. LIMPIEZA CRÍTICA DE LA LLAVE PRIVADA
-    # El error 'unsupported' suele ser por espacios o saltos de línea mal formateados
-    raw_key = gs_secrets["private_key"]
-    
-    # Reemplazamos saltos de línea literales y aseguramos el formato correcto
-    clean_key = raw_key.replace("\\n", "\n")
+    # Procesar la llave para que no de error de DECODER
+    clean_key = fix_private_key(gs_secrets["private_key"])
     
     creds_dict = {
         "type": gs_secrets["type"],
@@ -32,10 +42,11 @@ def get_gspread_client():
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     return gspread.authorize(creds)
 
-st.set_page_config(page_title="Registro de Fugas UNACEM", page_icon="📝")
-st.title("🚀 Reporte de Fugas - UNACEM")
+# --- INTERFAZ ---
+st.set_page_config(page_title="Reporte Fugas UNACEM", layout="centered")
+st.title("📝 Registro de Fugas - UNACEM")
 
-with st.form("form_fugas", clear_on_submit=True):
+with st.form("main_form", clear_on_submit=True):
     col1, col2 = st.columns(2)
     with col1:
         area = st.selectbox("Área", ["Pretrituración", "Molienda", "Hornos", "Cribado"])
@@ -51,17 +62,15 @@ with st.form("form_fugas", clear_on_submit=True):
 
 if submitted:
     if not ubicacion or not novedad:
-        st.warning("⚠️ Completa los campos obligatorios.")
+        st.warning("⚠️ Completa los campos de Ubicación y Hallazgo.")
     else:
         try:
-            with st.spinner("Conectando y guardando..."):
+            with st.spinner("Conectando con Google Sheets..."):
                 client = get_gspread_client()
-                
-                # Acceso directo por URL para evitar fallas de nombre
                 url_sheet = st.secrets["connections"]["gsheets"]["spreadsheet"]
                 spreadsheet = client.open_by_url(url_sheet)
                 
-                # IMPORTANTE: Asegúrate de que la pestaña se llame exactamente "BD"
+                # SE ASUME QUE LA PESTAÑA SE LLAMA "BD"
                 sheet = spreadsheet.worksheet("BD")
                 
                 # Calcular Item
@@ -71,7 +80,8 @@ if submitted:
                 datos = [num_fila, area, ubicacion, equipo, novedad, propuesta, prioridad, comentario]
                 
                 sheet.append_row(datos)
-                st.success(f"✅ ¡Registro #{num_fila} guardado exitosamente!")
+                st.success(f"✅ ¡Registro #{num_fila} guardado con éxito!")
                 st.balloons()
         except Exception as e:
-            st.error(f"❌ Error: {str(e)}")
+            st.error(f"❌ Error de conexión: {str(e)}")
+            st.info("Asegúrate de haber compartido el Excel con el correo: balanceo-unacem@enduring-range-371901.iam.gserviceaccount.com")
