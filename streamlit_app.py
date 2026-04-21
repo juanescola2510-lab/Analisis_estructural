@@ -1,20 +1,41 @@
 import streamlit as st
-from streamlit_gsheets import GSheetsConnection
-import pandas as pd
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
-# --- CONFIGURACIÓN DE PÁGINA ---
+# Función para limpiar la llave y evitar errores de Decoder/Token
+def get_gspread_client():
+    scope = ["https://google.com", "https://googleapis.com"]
+    
+    # Extraer secretos de la sección que ya tienes configurada
+    gs_secrets = st.secrets["connections"]["gsheets"]
+    
+    # Limpieza manual de la llave privada
+    private_key = gs_secrets["private_key"]
+    if "-----BEGIN PRIVATE KEY-----" in private_key:
+        # Si la llave tiene saltos de línea literales (\n), los convertimos
+        private_key = private_key.replace("\\n", "\n")
+    
+    creds_dict = {
+        "type": gs_secrets["type"],
+        "project_id": gs_secrets["project_id"],
+        "private_key_id": gs_secrets["private_key_id"],
+        "private_key": private_key,
+        "client_email": gs_secrets["client_email"],
+        "client_id": gs_secrets["client_id"],
+        "auth_uri": gs_secrets["auth_uri"],
+        "token_uri": gs_secrets["token_uri"],
+        "auth_provider_x509_cert_url": gs_secrets["auth_provider_x509_cert_url"],
+        "client_x509_cert_url": gs_secrets["client_x509_cert_url"]
+    }
+    
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    return gspread.authorize(creds)
+
+# --- INTERFAZ ---
 st.set_page_config(page_title="Reporte Fugas UNACEM", layout="centered")
 st.title("📝 Registro de Fugas - UNACEM")
 
-# --- CONEXIÓN NATIVA ---
-try:
-    # Esta función lee automáticamente la sección [connections.gsheets] de tus Secrets
-    conn = st.connection("gsheets", type=GSheetsConnection)
-except Exception as e:
-    st.error(f"Error configurando la conexión: {e}")
-
-# --- FORMULARIO ---
-with st.form("main_form", clear_on_submit=True):
+with st.form("form_fugas", clear_on_submit=True):
     col1, col2 = st.columns(2)
     with col1:
         area = st.selectbox("Área", ["Pretrituración", "Molienda", "Hornos", "Cribado"])
@@ -30,33 +51,29 @@ with st.form("main_form", clear_on_submit=True):
 
 if submitted:
     if not ubicacion or not novedad:
-        st.warning("⚠️ Completa los campos de Ubicación y Hallazgo.")
+        st.warning("⚠️ Completa los campos obligatorios.")
     else:
         try:
-            with st.spinner("Guardando reporte..."):
-                # 1. Leer los datos actuales de la pestaña "BD"
-                # Usamos la URL que está en tus secrets
-                existing_data = conn.read(worksheet="BD", usecols=list(range(8)))
+            with st.spinner("Enviando datos..."):
+                client = get_gspread_client()
                 
-                # 2. Crear el nuevo registro
-                num_fila = len(existing_data) + 1
-                new_entry = pd.DataFrame([{
-                    "ITEM": num_fila,
-                    "ÁREA": area,
-                    "UBICACIÓN": ubicacion,
-                    "EQUIPO": equipo,
-                    "NOVEDAD": novedad,
-                    "PROPUESTA": propuesta,
-                    "PRIORIDAD": prioridad,
-                    "COMENTARIO": comentario
-                }])
+                # Abre por URL (la que tienes en tus secrets)
+                url_sheet = st.secrets["connections"]["gsheets"]["spreadsheet"]
+                spreadsheet = client.open_by_url(url_sheet)
                 
-                # 3. Concatenar y actualizar la hoja
-                updated_df = pd.concat([existing_data, new_entry], ignore_index=True)
-                conn.update(worksheet="BD", data=updated_df)
+                # Acceder a la pestaña BD
+                sheet = spreadsheet.worksheet("BD")
                 
-                st.success(f"✅ ¡Registro #{num_fila} guardado con éxito!")
+                # Calcular el número de fila (Item)
+                num_item = len(sheet.get_all_values())
+                
+                # Preparar datos
+                datos = [num_item, area, ubicacion, equipo, novedad, propuesta, prioridad, comentario]
+                
+                # Escribir
+                sheet.append_row(datos)
+                
+                st.success(f"✅ ¡Registro #{num_item} guardado con éxito!")
                 st.balloons()
         except Exception as e:
-            st.error(f"❌ Error al guardar: {str(e)}")
-            st.info("Verifica que la pestaña del Excel se llame exactamente 'BD'.")
+            st.error(f"Error: {e}")
