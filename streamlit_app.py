@@ -1,93 +1,109 @@
 import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.cm as cm
 
-st.set_page_config(page_title="Simulador Horno Industrial 360", layout="wide")
+st.set_page_config(page_title="Simulador de Horno Industrial Pro", layout="wide")
 
-st.title("🌀 Visualizador Térmico de Horno Cilíndrico")
-st.markdown("Simulación de distribución de calor en sección transversal.")
+# --- BASE DE DATOS DE MATERIALES ---
+materiales = {
+    "Ladrillo de Magnesita (Alta T°)": {"k": 3.5, "desc": "Excelente para 1500°C+, pero conduce mucho calor."},
+    "Ladrillo de Alúmina (Estándar)": {"k": 1.5, "desc": "Equilibrio entre resistencia y aislamiento."},
+    "Ladrillo de Sílice": {"k": 1.1, "desc": "Usado en hornos de vidrio y acero."},
+    "Ladrillo Refractario Aislante": {"k": 0.3, "desc": "Baja resistencia mecánica, alto aislamiento."},
+    "Fibra Cerámica (Manta)": {"k": 0.12, "desc": "Máximo aislamiento, pero muy frágil."}
+}
 
-# --- BARRA LATERAL ---
-st.sidebar.header("📐 Dimensiones")
-r_int = st.sidebar.slider("Radio Interior (cm)", 10, 80, 30)
-espesor = st.sidebar.slider("Espesor Refractario (cm)", 5, 40, 15)
-k_ref = st.sidebar.slider("Conductividad (k) W/m·K", 0.1, 2.0, 1.1)
+st.title("🏗️ Diseño Térmico de Horno Cilíndrico")
 
+# --- BARRA LATERAL: ENTRADAS ---
+st.sidebar.header("📏 Dimensiones del Horno")
+diam_int_cm = st.sidebar.number_input("Diámetro Interior (cm)", value=60.0)
+largo_m = st.sidebar.number_input("Largo del Horno (m)", value=3.0)
+espesor_ref_cm = st.sidebar.slider("Espesor del Refractario (cm)", 5, 50, 15)
+espesor_chapa_mm = st.sidebar.slider("Espesor de la Chapa (mm)", 3, 20, 6)
+
+st.sidebar.header("🧱 Materiales")
+tipo_ref = st.sidebar.selectbox("Selecciona Refractario:", list(materiales.keys()))
+k_ref = materiales[tipo_ref]["k"]
+k_acero = 50.0 # Conductividad estándar del acero
+
+# --- CÁLCULOS FÍSICOS ---
+r1 = (diam_int_cm / 2) / 100
+r2 = r1 + (espesor_ref_cm / 100)
+r3 = r2 + (espesor_chapa_mm / 1000)
 temp_int = 1500
 temp_amb = 25
-r_ext = r_int + espesor
 
-# --- CÁLCULOS ---
-# Resistencia radial simplificada para cálculo de temp. exterior
-resistencia = np.log(r_ext/r_int) / (2 * np.pi * k_ref)
-q_per_meter = (temp_int - temp_amb) / resistencia
-t_chapa = temp_amb + (q_per_meter * 0.01) # Estimación de cara externa
+# Resistencia Térmica Total (Refractario + Chapa)
+r_refractario = np.log(r2/r1) / (2 * np.pi * k_ref * largo_m)
+r_chapa = np.log(r3/r2) / (2 * np.pi * k_acero * largo_m)
+R_total = r_refractario + r_chapa
+
+# Flujo de calor (Watts)
+q_total = (temp_int - temp_amb) / R_total
+
+# Temperaturas en las interfaces
+t_intermedia = temp_int - (q_total * r_refractario) # Entre refractario y chapa
+t_exterior = t_intermedia - (q_total * r_chapa)   # Cara externa de la chapa
+
+# --- INTERFAZ DE RESULTADOS ---
+col1, col2, col3 = st.columns(3)
+with col1:
+    st.metric("T° Interfaz (Ref/Chapa)", f"{t_intermedia:.1f} °C")
+with col2:
+    st.metric("T° Exterior Chapa", f"{t_exterior:.1f} °C")
+with col3:
+    st.metric("Pérdida Total", f"{q_total/1000:.2f} kW")
+
+st.info(f"**Material seleccionado:** {materiales[tipo_ref]['desc']}")
 
 # --- VISUALIZACIÓN ---
-col1, col2 = st.columns([1, 1])
+tab1, tab2 = st.tabs(["📈 Gráfico de Gradiente", "⭕ Vista de Sección"])
 
-with col1:
-    st.subheader("📊 Perfil de Temperatura")
-    # Generar datos para la curva
-    r_coords = np.linspace(r_int, r_ext, 100)
-    t_coords = temp_int - (temp_int - t_chapa) * (np.log(r_coords/r_int) / np.log(r_ext/r_int))
-    
-    fig1, ax1 = plt.subplots()
-    ax1.plot(r_coords, t_coords, color='red', lw=3)
-    ax1.set_xlabel("Radio (cm)")
-    ax1.set_ylabel("Temperatura (°C)")
-    ax1.grid(True, alpha=0.3)
-    st.pyplot(fig1)
+with tab1:
+    # Radios para graficar (Refractario + Chapa)
+    radios = np.linspace(r1, r3, 100)
+    temps = []
+    for r in radios:
+        if r <= r2: # Dentro del refractario
+            t = temp_int - (temp_int - t_intermedia) * (np.log(r/r1) / np.log(r2/r1))
+        else: # Dentro de la chapa
+            t = t_intermedia - (t_intermedia - t_exterior) * (np.log(r/r2) / np.log(r3/r2))
+        temps.append(t)
 
-with col2:
-    st.subheader("⭕ Sección Transversal (Calor)")
-    
-    # Crear malla polar para el círculo
+    fig, ax = plt.subplots(figsize=(10, 4))
+    ax.plot(radios*100, temps, color='red', lw=3)
+    ax.axvspan(r1*100, r2*100, color='orange', alpha=0.1, label='Refractario')
+    ax.axvspan(r2*100, r3*100, color='blue', alpha=0.2, label='Chapa Acero')
+    ax.set_xlabel("Radio (cm)")
+    ax.set_ylabel("Temperatura (°C)")
+    ax.legend()
+    st.pyplot(fig)
+
+with tab2:
+    # Mapa de calor circular
     theta = np.linspace(0, 2*np.pi, 100)
-    r_grid, theta_grid = np.meshgrid(r_coords, theta)
+    r_malla, t_malla = np.meshgrid(np.linspace(r1, r3, 50), theta)
     
-    # Calcular temperaturas para cada punto de la malla
-    t_grid = temp_int - (temp_int - t_chapa) * (np.log(r_grid/r_int) / np.log(r_ext/r_int))
-    
-    # Convertir a coordenadas cartesianas para graficar
-    X = r_grid * np.cos(theta_grid)
-    Y = r_grid * np.sin(theta_grid)
-    
+    # Calcular matriz de temperaturas para el mapa
+    z_malla = np.zeros_like(r_malla)
+    for i in range(r_malla.shape[0]):
+        for j in range(r_malla.shape[1]):
+            r = r_malla[i,j]
+            if r <= r2:
+                z_malla[i,j] = temp_int - (temp_int - t_intermedia) * (np.log(r/r1) / np.log(r2/r1))
+            else:
+                z_malla[i,j] = t_intermedia - (t_intermedia - t_exterior) * (np.log(r/r2) / np.log(r3/r2))
+
     fig2, ax2 = plt.subplots(figsize=(6,6))
-    # Dibujar el mapa de calor
-    cont = ax2.pcolormesh(X, Y, t_grid, cmap='inferno', shading='auto')
-    plt.colorbar(cont, label="Temperatura °C")
-    
-    # Dibujar límites
-    circ_int = plt.Circle((0,0), r_int, color='white', fill=False, linestyle='--')
-    circ_ext = plt.Circle((0,0), r_ext, color='cyan', fill=False, lw=2)
-    ax2.add_artist(circ_int)
-    ax2.add_artist(circ_ext)
-    
-    ax2.set_aspect('equal')
-    ax2.axis('off')
+    ax2 = plt.subplot(111, projection='polar')
+    cont = ax2.pcolormesh(t_malla, r_malla*100, z_malla, cmap='inferno', shading='auto')
+    plt.colorbar(cont, label="Temperatura °C", pad=0.1)
+    ax2.set_yticklabels([]) # Limpiar etiquetas radiales para estética
     st.pyplot(fig2)
 
-# --- PANEL DE ALERTAS ---
-st.divider()
-st_col1, st_col2, st_col3 = st.columns(3)
-
-with st_col1:
-    st.metric("T° Cara Interna", f"{temp_int}°C")
-with st_col2:
-    st.metric("T° Cara Externa (Chapa)", f"{t_chapa:.1f}°C")
-with st_col3:
-    if t_chapa > 120:
-        st.error("❌ RIESGO: Temperatura de chapa muy alta.")
-    elif t_chapa > 70:
-        st.warning("⚠️ PRECAUCIÓN: Superficie caliente.")
-    else:
-        st.success("✅ Diseño térmico seguro.")
-
-st.info(f"""
-    **Interpretación Visual:** 
-    - El centro blanco/amarillo representa los **{temp_int}°C** de la llama.
-    - El degradado hacia el negro/púrpura muestra cómo el **refractario absorbe y frena el calor**.
-    - La línea azul exterior es tu **chapa metálica**, protegida por el espesor de {espesor} cm.
-""")
+# --- VALIDACIÓN DE SEGURIDAD ---
+if t_exterior > 150:
+    st.error("🚨 ALERTA: La chapa exterior está demasiado caliente. ¡Peligro de quemaduras y falla estructural!")
+elif t_intermedia > 400:
+    st.warning("⚠️ AVISO: La chapa interna supera los 400°C. Revisa la expansión térmica del acero.")
