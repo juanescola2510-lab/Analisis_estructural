@@ -1,5 +1,4 @@
 streamlit
-pandas
-plotly
-pymunk
-streamlit-flow
+gspread
+oauth2client
+PyDrive2
