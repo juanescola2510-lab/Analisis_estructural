@@ -2,74 +2,74 @@ import streamlit as st
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-# --- CONFIGURACIÓN DE CONEXIÓN ---
+# --- FUNCIÓN PARA CONECTAR A GOOGLE SHEETS ---
 def get_gspread_client():
-    # Definir el alcance (scope) para Google Sheets y Drive
+    # Definir el alcance
     scope = ["https://google.com", "https://googleapis.com"]
     
-    # Cargar credenciales desde los Secrets de Streamlit Cloud
-    # Asegúrate de haber pegado tu JSON en el panel de Settings -> Secrets
-    creds_dict = dict(st.secrets["gcp_service_account"])
+    # Extraer los datos de la sección [connections.gsheets] que pasaste
+    creds_dict = {
+        "type": st.secrets["connections"]["gsheets"]["type"],
+        "project_id": st.secrets["connections"]["gsheets"]["project_id"],
+        "private_key_id": st.secrets["connections"]["gsheets"]["private_key_id"],
+        "private_key": st.secrets["connections"]["gsheets"]["private_key"],
+        "client_email": st.secrets["connections"]["gsheets"]["client_email"],
+        "client_id": st.secrets["connections"]["gsheets"]["client_id"],
+        "auth_uri": st.secrets["connections"]["gsheets"]["auth_uri"],
+        "token_uri": st.secrets["connections"]["gsheets"]["token_uri"],
+        "auth_provider_x509_cert_url": st.secrets["connections"]["gsheets"]["auth_provider_x509_cert_url"],
+        "client_x509_cert_url": st.secrets["connections"]["gsheets"]["client_x509_cert_url"]
+    }
     
-    # Corregir el formato de la llave privada (necesario para Streamlit Cloud)
-    creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+    # Limpiar saltos de línea en la llave privada si fuera necesario
+    if "\\n" in creds_dict["private_key"]:
+        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
     
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     return gspread.authorize(creds)
 
 # --- INTERFAZ DE USUARIO ---
 st.set_page_config(page_title="Registro de Fugas", page_icon="📋")
-st.title("📝 Reporte de Fugas - Pretrituración")
-st.markdown("---")
+st.title("📝 Reporte de Fugas - UNACEM")
 
-# Formulario de entrada de datos
-with st.form("formulario_fugas", clear_on_submit=True):
+with st.form("form_fugas", clear_on_submit=True):
     col1, col2 = st.columns(2)
-    
     with col1:
         area = st.selectbox("Área", ["Pretrituración", "Molienda", "Hornos", "Cribado"])
         ubicacion = st.text_input("Ubicación", placeholder="Ej: OTV-405-BC03")
         equipo = st.text_input("Equipo", value="Banda transportadora")
+    with col2:
+        novedad = st.text_area("Hallazgo / Fuga")
+        propuesta = st.text_area("Propuesta Técnica")
         prioridad = st.selectbox("Prioridad", ["1", "2", "3"])
     
-    with col2:
-        novedad = st.text_area("Novedad / Hallazgo (Fuga)")
-        propuesta = st.text_area("Propuesta Técnica")
-        comentario = st.text_input("Comentario Adicional")
+    comentario = st.text_input("Comentario Adicional")
+    submitted = st.form_submit_button("GUARDAR EN EXCEL")
 
-    # Botón de registro
-    submitted = st.form_submit_button("REGISTRAR EN GOOGLE SHEETS")
-
-# --- LÓGICA DE PROCESAMIENTO ---
+# --- LÓGICA DE ENVÍO ---
 if submitted:
     if not ubicacion or not novedad:
-        st.warning("⚠️ Los campos 'Ubicación' y 'Novedad' son obligatorios.")
+        st.warning("⚠️ Completa los campos obligatorios (Ubicación y Hallazgo).")
     else:
         try:
-            with st.spinner("Conectando con Google Sheets..."):
+            with st.spinner("Registrando..."):
                 client = get_gspread_client()
                 
-                # ABRE EL EXCEL: Asegúrate que el nombre sea EXACTO al de tu Drive
-                # IMPORTANTE: Comparte el Excel con el email de tu cuenta de servicio
-                spreadsheet = client.open("INFORME FUGAS")
+                # Usamos la URL que pasaste en tus secretos
+                url_sheet = st.secrets["connections"]["gsheets"]["spreadsheet"]
+                spreadsheet = client.open_by_url(url_sheet)
+                
+                # Se asume que la pestaña se llama "BD" según tus imágenes previas
                 sheet = spreadsheet.worksheet("BD")
                 
-                # Calcular el siguiente número de ITEM (fila)
-                # get_all_values trae todas las filas, restamos encabezados si es necesario
-                num_items = len(sheet.get_all_values())
+                # Calcular número de Item
+                num_fila = len(sheet.get_all_values())
                 
-                # Preparar la fila (Columnas: Item, Área, Ubicación, Equipo, Novedad, Propuesta, Prioridad, Comentario)
-                nueva_fila = [
-                    num_items, area, ubicacion, equipo, 
-                    novedad, propuesta, prioridad, comentario
-                ]
+                # Fila: Item, Área, Ubicación, Equipo, Novedad, Propuesta, Prioridad, Comentario
+                datos = [num_fila, area, ubicacion, equipo, novedad, propuesta, prioridad, comentario]
                 
-                # Escribir en la hoja
-                sheet.append_row(nueva_fila)
-                
-                st.success(f"✅ ¡Registro #{num_items} guardado exitosamente!")
+                sheet.append_row(datos)
+                st.success(f"✅ ¡Registro #{num_fila} guardado con éxito!")
                 st.balloons()
-                
         except Exception as e:
-            st.error(f"❌ Error al guardar: {e}")
-            st.info("Revisa si compartiste el Excel con el correo de la cuenta de servicio.")
+            st.error(f"❌ Error: {e}")
