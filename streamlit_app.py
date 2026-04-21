@@ -2,24 +2,30 @@ import streamlit as st
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-# Función para limpiar la llave y evitar errores de Decoder/Token
 def get_gspread_client():
     scope = ["https://google.com", "https://googleapis.com"]
     
-    # Extraer secretos de la sección que ya tienes configurada
+    # Extraemos de [connections.gsheets]
     gs_secrets = st.secrets["connections"]["gsheets"]
     
-    # Limpieza manual de la llave privada
-    private_key = gs_secrets["private_key"]
-    if "-----BEGIN PRIVATE KEY-----" in private_key:
-        # Si la llave tiene saltos de línea literales (\n), los convertimos
-        private_key = private_key.replace("\\n", "\n")
+    # --- EL TRUCO DEFINITIVO PARA EL ERROR DE DECODER ---
+    # Limpiamos cualquier espacio, comilla o salto de línea raro que tenga la llave
+    key_raw = gs_secrets["private_key"].replace("\\n", "\n").strip()
     
+    # Si la llave se pegó sin saltos de línea (como una línea larga), esto la arregla:
+    if "-----BEGIN PRIVATE KEY-----" in key_raw and "\n" not in key_raw[26:-24]:
+        header = "-----BEGIN PRIVATE KEY-----"
+        footer = "-----END PRIVATE KEY-----"
+        content = key_raw.replace(header, "").replace(footer, "").replace(" ", "").replace("\n", "")
+        # Google necesita bloques de 64 caracteres por línea
+        chunks = [content[i:i+64] for i in range(0, len(content), 64)]
+        key_raw = header + "\n" + "\n".join(chunks) + "\n" + footer
+
     creds_dict = {
         "type": gs_secrets["type"],
         "project_id": gs_secrets["project_id"],
         "private_key_id": gs_secrets["private_key_id"],
-        "private_key": private_key,
+        "private_key": key_raw, # <--- Llave reconstruida perfectamente
         "client_email": gs_secrets["client_email"],
         "client_id": gs_secrets["client_id"],
         "auth_uri": gs_secrets["auth_uri"],
@@ -32,21 +38,20 @@ def get_gspread_client():
     return gspread.authorize(creds)
 
 # --- INTERFAZ ---
-st.set_page_config(page_title="Reporte Fugas UNACEM", layout="centered")
-st.title("📝 Registro de Fugas - UNACEM")
+st.title("🚀 Registro de Fugas - UNACEM")
 
 with st.form("form_fugas", clear_on_submit=True):
     col1, col2 = st.columns(2)
     with col1:
-        area = st.selectbox("Área", ["Pretrituración", "Molienda", "Hornos", "Cribado"])
-        ubicacion = st.text_input("Ubicación", placeholder="Ej: OTV-405-BC03")
-        equipo = st.text_input("Equipo", value="Banda transportadora")
+        area = st.selectbox("ÁREA", ["PRETRITURACIÓN", "MOLIENDA", "HORNOS", "CRIBADO"])
+        ubicacion = st.text_input("UBICACIÓN", placeholder="Ej: OTV-405-BC03")
+        equipo = st.text_input("EQUIPO", value="BANDA TRANSPORTADORA")
     with col2:
-        novedad = st.text_area("Hallazgo / Fuga")
-        propuesta = st.text_area("Propuesta Técnica")
-        prioridad = st.selectbox("Prioridad", ["1", "2", "3"])
+        novedad = st.text_area("HALLAZGO / FUGA")
+        propuesta = st.text_area("PROPUESTA TÉCNICA")
+        prioridad = st.selectbox("PRIORIDAD", ["1", "2", "3"])
     
-    comentario = st.text_input("Comentario Adicional")
+    comentario = st.text_input("COMENTARIO ADICIONAL")
     submitted = st.form_submit_button("GUARDAR EN EXCEL")
 
 if submitted:
@@ -54,26 +59,22 @@ if submitted:
         st.warning("⚠️ Completa los campos obligatorios.")
     else:
         try:
-            with st.spinner("Enviando datos..."):
+            with st.spinner("Guardando..."):
                 client = get_gspread_client()
-                
-                # Abre por URL (la que tienes en tus secrets)
                 url_sheet = st.secrets["connections"]["gsheets"]["spreadsheet"]
                 spreadsheet = client.open_by_url(url_sheet)
                 
-                # Acceder a la pestaña BD
+                # BUSCA LA PESTAÑA 'BD' (Asegúrate que se llame así)
                 sheet = spreadsheet.worksheet("BD")
                 
-                # Calcular el número de fila (Item)
-                num_item = len(sheet.get_all_values())
+                # Calcular el Item (Número de fila)
+                num_fila = len(sheet.get_all_values())
                 
-                # Preparar datos
-                datos = [num_item, area, ubicacion, equipo, novedad, propuesta, prioridad, comentario]
+                # Datos en MAYÚSCULAS como pediste
+                datos = [num_fila, area, ubicacion, equipo, novedad, propuesta, prioridad, comentario]
                 
-                # Escribir
                 sheet.append_row(datos)
-                
-                st.success(f"✅ ¡Registro #{num_item} guardado con éxito!")
+                st.success(f"✅ ¡Registro #{num_fila} guardado exitosamente!")
                 st.balloons()
         except Exception as e:
-            st.error(f"Error: {e}")
+            st.error(f"❌ Error: {str(e)}")
