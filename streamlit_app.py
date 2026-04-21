@@ -2,121 +2,111 @@ import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
 
-st.set_page_config(page_title="Simulador Horno Pro - Termodinámica Radial", layout="wide")
+# Configuración de la página
+st.set_page_config(page_title="Simulador de Horno de Cemento Pro", layout="wide")
 
-# --- BASE DE DATOS DE MATERIALES ---
-materiales = {
-    "Ladrillo de Magnesita (Alta T°)": {"k": 3.5, "densidad": 2800},
-    "Ladrillo de Alúmina (Estándar)": {"k": 1.5, "densidad": 2500},
-    "Ladrillo de Sílice": {"k": 1.1, "densidad": 2200},
-    "Ladrillo Refractario Aislante": {"k": 0.3, "densidad": 800},
-    "Fibra Cerámica (Manta)": {"k": 0.12, "densidad": 128}
-}
+st.title("🔥 Simulador de Procesos: Horno Rotatorio de Clinker")
+st.markdown("""
+Esta herramienta simula la termodinámica y la cinética química de formación de **C3S (Alita)** 
+basándose en las dimensiones físicas, el refractario y el balance de energía.
+""")
 
-st.title("🏗️ Simulador Térmico Radial de Horno Industrial")
-st.markdown("Cálculo de transferencia de calor en cilindros con resistencia convectiva externa.")
+# --- BARRA LATERAL: ENTRADA DE DATOS ---
+st.sidebar.header("🛠️ Parámetros de Diseño")
 
-# --- BARRA LATERAL: ENTRADAS ---
-st.sidebar.header("📐 Geometría y Estructura")
-diam_int_cm = st.sidebar.number_input("Diámetro Interior del Horno (cm)", value=60.0)
-largo_m = st.sidebar.number_input("Largo total del Horno (m)", value=3.0)
-espesor_ref_cm = st.sidebar.slider("Espesor del Refractario (cm)", 5, 50, 15)
-espesor_chapa_mm = st.sidebar.slider("Espesor de la Chapa de Acero (mm)", 2, 25, 6)
+# Dimensiones
+with st.sidebar.expander("Dimensiones del Horno", expanded=True):
+    L = st.number_input("Longitud Total (m)", value=60.0, step=1.0)
+    D = st.number_input("Diámetro Interno (m)", value=4.0, step=0.1)
 
-st.sidebar.header("🧱 Propiedades del Material")
-tipo_ref = st.sidebar.selectbox("Selecciona Material Refractario:", list(materiales.keys()))
-k_ref = materiales[tipo_ref]["k"]
-densidad_ref = materiales[tipo_ref]["densidad"]
+# Refractario
+with st.sidebar.expander("Propiedades del Refractario"):
+    k_ref = st.slider("Cond. Térmica (W/m·K)", 1.0, 5.0, 2.0)
+    e_ref = st.slider("Espesor del Ladrillo (m)", 0.1, 0.3, 0.2)
+    t_ambiente = st.number_input("Temp. Ambiente (°C)", value=30)
 
-st.sidebar.header("🌬️ Condiciones Ambientales")
-temp_int = 1500 # Temperatura de la llama
-temp_amb = 25   # Temperatura ambiente
-viento = st.sidebar.select_slider("Ventilación externa", options=["Nula (Aire calmo)", "Baja", "Media", "Alta"])
-# Mapeo de coeficiente de convección (W/m²K)
-h_map = {"Nula (Aire calmo)": 5, "Baja": 15, "Media": 30, "Alta": 50}
-h_aire = h_map[viento]
+# Combustible y Material
+with st.sidebar.expander("Operación y Materiales"):
+    flujo_mat = st.number_input("Alimentación Crudo (kg/h)", value=120000)
+    pci_comb = st.number_input("PCI Combustible (kJ/kg)", value=32000)
+    flujo_comb = st.number_input("Flujo Combustible (kg/h)", value=8000)
+    temp_entrada = st.number_input("Temp. Entrada Material (°C)", value=900)
 
-# --- CÁLCULOS FÍSICOS (ESTADO ESTACIONARIO RADIAL) ---
-r1 = (diam_int_cm / 2) / 100
-r2 = r1 + (espesor_ref_cm / 100)
-r3 = r2 + (espesor_chapa_mm / 1000)
-k_acero = 50.0 # W/mK
+# --- LÓGICA DE SIMULACIÓN ---
 
-# 1. Resistencia Refractario: ln(r2/r1) / (2 * pi * k * L)
-R_ref = np.log(r2/r1) / (2 * np.pi * k_ref * largo_m)
-# 2. Resistencia Chapa Acero
-R_chapa = np.log(r3/r2) / (2 * np.pi * k_acero * largo_m)
-# 3. Resistencia Convectiva Aire (Evita que la chapa marque siempre 25°C)
-R_conv = 1 / (h_aire * (2 * np.pi * r3 * largo_m))
-
-R_total = R_ref + R_chapa + R_conv
-
-# Flujo de calor (Watts)
-Q = (temp_int - temp_amb) / R_total
-
-# Cálculo de temperaturas en las interfaces
-t_pared_interna_chapa = temp_int - (Q * R_ref)
-t_exterior_chapa = t_pared_interna_chapa - (Q * R_chapa)
-
-# Peso
-vol_ref = np.pi * (r2**2 - r1**2) * largo_m
-peso_total = vol_ref * densidad_ref
-
-# --- INTERFAZ DE RESULTADOS ---
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("T° Exterior Chapa", f"{t_exterior_chapa:.1f} °C")
-c2.metric("Pérdida de Calor", f"{Q/1000:.2f} kW")
-c3.metric("Peso Refractario", f"{peso_total:.0f} kg")
-c4.metric("T° Interfaz Ref/Chapa", f"{t_pared_interna_chapa:.1f} °C")
-
-# --- GRÁFICOS ---
-col_izq, col_der = st.columns(2)
-
-with col_izq:
-    st.subheader("📈 Perfil Logarítmico de Temperatura")
-    radios_plot = np.linspace(r1, r3, 100)
-    t_plot = []
-    for r in radios_plot:
-        if r <= r2:
-            # Perfil dentro del refractario
-            temp = temp_int - (temp_int - t_pared_interna_chapa) * (np.log(r/r1) / np.log(r2/r1))
-        else:
-            # Perfil dentro de la chapa de acero
-            temp = t_pared_interna_chapa - (t_pared_interna_chapa - t_exterior_chapa) * (np.log(r/r2) / np.log(r3/r2))
-        t_plot.append(temp)
+def calcular_simulacion():
+    pasos = 200
+    z = np.linspace(0, L, pasos)
     
-    fig1, ax1 = plt.subplots()
-    ax1.plot(radios_plot * 100, t_plot, color='red', lw=3, label='Gradiente Térmico')
-    ax1.axvspan(r1*100, r2*100, color='orange', alpha=0.15, label='Zona Refractaria')
-    ax1.axvspan(r2*100, r3*100, color='blue', alpha=0.2, label='Chapa de Acero')
-    ax1.set_xlabel("Distancia desde el centro (cm)")
-    ax1.set_ylabel("Temperatura (°C)")
-    ax1.legend()
-    st.pyplot(fig1)
-
-with col_der:
-    st.subheader("⭕ Mapa de Calor Circular")
-    theta = np.linspace(0, 2*np.pi, 60)
-    r_vals = np.linspace(r1, r3, 30)
-    T_mesh = np.zeros((len(theta), len(r_vals)))
+    # 1. Simulación de Perfil de Temperatura (Modelo simplificado de transferencia)
+    # Suponemos que la zona de quema está al final (entre el 70% y 100% de la longitud)
+    potencia_total = (flujo_comb * pci_comb) / 3600 # kW
+    perdidas_pared = (k_ref * (np.pi * D * L) * (1450 - 250)) / e_ref / 1000 # kW aprox
     
-    for i, r in enumerate(r_vals):
-        if r <= r2:
-            T_val = temp_int - (temp_int - t_pared_interna_chapa) * (np.log(r/r1) / np.log(r2/r1))
+    # Perfil de temperatura del material
+    # Sube gradualmente y tiene un pico en la zona de clinkerización
+    temp_max = temp_entrada + (potencia_total - perdidas_pared) / (flujo_mat/3600 * 1.1)
+    temp_mat = temp_entrada + (temp_max - temp_entrada) / (1 + np.exp(-0.3 * (z - (L*0.7))))
+
+    # 2. Cinética de Formación de C3S
+    # C2S + CaO -> C3S
+    c3s = np.zeros(pasos)
+    c2s = np.full(pasos, 60.0) # Inicia con 60% de Belita
+    
+    A = 1.2e12
+    Ea = 450000
+    R = 8.314
+    dt = (L / pasos) # Delta de espacio (relacionado con tiempo de residencia)
+
+    for i in range(1, pasos):
+        Tk = temp_mat[i] + 273.15
+        if temp_mat[i] > 1250: # Solo si hay fase líquida
+            k = A * np.exp(-Ea / (R * Tk))
+            reaccion = k * c2s[i-1] * dt * 0.5 # factor de escala
+            c3s[i] = min(75.0, c3s[i-1] + reaccion)
+            c2s[i] = max(0, c2s[i-1] - reaccion)
         else:
-            T_val = t_pared_interna_chapa - (t_pared_interna_chapa - t_exterior_chapa) * (np.log(r/r2) / np.log(r3/r2))
-        T_mesh[:, i] = T_val
+            c3s[i] = c3s[i-1]
+            c2s[i] = c2s[i-1]
+            
+    return z, temp_mat, c3s, c2s, perdidas_pared
 
-    fig2, ax2 = plt.subplots(figsize=(6,6), subplot_kw={'projection': 'polar'})
-    T_mesh_plot = ax2.pcolormesh(theta, r_vals*100, T_mesh.T, cmap='inferno', shading='auto')
-    plt.colorbar(T_mesh_plot, label="Temperatura °C", pad=0.1)
-    ax2.set_yticklabels([]) 
-    st.pyplot(fig2)
+z, t_mat, c3s, c2s, perdidas = calcular_simulacion()
 
-# --- VALIDACIÓN DE SEGURIDAD ---
-if t_exterior_chapa > 140:
-    st.error("🚨 CRÍTICO: La chapa exterior supera los 140°C. Riesgo inminente de falla estructural o accidentes.")
-elif t_exterior_chapa > 60:
-    st.warning("⚠️ PRECAUCIÓN: Superficie caliente. Se requiere guarda de seguridad.")
+# --- VISUALIZACIÓN EN STREAMLIT ---
+
+col1, col2, col3 = st.columns(3)
+col1.metric("Pérdidas Térmicas", f"{perdidas:.2f} kW")
+col2.metric("Temp. Máxima", f"{t_mat.max():.2f} °C")
+col3.metric("Contenido final C3S", f"{c3s[-1]:.2f} %")
+
+# Gráfica Principal
+fig, ax1 = plt.subplots(figsize=(10, 5))
+
+color = 'tab:red'
+ax1.set_xlabel('Posición en el Horno (m)')
+ax1.set_ylabel('Temperatura Material (°C)', color=color)
+ax1.plot(z, t_mat, color=color, linewidth=3, label="Temp. Material")
+ax1.tick_params(axis='y', labelcolor=color)
+ax1.grid(alpha=0.3)
+
+ax2 = ax1.twinx()
+color = 'tab:blue'
+ax2.set_ylabel('Fases del Clinker (%)', color=color)
+ax2.plot(z, c3s, color=color, linewidth=2, label="C3S (Alita)")
+ax2.plot(z, c2s, color='green', linestyle='--', label="C2S (Belita)")
+ax2.tick_params(axis='y', labelcolor=color)
+
+fig.tight_layout()
+st.pyplot(fig)
+
+# --- ANÁLISIS DE CALIDAD ---
+st.subheader("📋 Análisis de Calidad del Clinker")
+if c3s[-1] < 50:
+    st.error(f"Calidad BAJA: El contenido de Alita ({c3s[-1]:.1f}%) es insuficiente. Aumente el combustible o reduzca la velocidad de alimentación.")
+elif c3s[-1] < 65:
+    st.warning(f"Calidad MEDIA: Contenido de Alita en {c3s[-1]:.1f}%. Apto para cementos de uso general.")
 else:
-    st.success("✅ Diseño térmico dentro de parámetros de contacto seguro.")
+    st.success(f"Calidad ALTA: Excelente formación de Alita ({c3s[-1]:.1f}%).")
+
+st.info("💡 Consejo: Observe cómo el aumento del espesor del refractario reduce las pérdidas y mejora la temperatura de pico.")
