@@ -1,84 +1,54 @@
 import streamlit as st
-import gspread
-from google.oauth2.service_account import Credentials
+import numpy as np
+import matplotlib.pyplot as plt
 
-def get_gspread_client():
-    # 1. Extraer datos de st.secrets
-    gs_secrets = st.secrets["connections"]["gsheets"]
-    
-    # 2. RECONSTRUCCIÓN CRÍTICA DE LA LLAVE (Soluciona el error de Token/Decoder)
-    raw_key = gs_secrets["private_key"].strip()
-    header = "-----BEGIN PRIVATE KEY-----"
-    footer = "-----END PRIVATE KEY-----"
-    
-    # Extraemos solo el contenido base64 y eliminamos cualquier espacio o salto de línea previo
-    content = raw_key.replace(header, "").replace(footer, "").replace(" ", "").replace("\n", "").replace("\r", "")
-    
-    # Google requiere líneas de 64 caracteres
-    formatted_content = "\n".join([content[i:i+64] for i in range(0, len(content), 64)])
-    
-    # Ensamblamos la llave final con el formato correcto
-    fixed_key = f"{header}\n{formatted_content}\n{footer}\n"
+# Configuración de la página
+st.set_page_config(page_title="Simulador de Calor", layout="wide")
+st.title("🔥 Simulación de Transferencia de Calor en 1D")
+st.write("Ajusta los parámetros para ver cómo se propaga el calor en una barra.")
 
-    # 3. Configurar credenciales
-    scopes = ["https://googleapis.com", "https://googleapis.com"]
-    creds_info = {
-        "type": gs_secrets["type"],
-        "project_id": gs_secrets["project_id"],
-        "private_key_id": gs_secrets["private_key_id"],
-        "private_key": fixed_key,
-        "client_email": gs_secrets["client_email"],
-        "client_id": gs_secrets["client_id"],
-        "auth_uri": gs_secrets["auth_uri"],
-        "token_uri": gs_secrets["token_uri"],
-        "auth_provider_x509_cert_url": gs_secrets["auth_provider_x509_cert_url"],
-        "client_x509_cert_url": gs_secrets["client_x509_cert_url"]
-    }
-    
-    creds = Credentials.from_service_account_info(creds_info, scopes=scopes)
-    return gspread.authorize(creds)
+# Barra lateral para parámetros
+st.sidebar.header("Parámetros del Material")
+L = st.sidebar.slider("Longitud de la barra (m)", 0.5, 5.0, 1.0)
+alpha = st.sidebar.slider("Difusividad (Material)", 0.001, 0.05, 0.01, format="%.3f")
+tiempo = st.sidebar.slider("Tiempo de simulación", 0.1, 5.0, 1.0)
 
-# --- INTERFAZ STREAMLIT ---
-st.set_page_config(page_title="UNACEM - Fugas", layout="centered")
-st.title("🏭 Reporte de Fugas - UNACEM")
+st.sidebar.header("Condiciones de Temperatura")
+temp_izq = st.sidebar.number_input("Temperatura Extremo Izquierdo (°C)", value=100)
+temp_der = st.sidebar.number_input("Temperatura Extremo Derecho (°C)", value=20)
 
-with st.form("form_fugas", clear_on_submit=True):
-    col1, col2 = st.columns(2)
-    with col1:
-        area = st.selectbox("ÁREA", ["PRETRITURACIÓN", "MOLIENDA", "HORNOS", "CRIBADO"])
-        ubicacion = st.text_input("UBICACIÓN", placeholder="Ej: OTV-405-BC03")
-        equipo = st.text_input("EQUIPO", value="BANDA TRANSPORTADORA")
-    with col2:
-        novedad = st.text_area("HALLAZGO / FUGA")
-        propuesta = st.text_area("PROPUESTA TÉCNICA")
-        prioridad = st.selectbox("PRIORIDAD", ["1", "2", "3"])
-    
-    comentario = st.text_input("COMENTARIO ADICIONAL")
-    enviar = st.form_submit_button("💾 GUARDAR EN EXCEL")
+# --- Lógica de la Simulación ---
+nx = 50
+dx = L / (nx - 1)
+dt = 0.0005  # Paso de tiempo pequeño para estabilidad
+nt = int(tiempo / dt)
 
-if enviar:
-    if not ubicacion or not novedad:
-        st.warning("⚠️ Los campos Ubicación y Hallazgo son obligatorios.")
-    else:
-        try:
-            with st.spinner("Conectando con Google Sheets..."):
-                client = get_gspread_client()
-                # Abrir usando la URL de tus secretos
-                url = st.secrets["connections"]["gsheets"]["spreadsheet"]
-                sh = client.open_by_url(url)
-                
-                # Acceder a la pestaña (Verifica que se llame BD)
-                try:
-                    worksheet = sh.worksheet("BD")
-                except:
-                    worksheet = sh.get_worksheet(0) # Si falla, usa la primera pestaña
-                
-                # Calcular Item y guardar
-                num_fila = len(worksheet.get_all_values())
-                fila_datos = [num_fila, area, ubicacion, equipo, novedad, propuesta, prioridad, comentario]
-                
-                worksheet.append_row(fila_datos)
-                st.success(f"✅ ¡Registro #{num_fila} guardado con éxito!")
-                st.balloons()
-        except Exception as e:
-            st.error(f"❌ Error de acceso: {e}")
+# Condición inicial (barra a temp ambiente)
+T = np.ones(nx) * 20.0
+T[0] = temp_izq
+T[-1] = temp_der
+
+# Cálculo de diferencias finitas
+for t in range(nt):
+    Tn = T.copy()
+    for i in range(1, nx - 1):
+        T[i] = Tn[i] + alpha * dt / dx**2 * (Tn[i+1] - 2*Tn[i] + Tn[i-1])
+
+# --- Gráfico con Matplotlib ---
+fig, ax = plt.subplots()
+x = np.linspace(0, L, nx)
+ax.plot(x, T, color='red', linewidth=2)
+ax.fill_between(x, T, 0, color='red', alpha=0.1)
+ax.set_ylim(0, max(temp_izq, temp_der) + 20)
+ax.set_xlabel("Posición en la barra (m)")
+ax.set_ylabel("Temperatura (°C)")
+ax.set_title("Perfil de Temperatura Final")
+ax.grid(True, linestyle='--')
+
+# Mostrar en Streamlit
+st.pyplot(fig)
+
+# Mostrar datos métricos
+col1, col2 = st.columns(2)
+col1.metric("Punto más caliente", f"{np.max(T):.1f} °C")
+col2.metric("Promedio de la barra", f"{np.mean(T):.1f} °C")
