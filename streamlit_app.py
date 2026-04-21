@@ -1,75 +1,93 @@
 import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 
-st.set_page_config(page_title="Simulador Horno Cilíndrico", layout="wide")
+st.set_page_config(page_title="Simulador Horno Industrial 360", layout="wide")
 
-st.title("🌀 Transferencia de Calor Radial - Horno Cilíndrico")
-st.markdown("Cálculo de gradiente térmico para refractarios en geometrías circulares.")
+st.title("🌀 Visualizador Térmico de Horno Cilíndrico")
+st.markdown("Simulación de distribución de calor en sección transversal.")
 
 # --- BARRA LATERAL ---
-st.sidebar.header("📐 Geometría del Horno")
-radio_int_cm = st.sidebar.slider("Radio Interior (cm)", 10, 100, 30)
-espesor_cm = st.sidebar.slider("Espesor Refractario (cm)", 5, 40, 15)
-largo_horno = st.sidebar.number_input("Largo del horno (m)", value=2.0)
+st.sidebar.header("📐 Dimensiones")
+r_int = st.sidebar.slider("Radio Interior (cm)", 10, 80, 30)
+espesor = st.sidebar.slider("Espesor Refractario (cm)", 5, 40, 15)
+k_ref = st.sidebar.slider("Conductividad (k) W/m·K", 0.1, 2.0, 1.1)
 
-st.sidebar.header("🛡️ Material Refractario")
-k_ref = st.sidebar.slider("Conductividad (k) en W/m·K", 0.1, 2.0, 1.2)
+temp_int = 1500
+temp_amb = 25
+r_ext = r_int + espesor
 
-st.sidebar.header("⚙️ Operación")
-temp_interior = 1500 # °C
-temp_ambiente = 25   # °C
-precio_gas = st.sidebar.number_input("Precio m³ Gas ($)", value=0.60)
+# --- CÁLCULOS ---
+# Resistencia radial simplificada para cálculo de temp. exterior
+resistencia = np.log(r_ext/r_int) / (2 * np.pi * k_ref)
+q_per_meter = (temp_int - temp_amb) / resistencia
+t_chapa = temp_amb + (q_per_meter * 0.01) # Estimación de cara externa
 
-# --- CÁLCULOS FÍSICOS RADIALES ---
-r1 = radio_int_cm / 100
-r2 = (radio_int_cm + espesor_cm) / 100
+# --- VISUALIZACIÓN ---
+col1, col2 = st.columns([1, 1])
 
-# Resistencia Térmica Cilíndrica: ln(r2/r1) / (2 * pi * k * L)
-resistencia_radial = np.log(r2/r1) / (2 * np.pi * k_ref * largo_horno)
-
-# Flujo de calor total (Watts)
-q_total = (temp_interior - temp_ambiente) / resistencia_radial
-
-# Temperatura en la chapa (cara externa r2)
-# Usamos una resistencia superficial externa simplificada
-t_chapa = temp_ambiente + (q_total * 0.02) # 0.02 estimado de convección aire
-
-# --- MÉTRICAS ---
-col1, col2, col3 = st.columns(3)
 with col1:
-    st.metric("Temp. Exterior Chapa", f"{t_chapa:.1f} °C")
+    st.subheader("📊 Perfil de Temperatura")
+    # Generar datos para la curva
+    r_coords = np.linspace(r_int, r_ext, 100)
+    t_coords = temp_int - (temp_int - t_chapa) * (np.log(r_coords/r_int) / np.log(r_ext/r_int))
+    
+    fig1, ax1 = plt.subplots()
+    ax1.plot(r_coords, t_coords, color='red', lw=3)
+    ax1.set_xlabel("Radio (cm)")
+    ax1.set_ylabel("Temperatura (°C)")
+    ax1.grid(True, alpha=0.3)
+    st.pyplot(fig1)
+
 with col2:
-    st.metric("Pérdida de Calor", f"{q_total/1000:.2f} kW")
-with col3:
-    gas_mensual = ((q_total/1000) * 160) / 10.5 # 160h mes
-    st.metric("Costo Mensual Gas", f"${gas_mensual * precio_gas:.2f}")
+    st.subheader("⭕ Sección Transversal (Calor)")
+    
+    # Crear malla polar para el círculo
+    theta = np.linspace(0, 2*np.pi, 100)
+    r_grid, theta_grid = np.meshgrid(r_coords, theta)
+    
+    # Calcular temperaturas para cada punto de la malla
+    t_grid = temp_int - (temp_int - t_chapa) * (np.log(r_grid/r_int) / np.log(r_ext/r_int))
+    
+    # Convertir a coordenadas cartesianas para graficar
+    X = r_grid * np.cos(theta_grid)
+    Y = r_grid * np.sin(theta_grid)
+    
+    fig2, ax2 = plt.subplots(figsize=(6,6))
+    # Dibujar el mapa de calor
+    cont = ax2.pcolormesh(X, Y, t_grid, cmap='inferno', shading='auto')
+    plt.colorbar(cont, label="Temperatura °C")
+    
+    # Dibujar límites
+    circ_int = plt.Circle((0,0), r_int, color='white', fill=False, linestyle='--')
+    circ_ext = plt.Circle((0,0), r_ext, color='cyan', fill=False, lw=2)
+    ax2.add_artist(circ_int)
+    ax2.add_artist(circ_ext)
+    
+    ax2.set_aspect('equal')
+    ax2.axis('off')
+    st.pyplot(fig2)
 
-# --- GRÁFICO DE PERFIL RADIAL ---
-st.subheader("📊 Gradiente Térmico Radial (Perfil Curvo)")
+# --- PANEL DE ALERTAS ---
+st.divider()
+st_col1, st_col2, st_col3 = st.columns(3)
 
-# Generar radios para la gráfica
-radios = np.linspace(r1, r2, 100)
-# Fórmula del perfil de temperatura radial: 
-# T(r) = T1 - (T1 - T2) * [ln(r/r1) / ln(r2/r1)]
-temperaturas = temp_interior - (temp_interior - t_chapa) * (np.log(radios/r1) / np.log(r2/r1))
+with st_col1:
+    st.metric("T° Cara Interna", f"{temp_int}°C")
+with st_col2:
+    st.metric("T° Cara Externa (Chapa)", f"{t_chapa:.1f}°C")
+with st_col3:
+    if t_chapa > 120:
+        st.error("❌ RIESGO: Temperatura de chapa muy alta.")
+    elif t_chapa > 70:
+        st.warning("⚠️ PRECAUCIÓN: Superficie caliente.")
+    else:
+        st.success("✅ Diseño térmico seguro.")
 
-fig, ax = plt.subplots(figsize=(10, 5))
-ax.plot(radios * 100, temperaturas, color='red', lw=3, label='Descenso de Calor')
-ax.fill_between(radios * 100, temperaturas, temp_ambiente, color='orange', alpha=0.1)
-
-ax.set_xlabel("Radio desde el centro (cm)")
-ax.set_ylabel("Temperatura (°C)")
-ax.set_title("Distribución de Calor a través del Cilindro")
-ax.grid(True, linestyle='--')
-ax.axvline(r1*100, color='black', linestyle='--', label='Cara Interna')
-ax.axvline(r2*100, color='blue', linestyle='--', label='Chapa Metálica')
-ax.legend()
-
-st.pyplot(fig)
-
-st.info("""
-💡 **Nota de Ingeniería:** En cilindros, la temperatura no baja de forma recta (lineal), 
-sino de forma **logarítmica**. Esto significa que las primeras capas de ladrillo 
-soportan mucho más estrés térmico que las capas exteriores.
+st.info(f"""
+    **Interpretación Visual:** 
+    - El centro blanco/amarillo representa los **{temp_int}°C** de la llama.
+    - El degradado hacia el negro/púrpura muestra cómo el **refractario absorbe y frena el calor**.
+    - La línea azul exterior es tu **chapa metálica**, protegida por el espesor de {espesor} cm.
 """)
