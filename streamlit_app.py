@@ -24,7 +24,7 @@ def upload_to_drive(file_bytes, file_name):
     drive = GoogleDrive(gauth)
     
     # ID de tu carpeta en Google Drive (Cópialo de la URL de tu carpeta)
-    folder_id = "TU_ID_DE_CARPETA_AQUÍ" 
+    folder_id = "https://docs.google.com/spreadsheets/d/1ZYghDQiSIRw275zo84mox30sTyb9yUSzEjz3eFxupE8" 
     
     # Crear archivo temporal para la subida
     with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as temp_file:
