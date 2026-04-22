@@ -1,112 +1,108 @@
 import streamlit as st
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.animation as animation
 
-# Configuración de la página
-st.set_page_config(page_title="Simulador de Horno de Cemento Pro", layout="wide")
+# Configuración inicial
+st.set_page_config(page_title="Gestor de Colectores de Polvo", layout="wide")
 
-st.title("🔥 Simulador de Procesos: Horno Rotatorio de Clinker")
-st.markdown("""
-Esta herramienta simula la termodinámica y la cinética química de formación de **C3S (Alita)** 
-basándose en las dimensiones físicas, el refractario y el balance de energía.
-""")
+st.title("🌪️ Sistema de Diagnóstico: Colector de Mangas y Ductos")
 
 # --- BARRA LATERAL: ENTRADA DE DATOS ---
-st.sidebar.header("🛠️ Parámetros de Diseño")
+st.sidebar.header("📊 Datos del Sistema Actual")
 
-# Dimensiones
-with st.sidebar.expander("Dimensiones del Horno", expanded=True):
-    L = st.number_input("Longitud Total (m)", value=60.0, step=1.0)
-    D = st.number_input("Diámetro Interno (m)", value=4.0, step=0.1)
+cfm_entrada = st.sidebar.number_input("Caudal del Ventilador (CFM)", value=7600)
+v_diseno = st.sidebar.slider("Velocidad de aire en ductos (m/s)", 15, 30, 20)
 
-# Refractario
-with st.sidebar.expander("Propiedades del Refractario"):
-    k_ref = st.slider("Cond. Térmica (W/m·K)", 1.0, 5.0, 2.0)
-    e_ref = st.slider("Espesor del Ladrillo (m)", 0.1, 0.3, 0.2)
-    t_ambiente = st.number_input("Temp. Ambiente (°C)", value=30)
+with st.sidebar.expander("Dimensiones de Mangas Actuales"):
+    n_mangas_act = st.number_input("Número de mangas", value=120)
+    diam_manga_mm = st.number_input("Diámetro manga (mm)", value=120)
+    largo_manga_mm = st.number_input("Largo manga (mm)", value=2115)
 
-# Combustible y Material
-with st.sidebar.expander("Operación y Materiales"):
-    flujo_mat = st.number_input("Alimentación Crudo (kg/h)", value=120000)
-    pci_comb = st.number_input("PCI Combustible (kJ/kg)", value=32000)
-    flujo_comb = st.number_input("Flujo Combustible (kg/h)", value=8000)
-    temp_entrada = st.number_input("Temp. Entrada Material (°C)", value=900)
+st.sidebar.header("🔌 Nuevos Ramales")
+n_ramales = st.sidebar.number_input("¿Cuántos ramales quieres conectar?", value=3)
+diam_ramal_mm = st.sidebar.number_input("Diámetro de cada ramal (mm)", value=200)
 
-# --- LÓGICA DE SIMULACIÓN ---
+# --- CÁLCULOS TÉCNICOS ---
 
-def calcular_simulacion():
-    pasos = 200
-    z = np.linspace(0, L, pasos)
-    
-    # 1. Simulación de Perfil de Temperatura (Modelo simplificado de transferencia)
-    # Suponemos que la zona de quema está al final (entre el 70% y 100% de la longitud)
-    potencia_total = (flujo_comb * pci_comb) / 3600 # kW
-    perdidas_pared = (k_ref * (np.pi * D * L) * (1450 - 250)) / e_ref / 1000 # kW aprox
-    
-    # Perfil de temperatura del material
-    # Sube gradualmente y tiene un pico en la zona de clinkerización
-    temp_max = temp_entrada + (potencia_total - perdidas_pared) / (flujo_mat/3600 * 1.1)
-    temp_mat = temp_entrada + (temp_max - temp_entrada) / (1 + np.exp(-0.3 * (z - (L*0.7))))
+# Conversiones
+m3h_total = cfm_entrada * 1.699
+area_manga_m2 = np.pi * (diam_manga_mm / 1000) * (largo_manga_mm / 1000)
+area_filtracion_act = n_mangas_act * area_manga_m2
+relacion_aire_tela = m3h_total / (area_filtracion_act * 60)
 
-    # 2. Cinética de Formación de C3S
-    # C2S + CaO -> C3S
-    c3s = np.zeros(pasos)
-    c2s = np.full(pasos, 60.0) # Inicia con 60% de Belita
-    
-    A = 1.2e12
-    Ea = 450000
-    R = 8.314
-    dt = (L / pasos) # Delta de espacio (relacionado con tiempo de residencia)
+# Capacidad de Ramales
+area_un_ramal = np.pi * (diam_ramal_mm / 1000)**2 / 4
+caudal_un_ramal = area_un_ramal * v_diseno * 3600
+max_ramales_posibles = int(m3h_total / caudal_un_ramal)
 
-    for i in range(1, pasos):
-        Tk = temp_mat[i] + 273.15
-        if temp_mat[i] > 1250: # Solo si hay fase líquida
-            k = A * np.exp(-Ea / (R * Tk))
-            reaccion = k * c2s[i-1] * dt * 0.5 # factor de escala
-            c3s[i] = min(75.0, c3s[i-1] + reaccion)
-            c2s[i] = max(0, c2s[i-1] - reaccion)
-        else:
-            c3s[i] = c3s[i-1]
-            c2s[i] = c2s[i-1]
-            
-    return z, temp_mat, c3s, c2s, perdidas_pared
+# Necesidades para nuevos ramales
+caudal_total_nuevo = n_ramales * caudal_un_ramal
+mangas_necesarias_total = np.ceil(caudal_total_nuevo / (1.1 * 60 * area_manga_m2))
+mangas_faltantes = max(0, mangas_necesarias_total - n_mangas_act)
 
-z, t_mat, c3s, c2s, perdidas = calcular_simulacion()
+# Diámetro Ducto Principal
+area_principal_req = (caudal_total_nuevo / 3600) / v_diseno
+diam_principal_mm = np.sqrt(4 * area_principal_req / np.pi) * 1000
 
-# --- VISUALIZACIÓN EN STREAMLIT ---
+# --- INTERFAZ DE RESULTADOS ---
 
 col1, col2, col3 = st.columns(3)
-col1.metric("Pérdidas Térmicas", f"{perdidas:.2f} kW")
-col2.metric("Temp. Máxima", f"{t_mat.max():.2f} °C")
-col3.metric("Contenido final C3S", f"{c3s[-1]:.2f} %")
 
-# Gráfica Principal
-fig, ax1 = plt.subplots(figsize=(10, 5))
+with col1:
+    st.metric("Relación Aire/Tela Actual", f"{relacion_aire_tela:.2f} m/min")
+    if relacion_aire_tela > 1.1:
+        st.error("⚠️ Sobrecarga en mangas")
+    else:
+        st.success("✅ Mangas estables")
 
-color = 'tab:red'
-ax1.set_xlabel('Posición en el Horno (m)')
-ax1.set_ylabel('Temperatura Material (°C)', color=color)
-ax1.plot(z, t_mat, color=color, linewidth=3, label="Temp. Material")
-ax1.tick_params(axis='y', labelcolor=color)
-ax1.grid(alpha=0.3)
+with col2:
+    st.metric("Ramales soportados (Actual)", f"{max_ramales_posibles}")
+    st.write(f"Cada ramal consume {caudal_un_ramal:.0f} m³/h")
 
-ax2 = ax1.twinx()
-color = 'tab:blue'
-ax2.set_ylabel('Fases del Clinker (%)', color=color)
-ax2.plot(z, c3s, color=color, linewidth=2, label="C3S (Alita)")
-ax2.plot(z, c2s, color='green', linestyle='--', label="C2S (Belita)")
-ax2.tick_params(axis='y', labelcolor=color)
+with col3:
+    st.metric("Ducto Principal Requerido", f"{diam_principal_mm:.0f} mm")
 
-fig.tight_layout()
+# --- ALERTAS DE EQUIPO ---
+st.subheader("🛠️ Plan de Modificación")
+if n_ramales > max_ramales_posibles:
+    st.warning(f"❗ **Cambio de Motor/Ventilador:** Necesitas un ventilador de al menos {caudal_total_nuevo/1.699:.0f} CFM. El actual no tiene fuerza para {n_ramales} ramales.")
+else:
+    st.info("El ventilador actual soporta la carga, pero revisa la presión estática.")
+
+if mangas_faltantes > 0:
+    st.error(f"❗ **Faltan {mangas_faltantes:.0f} mangas.** Debes ampliar el colector para no quemar las actuales.")
+
+# --- SIMULACIÓN VISUAL DEL POLVO ---
+st.subheader("🌊 Simulación de Flujo en el Ducto")
+fig, ax = plt.subplots(figsize=(10, 2))
+
+# Dibujo del ducto
+ax.axhline(0.5, color='black', lw=2)
+ax.axhline(-0.5, color='black', lw=2)
+
+# Partículas de polvo
+n_particles = 100
+x = np.random.rand(n_particles) * 10
+y = (np.random.rand(n_particles) - 0.5) * 0.8
+
+# Si el diámetro es pequeño (obstrucción), las partículas se ven más densas
+densidad = 200 / diam_ramal_mm # Simulación visual de obstrucción
+if diam_ramal_mm < 250:
+    ax.scatter(x, y, s=5 * densidad, color='brown', alpha=0.6, label="Polvo Abrasivo")
+else:
+    ax.scatter(x, y, s=5, color='gray', alpha=0.4, label="Flujo Normal")
+
+ax.set_xlim(0, 10)
+ax.set_ylim(-1, 1)
+ax.set_title(f"Visualización a {v_diseno} m/s")
+ax.axis('off')
 st.pyplot(fig)
 
-# --- ANÁLISIS DE CALIDAD ---
-st.subheader("📋 Análisis de Calidad del Clinker")
-if c3s[-1] < 50:
-    st.error(f"Calidad BAJA: El contenido de Alita ({c3s[-1]:.1f}%) es insuficiente. Aumente el combustible o reduzca la velocidad de alimentación.")
-elif c3s[-1] < 65:
-    st.warning(f"Calidad MEDIA: Contenido de Alita en {c3s[-1]:.1f}%. Apto para cementos de uso general.")
-else:
-    st.success(f"Calidad ALTA: Excelente formación de Alita ({c3s[-1]:.1f}%).")
-
-st.info("💡 Consejo: Observe cómo el aumento del espesor del refractario reduce las pérdidas y mejora la temperatura de pico.")
+st.markdown("""
+### Notas de Interpretación:
+1. **Puntos Marrones:** Indican alta densidad o riesgo de abrasión por ducto estrecho.
+2. **Motor:** Si la suma de caudales de ramales > CFM de entrada, el motor actual **se disparará por amperaje**.
+3. **Fraguado:** Si bajas la velocidad de 20 m/s en la barra lateral, el polvo decantará en el fondo del ducto visualizado.
+""")
