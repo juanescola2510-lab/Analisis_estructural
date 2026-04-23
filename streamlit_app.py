@@ -114,26 +114,26 @@ with tab2:
     col1, col2 = st.columns(2)
     with col1:
         if v_real_ppal >= v_transp_target: st.success(f"✅ **Velocidad Ducto Principal:** OK ({v_real_ppal:.2f} m/s)")
-        else: st.error(f"❌ **Velocidad Ducto Principal:** BAJA. Disminuir Ø ducto a {math.sqrt(4*((q_real_m3h/3600)/v_transp_target)/math.pi)*1000:.0f}mm para aumentar velocidad y evitar sedimentación.")
+        else: st.error(f"❌ **Velocidad Ducto Principal:** BAJA. Disminuir Ø ducto a **{math.sqrt(4*((q_real_m3h/3600)/v_transp_target)/math.pi)*1000:.0f}mm** para aumentar velocidad y evitar sedimentación.")
     with col2:
         v_min_r = min([(q_por_ramal / 3600) / (math.pi * (r["diam"]/1000)**2 / 4) for r in datos_ramales])
         if v_min_r >= v_transp_target: st.success(f"✅ **Velocidad en Ramales:** OK")
-        else: st.error(f"❌ **Velocidad en Ramales:** BAJA en algunos puntos. Disminuir Ø de ramales para asegurar transporte de clinker.")
+        else: st.error(f"❌ **Velocidad en Ramales:** BAJA. Disminuir Ø de ramales para asegurar el transporte del clinker pesado.")
 
     # 2. VELOCIDADES DE CAPTACIÓN
     col3, col4 = st.columns(2)
     with col3:
-        if v_cap_ppal >= 10: st.success(f"✅ **Captación Principal:** OK ({v_cap_ppal:.2f} m/s)")
-        else: st.error(f"❌ **Captación Principal:** BAJA. Disminuir tamaño de campana para concentrar succión.")
+        if v_cap_ppal >= 12: st.success(f"✅ **Captación Principal:** OK ({v_cap_ppal:.2f} m/s)")
+        else: st.error(f"❌ **Captación Principal:** BAJA. Disminuir boca de campana a **{math.sqrt(4*((q_real_m3h/3600)/12)/math.pi)*1000:.0f}mm** para concentrar la succión.")
     with col4:
         v_cap_min_r = min([(q_por_ramal / 3600) / r["area_c"] for r in datos_ramales])
-        if v_cap_min_r >= 10: st.success(f"✅ **Captación Ramales:** OK")
-        else: st.error(f"❌ **Captación Ramales:** INSUFICIENTE. Disminuir Ø de boca de campana para aumentar velocidad de arrastre.")
+        if v_cap_min_r >= 12: st.success(f"✅ **Captación Ramales:** OK")
+        else: st.error(f"❌ **Captación Ramales:** INSUFICIENTE. Reducir Ø de boca de campana a **{math.sqrt(4*( (q_por_ramal/3600)/12 )/math.pi)*1000:.0f}mm** para mejorar el arrastre.")
 
     # 3. FILTRO Y MOTOR
     st.markdown("---")
-    if n_mangas_act < mangas_nec: st.error(f"❌ **Filtro de Mangas:** Faltan **{mangas_nec - n_mangas_act}** mangas adicionales para evitar saturación del filtro.")
+    if n_mangas_act < mangas_nec: st.error(f"❌ **Filtro de Mangas:** Faltan **{mangas_nec - n_mangas_act}** mangas adicionales para procesar este volumen de aire sin saturarse.")
     else: st.success("✅ **Filtro de Mangas:** OK")
 
-    if hp_req > hp_motor_placa: st.error(f"❌ **Motor:** SOBRECARGA. Aumentar a un motor de {hp_req*1.15:.0f} HP porque la demanda de aire actual supera los 30 HP.")
-    else: st.success(f"✅ **Motor:** OK (Operación al {(hp_req/hp_motor_placa)*100:.1f}%)")
+    if hp_req > hp_motor_placa: st.error(f"❌ **Motor:** SOBRECARGA. Cambiar a motor de **{hp_req*1.15:.0f} HP**; el consumo actual del {(hp_req/hp_motor_placa)*100:.1f}% quemará el equipo.")
+    else: st.success(f"✅ **Motor:** OK (Operación segura al {(hp_req/hp_motor_placa)*100:.1f}%)")
