@@ -60,12 +60,10 @@ def calcular_sistema_detallado(obs_pct):
     area_real_ppal = (math.pi * (d_m_ppal**2) / 4) * (1 - obs_pct / 100)
     v_ppal = (cfm_nominal * 1.699 / 3600) / max(0.01, area_real_ppal)
     
-    # Pérdida Principal
     le_ppal = long_ppal + (n_codos_ppal * 25 * d_m_ppal)
     p_ppal_pa = (0.022 * le_ppal / d_m_ppal) * (0.5 * densidad_aire * v_ppal**2)
     p_obs_pa = ((obs_pct/10)**2 * 0.5 * densidad_aire * v_ppal**2) if obs_pct > 0 else 0
     
-    # Pérdida Ramales
     p_ramales_pa = 0
     for r in datos_ramales:
         d_m_r = r["diam"] / 1000
@@ -80,6 +78,7 @@ def calcular_sistema_detallado(obs_pct):
 q_real_m3h, p_real_in, a_real_ppal = calcular_sistema_detallado(pct_obstruccion)
 hp_req = (q_real_m3h / 1.699 * p_real_in) / (6356 * eficiencia_fan)
 v_real_ppal = (q_real_m3h / 3600) / a_real_ppal
+q_por_ramal = q_real_m3h / n_ramales
 
 # --- PESTAÑAS ---
 tab1, tab2 = st.tabs(["📊 Diagnóstico y Gráficas", "💡 Recomendaciones Técnicas"])
@@ -90,54 +89,60 @@ with tab1:
     c2.metric("Caudal Real", f"{q_real_m3h:.0f} m³/h")
     c3.metric("Resistencia", f"{p_real_in:.2f} in H2O")
 
-    st.subheader("📋 Resumen Comparativo")
+    st.subheader("📋 Resumen Real vs Ideal (Ducto Ppal)")
     mangas_nec = math.ceil(q_real_m3h / (1.0 * 60 * (math.pi * (diam_manga/1000) * (largo_manga/1000))))
     st.table(pd.DataFrame({
-        "Parámetro": ["V. Transporte Ppal", "Mangas Instaladas", "Caudal Sistema", "Área Campana Ppal"],
-        "Real": [f"{v_real_ppal:.2f} m/s", f"{n_mangas_act}", f"{q_real_m3h:.0f} m³/h", f"{area_c_ppal:.3f} m²"],
-        "Ideal": [f"{v_transp_target} m/s", f"{mangas_nec}", f"{cfm_nominal*1.699:.0f} m³/h", f"{(q_real_m3h/3600)/12:.3f} m²"]
+        "Parámetro": ["V. Transporte Ppal", "Mangas Instaladas", "Caudal Sistema", "Boca Ppal (mm)"],
+        "Real": [f"{v_real_ppal:.2f} m/s", f"{n_mangas_act}", f"{q_real_m3h:.0f} m³/h", f"{diam_boca_ppal} mm"],
+        "Ideal": [f"{v_transp_target} m/s", f"{mangas_nec}", f"{cfm_nominal*1.699:.0f} m³/h", f"{math.sqrt(4*((q_real_m3h/3600)/12)/math.pi)*1000:.0f} mm"]
     }))
+
+    # TABLA DE VELOCIDADES DE RAMALES (RESTABLECIDA)
+    st.subheader("🌿 Detalle de Velocidades Individuales por Ramal")
+    resumen_r = []
+    for r in datos_ramales:
+        v_cap = (q_por_ramal / 3600) / r["area_c"]
+        v_tra = (q_por_ramal / 3600) / (math.pi * (r["diam"]/1000)**2 / 4)
+        resumen_r.append({
+            "Ramal": f"#{r['id']}",
+            "V. Captación (m/s)": f"{v_cap:.2f}",
+            "V. Transporte (m/s)": f"{v_tra:.2f}",
+            "Estado": "✅ OK" if v_tra >= v_transp_target else "🚨 BAJA"
+        })
+    st.dataframe(pd.DataFrame(resumen_r), use_container_width=True)
 
     st.subheader("📈 Curva del Ventilador")
     q_plot = np.linspace(100, cfm_nominal * 1.5, 50)
     k = p_real_in / (q_real_m3h/1.699)**2
     fig1, ax1 = plt.subplots(figsize=(10, 3.5))
     ax1.plot(q_plot, k*(q_plot**2), color="#00FFAA", label="Resistencia")
-    ax1.axhline(y=sp_ventilador, color='red', linestyle='--', label="SP Máx")
+    ax1.axhline(y=sp_ventilador, color='red', linestyle='--', label="Capacidad SP")
     ax1.scatter([q_real_m3h/1.699], [p_real_in], color='yellow', s=100)
     st.pyplot(fig1)
 
 with tab2:
-    st.subheader("🚀 Plan de Mejora y Dimensionamiento")
+    st.subheader("🚀 Recomendaciones de Mejora")
     
-    col_rec1, col_rec2 = st.columns(2)
-    
-    with col_rec1:
-        st.markdown("### ⚙️ Motor y Ductos")
-        # Recomendación Motor
+    cr1, cr2 = st.columns(2)
+    with cr1:
+        st.markdown("### ⚙️ Motor y Ducto Principal")
         if hp_req > hp_motor_placa:
-            st.error(f"❌ **Motor Sobrecargado:** Necesitas subir a un motor de **{hp_req*1.15:.0f} HP**.")
+            st.error(f"❌ **Motor:** Sobrecarga. Instalar motor de **{hp_req*1.15:.0f} HP**.")
         else:
-            st.success(f"✅ **Motor OK:** Carga actual del {(hp_req/hp_motor_placa)*100:.1f}%.")
+            st.success(f"✅ **Motor:** Operación segura al {(hp_req/hp_motor_placa)*100:.1f}%.")
         
-        # Recomendación Ductos
-        d_ppal_id = math.sqrt(4*((q_real_m3h/3600)/v_transp_target)/math.pi)*1000
-        st.info(f"📐 **Ø Ducto Principal:** El ideal para {v_transp_target} m/s es de **{d_ppal_id:.0f} mm**. (Actualmente: {diam_ppal_mm} mm).")
+        d_id = math.sqrt(4*((q_real_m3h/3600)/v_transp_target)/math.pi)*1000
+        st.info(f"📐 **Ducto Ppal:** Para {v_transp_target}m/s el Ø ideal es **{d_id:.0f} mm**.")
 
-    with col_rec2:
-        st.markdown("### 🧵 Filtro de Mangas")
+    with cr2:
+        st.markdown("### 🧵 Filtrado y Campanas")
         if n_mangas_act < mangas_nec:
-            st.error(f"❌ **Mangas Insuficientes:** Faltan **{mangas_nec - n_mangas_act}** mangas para no saturar el filtro.")
+            st.error(f"❌ **Filtro:** Faltan **{mangas_nec - n_mangas_act}** mangas.")
         else:
-            st.success(f"✅ **Filtro OK:** Tienes {n_mangas_act} mangas (Suficientes para el flujo).")
+            st.success(f"✅ **Filtro:** Tienes suficientes mangas ({n_mangas_act}).")
+        
+        a_id_r = (q_por_ramal / 3600) / 12
+        st.info(f"📢 **Boca Ramal:** El Ø ideal de campana es **{math.sqrt(4*a_id_r/math.pi)*1000:.0f} mm**.")
 
     st.markdown("---")
-    st.markdown("### 📐 Diseño Ideal de Campanas (Para 12 m/s)")
-    
-    # Campana Principal
-    a_id_ppal = (q_real_m3h / 3600) / 12
-    st.write(f"🔹 **Campana Principal:** La boca debería medir **Ø {math.sqrt(4*a_id_ppal/math.pi)*1000:.0f} mm** para captar clinker eficientemente.")
-    
-    # Ramales
-    a_id_ramal = (q_real_m3h / n_ramales / 3600) / 12
-    st.write(f"🔸 **Cada Ramal:** La boca de cada campana debería ser de **Ø {math.sqrt(4*a_id_ramal/math.pi)*1000:.0f} mm**.")
+    st.warning("ℹ️ **Nota sobre Clinker:** Mantener siempre la velocidad de transporte por encima de 25 m/s para evitar acumulaciones.")
