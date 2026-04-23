@@ -7,7 +7,7 @@ import pandas as pd
 # Configuración de página
 st.set_page_config(page_title="Ingeniería de Succión Clinker Pro", layout="wide")
 
-st.title("🌪️ Diagnóstico Integral de Succión y Capacidad")
+st.title("🌪️ Diagnóstico Pro: Análisis Aire/Tela y Capacidad de Filtrado")
 st.markdown("---")
 
 # --- BARRA LATERAL ---
@@ -79,12 +79,12 @@ def calcular_sistema_detallado(obs_pct):
 q_real_m3h, p_real_in, a_real_ppal = calcular_sistema_detallado(pct_obstruccion)
 hp_req = (q_real_m3h / 1.699 * p_real_in) / (6356 * eficiencia_fan)
 
-# --- ANÁLISIS AIRE/TELA (OPTIMIZADO) ---
+# --- ANÁLISIS AIRE/TELA (OBJETIVO 1.1 m/min) ---
 area_filtrado_u = math.pi * (diam_manga / 1000) * (largo_manga / 1000)
 area_total_filtrado = n_mangas_act * area_filtrado_u
-# Relación m/min = (m3/h / 60) / area_m2
 rel_aire_tela = (q_real_m3h / 60) / area_total_filtrado if area_total_filtrado > 0 else 0
-mangas_ideales = math.ceil((q_real_m3h / 60) / (0.85 * area_filtrado_u)) # Objetivo 0.85 m/min para clinker
+# Cálculo de mangas necesarias para cumplir el objetivo de 1.1 m/min
+mangas_ideales = math.ceil((q_real_m3h / 60) / (1.1 * area_filtrado_u))
 
 # --- PESTAÑAS ---
 tab1, tab2 = st.tabs(["📊 Diagnóstico y Gráficas", "💡 Recomendaciones Técnicas"])
@@ -100,9 +100,9 @@ with tab1:
 
     st.subheader("📋 Resumen Real vs Ideal")
     st.table(pd.DataFrame({
-        "Parámetro": ["Relación Aire/Tela", "Mangas Totales", "Caudal Sistema", "V. Transporte Ppal"],
+        "Parámetro": ["Relación Aire/Tela", "Mangas Requeridas", "Caudal Sistema", "V. Transporte Ppal"],
         "Valor Real": [f"{rel_aire_tela:.2f} m/min", f"{n_mangas_act}", f"{q_real_m3h:.0f} m³/h", f"{v_real_ppal:.2f} m/s"],
-        "Valor Ideal": ["< 1.00 m/min", f"{mangas_ideales}", f"{cfm_nominal*1.699:.0f} m³/h", f"{v_transp_target} m/s"]
+        "Ideal (Meta 1.1)": ["1.10 m/min", f"{mangas_ideales}", f"{cfm_nominal*1.699:.0f} m³/h", f"{v_transp_target} m/s"]
     }))
 
     if n_ramales > 0:
@@ -123,37 +123,35 @@ with tab2:
     st.subheader("🚀 Recomendaciones Técnicas")
     reserva_presion = sp_ventilador - p_real_in
     
-    # SECCIÓN AIRE/TELA (REQUERIDA)
-    st.markdown("### 🧵 Análisis de Filtrado (Aire/Tela)")
-    if rel_aire_tela > 1.2:
-        st.error(f"❌ **Saturación Crítica:** La relación es de {rel_aire_tela:.2f} m/min. El filtro es muy pequeño para el caudal actual. El clinker taponará las mangas por exceso de velocidad.")
-        st.info(f"💡 **Acción:** Debes aumentar a **{mangas_ideales} mangas** para alcanzar una relación segura de 0.85 m/min.")
-    elif rel_aire_tela > 1.0:
-        st.warning(f"⚠️ **Saturación Moderada:** Estás sobre el límite. Se recomienda aumentar el número de mangas para mejorar la vida útil.")
+    # SECCIÓN AIRE/TELA (META 1.1)
+    st.markdown("### 🧵 Análisis de Filtrado (Meta 1.1 m/min)")
+    if rel_aire_tela > 1.1:
+        st.error(f"❌ **Saturación:** La relación de {rel_aire_tela:.2f} m/min supera el objetivo de 1.1.")
+        st.info(f"💡 **Acción:** Debes instalar un total de **{mangas_ideales} mangas** para operar a 1.1 m/min y evitar el desgaste prematuro de la tela.")
     else:
-        st.success(f"✅ **Relación Correcta:** La relación de {rel_aire_tela:.2f} m/min es óptima para polvo de clinker.")
+        st.success(f"✅ **Relación Correcta:** Estás operando por debajo del límite de 1.1 m/min.")
 
     st.markdown("---")
     st.markdown("### ⚠️ Protocolo de Mantenimiento")
     col_m1, col_m2 = st.columns(2)
     with col_m1:
-        if reserva_presion < 2.0: st.error("🚫 **PROHIBICIÓN:** NO instalar más ramales ni codos.")
-        if pct_obstruccion > 10: st.warning(f"🔍 **INSPECCIÓN:** Ducto principal obstruido al {pct_obstruccion}%.")
+        if reserva_presion < 2.0: st.error("🚫 **RESTRICCIÓN:** El ventilador está al límite. Prohibido añadir más ramales.")
+        if pct_obstruccion > 10: st.warning(f"🔍 **INSPECCIÓN:** Ducto obstruido al {pct_obstruccion}%. Limpiar clinker.")
     with col_m2:
-        if dp_filtro > 6.0: st.error(f"🧵 **URGENTE:** Limpieza de mangas necesaria.")
-        else: st.success("✅ **Mangas:** Limpieza óptima.")
+        if dp_filtro > 6.0: st.error(f"🧵 **URGENTE:** Limpieza de mangas por presión excesiva.")
+        else: st.success("✅ **Mangas:** Estado de limpieza óptimo.")
 
     st.markdown("---")
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("### ⚙️ Motor y Ducto Principal")
-        if v_real_ppal >= v_transp_target: st.success(f"✅ **Velocidad Ducto Ppal: OK**")
-        else: st.error(f"❌ **Velocidad Ducto Ppal: BAJA**. Reducir Ø a **{math.sqrt(4*((q_real_m3h/3600)/v_transp_target)/math.pi)*1000:.0f}mm**.")
+        if v_real_ppal >= v_transp_target: st.success(f"✅ **Ducto Ppal: Velocidad OK**")
+        else: st.error(f"❌ **Ducto Ppal: Velocidad BAJA**. Reducir Ø ducto.")
         if hp_req > hp_motor_placa: st.error(f"❌ **Motor: SOBRECARGA ({hp_req:.1f} HP)**.")
-        else: st.success(f"✅ **Motor: OK** (Carga al {(hp_req/hp_motor_placa)*100:.1f}%)")
+        else: st.success(f"✅ **Motor: OK** (Operación al {(hp_req/hp_motor_placa)*100:.1f}%)")
         
     with col2:
-        st.markdown("### 📐 Dimensiones de Campanas")
+        st.markdown("### 📐 Dimensionamiento de Campanas")
         a_id_ppal = (q_real_m3h / 3600) / 12
         st.write(f"🔹 **Boca Ppal Ideal:** Ø {math.sqrt(4*a_id_ppal/math.pi)*1000:.0f} mm.")
         if n_ramales > 0:
