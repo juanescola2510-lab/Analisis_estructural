@@ -13,18 +13,19 @@ st.markdown("---")
 st.sidebar.header("📊 Configuración del Sistema")
 
 with st.sidebar.expander("Ventilador y Entorno", expanded=True):
-    cfm_entrada = st.number_input("Caudal Nominal (CFM)", value=7600)
-    sp_ventilador = st.number_input("Presión Estática de Placa (in H2O)", value=10.0)
-    altitud = st.number_input("Altitud del Sitio (msnm)", value=0, help="Afecta la densidad del aire")
-    v_diseno = st.slider("Velocidad de Transporte (m/s)", 10, 35, 20)
+    cfm_entrada = st.sidebar.number_input("Caudal Nominal (CFM)", value=7600)
+    sp_ventilador = st.sidebar.number_input("Presión Estática de Placa (in H2O)", value=10.0)
+    eficiencia_fan = st.sidebar.slider("Eficiencia del Ventilador (%)", 40, 90, 65) / 100
+    altitud = st.sidebar.number_input("Altitud del Sitio (msnm)", value=2500, help="Quito/Otavalo: ~2500-2800 msnm")
+    v_diseno = st.sidebar.slider("Velocidad de Transporte (m/s)", 10, 35, 20)
 
 with st.sidebar.expander("Filtro de Mangas"):
-    n_mangas_act = st.number_input("Número de Mangas", value=120)
+    n_mangas_act = st.number_input("Número de Mangas Instaladas", value=120)
     diam_manga = st.number_input("Diámetro Manga (mm)", value=120)
     largo_manga = st.number_input("Largo Manga (mm)", value=2115)
-    dp_filtro = st.number_input("DP del Filtro (in H2O)", value=4.0)
+    dp_filtro = st.number_input("DP del Filtro (Resistencia mangas)", value=4.0)
 
-with st.sidebar.expander("Red de Ductos"):
+with st.sidebar.expander("Red de Ductos y Energía"):
     materiales = {
         "Acero Galvanizado": 0.00015,
         "PVC / Plástico": 0.0000015,
@@ -36,16 +37,19 @@ with st.sidebar.expander("Red de Ductos"):
     n_ramales = st.number_input("Nuevos Ramales / Uniones Y", value=2)
     n_codos = st.number_input("Cantidad de Codos", value=3)
     tipo_codo = st.radio("Tipo de Codo", ["Radio Corto (R=1D)", "Radio Largo (R=2.5D)"])
+    st.markdown("---")
+    horas_uso = st.number_input("Horas de uso al día", value=8)
+    costo_kwh = st.number_input("Costo kWh (USD)", value=0.09)
 
 # --- LÓGICA DE CÁLCULO ---
 
-# 1. Propiedades del Aire
+# 1. Propiedades del Aire (Ajuste por Altitud)
 densidad_aire = 1.225 * math.exp(-altitud / 8500)
 viscosidad = 1.5e-5
 
-# 2. Caudales y Dimensionamiento
+# 2. Caudales y Diámetro
 m3h_base = cfm_entrada * 1.699
-area_ramal_u = math.pi * (0.200)**2 / 4
+area_ramal_u = math.pi * (0.200)**2 / 4 # Asumiendo ramales de 200mm
 caudal_nuevos = n_ramales * (area_ramal_u * v_diseno * 3600)
 caudal_total = max(m3h_base, caudal_nuevos)
 cfm_total = caudal_total / 1.699
@@ -68,41 +72,70 @@ presion_din_pa = 0.5 * densidad_aire * v_diseno**2
 p_friccion_pa = (f * long_virtual / d_m) * presion_din_pa
 total_perdidas_inH2O = (p_friccion_pa / 249.08) + dp_filtro
 
-# 5. Aire/Tela
-area_manga = math.pi * (diam_manga/1000) * (largo_manga/1000)
-area_total_f = n_mangas_act * area_manga
-relacion_at = caudal_total / (area_total_f * 60)
+# 5. Cálculo de Capacidad de Mangas (AIRE/TELA)
+area_una_manga = math.pi * (diam_manga/1000) * (largo_manga/1000)
+area_total_filtracion = n_mangas_act * area_una_manga
+relacion_at = caudal_total / (area_total_filtracion * 60) # m/min
+
+# Meta ideal: 1.1 m/min para polvo industrial
+mangas_necesarias = math.ceil(caudal_total / (1.1 * 60 * area_una_manga))
+diferencia_mangas = n_mangas_act - mangas_necesarias
+
+# 6. Potencia y Energía
+hp_operacion = (cfm_total * total_perdidas_inH2O) / (6356 * eficiencia_fan)
+hp_sugerido = hp_operacion * 1.15
+motores = [1, 2, 3, 5, 7.5, 10, 15, 20, 25, 30, 40, 50, 60, 75, 100]
+motor_final = next((x for x in motores if x >= hp_sugerido), "N/A")
+
+kw_consumo = hp_operacion * 0.746
+costo_mensual = kw_consumo * horas_uso * 22 * costo_kwh # 22 días laborales
 
 # --- INTERFAZ DE RESULTADOS ---
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Ducto Principal", f"{diam_principal_mm:.0f} mm")
-c2.metric("Relación Aire/Tela", f"{relacion_at:.2f} m/min")
-c3.metric("Pérdida de Carga", f"{total_perdidas_inH2O:.2f} inH2O")
-c4.metric("Longitud Virtual", f"{long_virtual:.1f} m")
+col_res1, col_res2, col_res3, col_res4 = st.columns(4)
+col_res1.metric("Ducto Principal", f"{diam_principal_mm:.0f} mm")
+col_res2.metric("Relación Aire/Tela", f"{relacion_at:.2f} m/min")
+col_res3.metric("Resistencia Total", f"{total_perdidas_inH2O:.2f} inH2O")
+col_res4.metric("Longitud Virtual", f"{long_virtual:.1f} m")
 
-# Diagnóstico
+# --- SECCIÓN DE MANGAS ---
+st.subheader("🧵 Estado del Filtro de Mangas")
+c_m1, c_m2 = st.columns(2)
+with c_m1:
+    if diferencia_mangas >= 0:
+        st.success(f"✅ **TIENES DE SOBRA:** Tienes {diferencia_mangas} mangas más de las necesarias.")
+    else:
+        st.error(f"🚨 **FALTAN MANGAS:** Necesitas {abs(diferencia_mangas)} mangas adicionales para filtrar bien.")
+
+with c_m2:
+    st.info(f"💡 **Recomendación:** Para este flujo ({caudal_total:.0f} m³/h) se requieren **{mangas_necesarias}** mangas.")
+
+# --- SECCIÓN DE POTENCIA ---
+st.subheader("⚡ Consumo Energético")
+cp1, cp2, cp3 = st.columns(3)
+cp1.metric("Potencia en Operación", f"{hp_operacion:.2f} HP")
+cp2.metric("Motor Sugerido", f"{motor_final} HP")
+cp3.metric("Gasto Eléctrico Mensual", f"${costo_mensual:.2f} USD")
+
+# --- DIAGNÓSTICO FINAL ---
+st.subheader("📡 Diagnóstico de Succión")
 balance = sp_ventilador - total_perdidas_inH2O
 if balance > 1.0:
-    st.success(f"✅ **SISTEMA ESTABLE:** Reserva de {balance:.2f} in H2O.")
+    st.success(f"✅ **SISTEMA EFICIENTE:** El ventilador vence la resistencia con una reserva de {balance:.2f} in H2O.")
 elif balance >= 0:
-    st.warning(f"⚠️ **SISTEMA CRÍTICO:** Solo sobran {balance:.2f} in H2O. Flujo inestable.")
+    st.warning(f"⚠️ **SISTEMA AL LÍMITE:** La succión será débil en los ramales más lejanos.")
 else:
-    st.error(f"🚨 **SISTEMA COLAPSADO:** Faltan {abs(balance):.2f} in H2O de presión.")
+    st.error(f"🚨 **SISTEMA FALLIDO:** El ventilador no tiene fuerza para mover el aire. Reduce codos o aumenta el diámetro.")
 
-# --- GRÁFICA DE OPERACIÓN ---
+# --- GRÁFICA ---
 st.subheader("📈 Punto de Operación")
 caudales_plot = np.linspace(0, cfm_total * 1.5, 50)
 curva_sistema = [(total_perdidas_inH2O / (cfm_total**2)) * (q**2) for q in caudales_plot]
 
-fig, ax = plt.subplots(figsize=(10, 4))
-ax.plot(caudales_plot, curva_sistema, label="Resistencia del Sistema", color="#00FFAA")
-ax.axhline(y=sp_ventilador, color='red', linestyle='--', label="Límite Ventilador")
-ax.scatter([cfm_total], [total_perdidas_inH2O], color='white', edgecolor='black', s=100, zorder=5)
+fig, ax = plt.subplots(figsize=(10, 3.5))
+ax.plot(caudales_plot, curva_sistema, label="Resistencia (Curva Sistema)", color="#00FFAA")
+ax.axhline(y=sp_ventilador, color='red', linestyle='--', label="Límite del Ventilador")
+ax.scatter([cfm_total], [total_perdidas_inH2O], color='red', s=80, zorder=5)
 ax.set_xlabel("Caudal (CFM)")
 ax.set_ylabel("Presión (in H2O)")
-ax.grid(alpha=0.2)
 ax.legend()
 st.pyplot(fig)
-
-if tipo_mat == "Ducto Flexible":
-    st.info("💡 **Nota:** El ducto flexible multiplica la fricción. Considera cambiar a Acero si la pérdida es muy alta.")
