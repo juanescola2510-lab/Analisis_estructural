@@ -5,9 +5,9 @@ import math
 import pandas as pd
 
 # Configuración de página
-st.set_page_config(page_title="Simulador Succión Clinker Pro - Potencia", layout="wide")
+st.set_page_config(page_title="Simulador Succión Clinker Pro - Diseño Ideal", layout="wide")
 
-st.title("🌪️ Ingeniería de Succión: Análisis de Carga de Motor y Ramales")
+st.title("🌪️ Ingeniería de Succión: Diseño de Campanas y Carga de Motor")
 st.markdown("---")
 
 # --- BARRA LATERAL ---
@@ -21,7 +21,6 @@ with st.sidebar.expander("Ficha Técnica Ventilador", expanded=True):
     altitud = st.sidebar.number_input("Altitud (msnm)", value=2500)
     v_transp_target = st.sidebar.slider("Velocidad Transporte Objetivo (m/s)", 20, 40, 25)
 
-# --- MODO TAPONAMIENTO ---
 st.sidebar.markdown("### 🛑 Simulación de Obstrucción")
 pct_obstruccion = st.sidebar.slider("% Obstrucción en Ducto Principal", 0, 90, 0)
 
@@ -39,7 +38,6 @@ with st.sidebar.expander("Línea Principal (Hardox)"):
         wp, hp_b = st.number_input("Ancho (mm)", 600), st.number_input("Alto (mm)", 400)
         area_c_ppal = (wp/1000) * (hp_b/1000)
 
-# --- CONFIGURACIÓN DE RAMALES ---
 st.sidebar.markdown("### 🛠️ Configuración de Ramales")
 n_ramales = st.sidebar.number_input("Número de Ramales Abiertos", min_value=1, value=2)
 
@@ -60,76 +58,69 @@ for i in range(n_ramales):
         datos_ramales.append({"id": i+1, "diam": d_r, "long": l_r, "area_c": a_camp})
 
 with st.sidebar.expander("Filtro de Mangas"):
-    n_mangas_act = st.number_input("Número de Mangas", value=120)
+    n_mangas_act = st.number_input("Número de Mangas Instaladas", value=120)
     diam_manga = st.number_input("Ø Manga (mm)", value=120)
     largo_manga = st.number_input("Largo Manga (mm)", value=2115)
-    dp_filtro = st.number_input("DP Filtro Promedio (in H2O)", value=5.0)
+    dp_filtro = st.number_input("DP Filtro (in H2O)", value=5.0)
 
 # --- LÓGICA DE CÁLCULO ---
 densidad_aire = 1.225 * math.exp(-altitud / 8500)
 
-# Función de cálculo unificada
 def calcular_sistema(obs_pct, num_ram):
     area_nominal = math.pi * (diam_ppal_mm / 1000)**2 / 4
     area_real = area_nominal * (1 - obs_pct / 100)
-    # Pérdida de carga
     v_base = (cfm_nominal * 1.699 / 3600) / max(0.01, area_real)
     p_fric = (0.022 * long_ppal / (diam_ppal_mm/1000)) * (0.5 * densidad_aire * v_base**2)
     k_obs = (obs_pct/10)**2 if obs_pct > 0 else 0
     p_total = (p_fric / 249.08) + dp_filtro + (k_obs * 0.5 * densidad_aire * v_base**2 / 249.08)
-    
-    # Ajuste por número de ramales (demanda de caudal)
-    factor_resistencia = 1 / (1 + (num_ram - 2) * 0.1)
-    p_final = p_total * factor_resistencia
-    factor_q = math.sqrt(max(0.05, sp_ventilador / p_final)) if p_final > sp_ventilador else 1.0
-    q_final = cfm_nominal * 1.699 * factor_q * (1 + (num_ram - 2) * 0.15)
-    
-    return q_final, p_final, area_real
+    factor_q = math.sqrt(max(0.05, sp_ventilador / p_total)) if p_total > sp_ventilador else 1.0
+    return cfm_nominal * 1.699 * factor_q, p_total, area_real
 
 q_actual_m3h, p_actual_in, area_real_ppal = calcular_sistema(pct_obstruccion, n_ramales)
-
-# CÁLCULO DE POTENCIA CRÍTICO
 hp_requerido = (q_actual_m3h / 1.699 * p_actual_in) / (6356 * eficiencia_fan)
 porcentaje_carga = (hp_requerido / hp_motor_placa) * 100
 
 # --- INTERFAZ DE RESULTADOS ---
 
-# 1. ANALISIS DE CARGA DEL MOTOR (VISIBILIDAD FORZADA)
-st.subheader("⚡ Estado de Carga del Motor (30 HP)")
+# 1. ESTADO DE MOTOR
+st.subheader("⚡ Estado de Carga del Motor")
 c_hp1, c_hp2, c_hp3 = st.columns(3)
 c_hp1.metric("Potencia en Uso", f"{hp_requerido:.1f} HP")
-c_hp2.metric("Límite de Placa", f"{hp_motor_placa} HP")
-c_hp3.metric("CARGA DEL MOTOR", f"{porcentaje_carga:.1f}%")
+c_hp2.metric("Límite Motor", f"{hp_motor_placa} HP")
+c_hp3.metric("CARGA", f"{porcentaje_carga:.1f}%")
 
-if porcentaje_carga > 100:
-    st.error(f"🚨 **SOBRECARGA ELECTRICA:** El motor está trabajando al {porcentaje_carga:.1f}%. Riesgo inminente de cortocircuito o disparo de térmicos.")
-elif porcentaje_carga > 85:
-    st.warning(f"⚠️ **PRECAUCIÓN:** El motor está en zona amarilla ({porcentaje_carga:.1f}%). No se recomienda abrir más ramales.")
-else:
-    st.success(f"✅ **OPERACIÓN SEGURA:** El motor tiene reserva de potencia.")
+# 2. CALCULADOR DE DIMENSIÓN IDEAL (NUEVO)
+st.subheader("📐 Recomendador de Dimensiones de Campana")
+st.markdown("Si deseas una velocidad específica en la boca, estas deberían ser las medidas:")
+v_deseada = st.slider("Selecciona Velocidad de Captación Deseada (m/s)", 5, 25, 12)
+q_por_ramal = q_actual_m3h / n_ramales
+area_necesaria = (q_por_ramal / 3600) / v_deseada
+diam_sugerido = math.sqrt(4 * area_necesaria / math.pi) * 1000
 
-# 2. TABLA COMPARATIVA
-st.subheader("📋 Resumen Comparativo: Real vs Ideal")
-mangas_nec = math.ceil(q_actual_m3h / (1.0 * 60 * (math.pi * (diam_manga/1000) * (largo_manga/1000))))
+col_i1, col_i2 = st.columns(2)
+col_i1.info(f"**Para Campana Circular:** Ø {diam_sugerido:.0f} mm")
+col_i2.info(f"**Para Campana Rectangular:** {math.sqrt(area_necesaria)*1000:.0f} x {math.sqrt(area_necesaria)*1000:.0f} mm")
+
+# 3. TABLA COMPARATIVA
+st.subheader("📋 Resumen Comparativo")
 data_comp = {
-    "Parámetro": ["Ø Ducto Principal", "V. Captación Campana Ppal", "V. Transporte Principal", "Número de Mangas", "Caudal Total"],
-    "Unidad": ["mm", "m/s", "m/s", "u", "m³/h"],
-    "Valor Real": [f"{diam_ppal_mm}", f"{(q_actual_m3h/3600)/area_c_ppal:.2f}", f"{(q_actual_m3h/3600)/area_real_ppal:.2f}", f"{n_mangas_act}", f"{q_actual_m3h:.0f}"],
-    "Valor Ideal": [f"{math.sqrt(4*((q_actual_m3h/3600)/v_transp_target)/math.pi)*1000:.0f}", "10.0 - 15.0", f"{v_transp_target:.2f}", f"{mangas_nec}", f"{v_transp_target * (math.pi*(diam_ppal_mm/1000)**2/4)*3600:.0f}"]
+    "Parámetro": ["Ø Ducto Principal", "V. Captación Campana Ppal", "V. Transporte Principal", "Caudal Sistema"],
+    "Unidad": ["mm", "m/s", "m/s", "m³/h"],
+    "Valor Real": [f"{diam_ppal_mm}", f"{(q_actual_m3h/3600)/area_c_ppal:.2f}", f"{(q_actual_m3h/3600)/area_real_ppal:.2f}", f"{q_actual_m3h:.0f}"],
+    "Valor Ideal": [f"{math.sqrt(4*((q_actual_m3h/3600)/v_transp_target)/math.pi)*1000:.0f}", f"{v_deseada}.00", f"{v_transp_target:.2f}", f"{v_transp_target*(math.pi*(diam_ppal_mm/1000)**2/4)*3600:.0f}"]
 }
 st.table(pd.DataFrame(data_comp))
 
-# 3. DETALLE DE RAMALES
+# 4. TABLA DE RAMALES
 resumen_r = []
 for r in datos_ramales:
-    v_cap = (q_actual_m3h / n_ramales / 3600) / r["area_c"]
-    v_tra = (q_actual_m3h / n_ramales / 3600) / (math.pi * (r["diam"]/1000)**2 / 4)
-    resumen_r.append({"Ramal": f"#{r['id']}", "V. Captación (m/s)": f"{v_cap:.2f}", "V. Transporte (m/s)": f"{v_tra:.2f}", "Estado": "✅ OK" if v_tra >= v_transp_target else "🚨 SEDIMENTANDO"})
-st.subheader("🌿 Detalle de Velocidades por Ramal")
+    v_cap = (q_por_ramal / 3600) / r["area_c"]
+    v_tra = (q_por_ramal / 3600) / (math.pi * (r["diam"]/1000)**2 / 4)
+    resumen_r.append({"Ramal": f"#{r['id']}", "V. Captación (m/s)": f"{v_cap:.2f}", "V. Transporte (m/s)": f"{v_tra:.2f}"})
+st.subheader("🌿 Detalle Individual")
 st.dataframe(pd.DataFrame(resumen_r), use_container_width=True)
 
-# 4. GRÁFICAS
-st.subheader("📈 Análisis de Curvas")
+# 5. GRÁFICAS
 g1, g2 = st.columns(2)
 with g1:
     q_plot = np.linspace(100, cfm_nominal * 1.5, 50)
@@ -137,15 +128,11 @@ with g1:
     fig1, ax1 = plt.subplots(figsize=(8, 4))
     ax1.plot(q_plot, k_val*(q_plot**2), color="#00FFAA", label="Resistencia")
     ax1.axhline(y=sp_ventilador, color='red', linestyle='--', label="SP Ventilador")
-    ax1.scatter([q_actual_m3h/1.699], [p_actual_in], color='yellow', s=100, zorder=5)
-    ax1.set_xlabel("CFM"); ax1.set_ylabel("in H2O"); ax1.legend(); st.pyplot(fig1)
-
+    ax1.scatter([q_actual_m3h/1.699], [p_actual_in], color='yellow', s=100)
+    ax1.legend(); st.pyplot(fig1)
 with g2:
     obs_range = np.linspace(0, 90, 20)
-    v_t = []
-    for o in obs_range:
-        q_sim, _, _ = calcular_sistema(o, n_ramales)
-        v_t.append((q_sim / n_ramales / 3600) / datos_ramales[0]["area_c"])
+    v_t = [(calcular_sistema(o, n_ramales)[0] / n_ramales / 3600) / area_necesaria for o in obs_range]
     fig2, ax2 = plt.subplots(figsize=(8, 4))
     ax2.plot(obs_range, v_t, color="orange", lw=3)
-    ax2.set_xlabel("% Obstrucción Principal"); ax2.set_ylabel("V. Campana #1 (m/s)"); st.pyplot(fig2)
+    ax2.set_xlabel("% Obstrucción"); ax2.set_ylabel("V. Captación (m/s)"); st.pyplot(fig2)
