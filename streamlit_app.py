@@ -110,30 +110,37 @@ with tab1:
 with tab2:
     st.subheader("🚀 Recomendaciones de Mejora")
     
-    # 1. VELOCIDADES DE TRANSPORTE
+    # 1. ANÁLISIS DE LA GRÁFICA (NUEVO)
+    st.markdown("### 📈 Análisis de Capacidad del Ventilador")
+    reserva_presion = sp_ventilador - p_real_in
+    if reserva_presion < 0:
+        st.error(f"❌ **Diagnóstico Crítico:** El ventilador está saturado. La resistencia ({p_real_in:.2f} inH2O) superó la línea roja ({sp_ventilador} inH2O). El sistema NO tiene fuerza para mover el clinker.")
+    elif reserva_presion < 1.5:
+        st.warning(f"⚠️ **Diagnóstico Limítrofe:** El punto amarillo está tocando la línea roja. No tienes margen de maniobra; cualquier suciedad en las mangas o un pequeño tapón detendrá la succión.")
+    else:
+        st.success(f"✅ **Diagnóstico Saludable:** Tienes una reserva de {reserva_presion:.2f} inH2O. El ventilador es adecuado para la configuración actual.")
+
+    st.markdown("---")
+    
+    # 2. VELOCIDADES Y DIMENSIONAMIENTO
     col1, col2 = st.columns(2)
     with col1:
-        if v_real_ppal >= v_transp_target: st.success(f"✅ **Velocidad Ducto Principal:** OK ({v_real_ppal:.2f} m/s)")
-        else: st.error(f"❌ **Velocidad Ducto Principal:** BAJA. Disminuir Ø ducto a **{math.sqrt(4*((q_real_m3h/3600)/v_transp_target)/math.pi)*1000:.0f}mm** para aumentar velocidad y evitar sedimentación.")
+        st.markdown("### ⚙️ Motor y Ducto Principal")
+        if v_real_ppal >= v_transp_target: st.success(f"✅ **Velocidad Ducto Ppal:** OK ({v_real_ppal:.2f} m/s)")
+        else: st.error(f"❌ **Velocidad Ducto Ppal:** BAJA. Disminuir Ø ducto a **{math.sqrt(4*((q_real_m3h/3600)/v_transp_target)/math.pi)*1000:.0f}mm** para evitar sedimentación.")
+        
+        if hp_req > hp_motor_placa: st.error(f"❌ **Motor:** SOBRECARGA. Instalar motor de **{hp_req*1.15:.0f} HP** para evitar fallos eléctricos.")
+        else: st.success(f"✅ **Motor:** OK (Carga al {(hp_req/hp_motor_placa)*100:.1f}%)")
+        
     with col2:
-        v_min_r = min([(q_por_ramal / 3600) / (math.pi * (r["diam"]/1000)**2 / 4) for r in datos_ramales])
-        if v_min_r >= v_transp_target: st.success(f"✅ **Velocidad en Ramales:** OK")
-        else: st.error(f"❌ **Velocidad en Ramales:** BAJA. Disminuir Ø de ramales para asegurar el transporte del clinker pesado.")
+        st.markdown("### 🧵 Filtro y Campanas")
+        if n_mangas_act < mangas_nec: st.error(f"❌ **Filtro:** Faltan **{mangas_nec - n_mangas_act}** mangas para procesar el aire correctamente.")
+        else: st.success(f"✅ **Filtro:** OK")
+        
+        a_id_r = (q_por_ramal / 3600) / 12
+        st.info(f"📢 **Boca de Campana Ramal:** Para 12 m/s el Ø ideal es **{math.sqrt(4*a_id_r/math.pi)*1000:.0f} mm**. (Actualmente: {datos_ramales[0]['boca_mm']} mm)")
 
-    # 2. VELOCIDADES DE CAPTACIÓN
-    col3, col4 = st.columns(2)
-    with col3:
-        if v_cap_ppal >= 12: st.success(f"✅ **Captación Principal:** OK ({v_cap_ppal:.2f} m/s)")
-        else: st.error(f"❌ **Captación Principal:** BAJA. Disminuir boca de campana a **{math.sqrt(4*((q_real_m3h/3600)/12)/math.pi)*1000:.0f}mm** para concentrar la succión.")
-    with col4:
-        v_cap_min_r = min([(q_por_ramal / 3600) / r["area_c"] for r in datos_ramales])
-        if v_cap_min_r >= 12: st.success(f"✅ **Captación Ramales:** OK")
-        else: st.error(f"❌ **Captación Ramales:** INSUFICIENTE. Reducir Ø de boca de campana a **{math.sqrt(4*( (q_por_ramal/3600)/12 )/math.pi)*1000:.0f}mm** para mejorar el arrastre.")
-
-    # 3. FILTRO Y MOTOR
     st.markdown("---")
-    if n_mangas_act < mangas_nec: st.error(f"❌ **Filtro de Mangas:** Faltan **{mangas_nec - n_mangas_act}** mangas adicionales para procesar este volumen de aire sin saturarse.")
-    else: st.success("✅ **Filtro de Mangas:** OK")
-
-    if hp_req > hp_motor_placa: st.error(f"❌ **Motor:** SOBRECARGA. Cambiar a motor de **{hp_req*1.15:.0f} HP**; el consumo actual del {(hp_req/hp_motor_placa)*100:.1f}% quemará el equipo.")
-    else: st.success(f"✅ **Motor:** OK (Operación segura al {(hp_req/hp_motor_placa)*100:.1f}%)")
+    # Captación Principal
+    if v_cap_ppal >= 12: st.success(f"✅ **Captación Principal:** OK ({v_cap_ppal:.2f} m/s)")
+    else: st.error(f"❌ **Captación Principal:** BAJA. Reducir boca de campana principal a **{math.sqrt(4*((q_real_m3h/3600)/12)/math.pi)*1000:.0f}mm** para mejorar el arrastre de clinker.")
