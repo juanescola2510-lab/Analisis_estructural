@@ -24,10 +24,23 @@ with st.sidebar.expander("Red de Ductos y Ramales"):
     
     st.markdown("**Datos de los Ramales**")
     n_ramales = st.number_input("Número de Ramales Abiertos", value=4, min_value=1)
-    diam_ramal_mm = st.number_input("Diámetro de cada Ramal (mm)", value=150)
+    diam_ramal_mm = st.number_input("Diámetro del Ducto Ramal (mm)", value=150)
     long_ramal_m = st.number_input("Longitud por Ramal (m)", value=3.0)
     codos_por_ramal = st.number_input("Codos por Ramal", value=2)
+
+    st.markdown("---")
+    st.markdown("**📐 Dimensiones de la Campana (Boca)**")
+    tipo_campana = st.radio("Forma de la Campana", ["Circular", "Rectangular"])
     
+    if tipo_campana == "Circular":
+        diam_campana_mm = st.number_input("Diámetro de la Boca (mm)", value=250)
+        area_campana_m2 = math.pi * (diam_campana_mm / 1000)**2 / 4
+    else:
+        ancho_mm = st.number_input("Ancho de la Boca (mm)", value=300)
+        alto_mm = st.number_input("Alto de la Boca (mm)", value=200)
+        area_campana_m2 = (ancho_mm / 1000) * (alto_mm / 1000)
+
+    st.markdown("---")
     st.markdown("**Línea Principal**")
     long_ducto_ppal = st.number_input("Longitud Línea Principal (m)", value=15.0)
     n_codos_ppal = st.number_input("Codos en Línea Principal", value=2)
@@ -40,48 +53,48 @@ with st.sidebar.expander("Filtro de Mangas"):
 
 # --- LÓGICA DE CÁLCULO ---
 
-# 1. Conversión de Caudal (Nominal a m3/h)
+# 1. Caudales
 caudal_total_m3h = cfm_entrada * 1.699
 caudal_por_ramal_m3h = caudal_total_m3h / n_ramales
 
-# 2. CALCULO DE VELOCIDAD EN CADA CAMPANA (V = Q / A)
-area_ramal_m2 = math.pi * (diam_ramal_mm / 1000)**2 / 4
-# Velocidad en m/s = (m3/h / 3600) / m2
-v_campana_ms = (caudal_por_ramal_m3h / 3600) / area_ramal_m2
+# 2. VELOCIDADES
+# Velocidad en el ducto del ramal (Transporte)
+area_ducto_ramal_m2 = math.pi * (diam_ramal_mm / 1000)**2 / 4
+v_transporte_ms = (caudal_por_ramal_m3h / 3600) / area_ducto_ramal_m2
 
-# 3. Cálculo de Pérdidas de Presión (para diagnóstico)
+# Velocidad en la boca de la campana (Captación)
+v_captacion_ms = (caudal_por_ramal_m3h / 3600) / area_campana_m2
+
+# 3. Pérdidas de Presión
 densidad_aire = 1.225 * math.exp(-altitud / 8500)
-# Usamos el diámetro del ducto principal ideal para transporte (aprox 20 m/s)
 d_m_ppal = math.sqrt(4 * (caudal_total_m3h / 3600 / 20) / math.pi)
-
 ld_dict = {"Codo": 20, "Union Y": 20, "Campana": 25}
 long_virtual = (long_ducto_ppal + (n_ramales * long_ramal_m)) + \
                ((n_codos_ppal + (n_ramales * codos_por_ramal)) * ld_dict["Codo"] * d_m_ppal)
 
-f = 0.02 # Simplificado para el ejemplo
+f = 0.02 
 presion_din_pa = 0.5 * densidad_aire * 20**2
 p_friccion_pa = (f * long_virtual / d_m_ppal) * presion_din_pa
 total_perdidas_inH2O = (p_friccion_pa / 249.08) + dp_filtro
 
 # --- INTERFAZ DE RESULTADOS ---
-st.subheader("🎯 Velocidad de Captación")
-c1, c2, c3 = st.columns(3)
+st.subheader("🎯 Análisis de Velocidades")
+c1, c2, c3, c4 = st.columns(4)
 
-# Mostrar la velocidad calculada por campana
-color_v = "normal"
-if v_campana_ms < 15: color_v = "inverse" # Alerta si es muy lenta para madera
+c1.metric("Velocidad Captación (Boca)", f"{v_captacion_ms:.2f} m/s", help="Velocidad en la entrada de la campana")
+c2.metric("Velocidad Transporte (Ducto)", f"{v_transporte_ms:.2f} m/s", help="Velocidad dentro del tubo para mover el material")
+c3.metric("Área de la Campana", f"{area_campana_m2:.3f} m²")
+c4.metric("Caudal por Ramal", f"{caudal_por_ramal_m3h:.0f} m³/h")
 
-c1.metric("Velocidad en cada Campana", f"{v_campana_ms:.2f} m/s", delta_color=color_v)
-c2.metric("Caudal por Ramal", f"{caudal_por_ramal_m3h:.0f} m³/h")
-c3.metric("Caudal Total Real", f"{caudal_total_m3h:.0f} m³/h")
+# Alertas de Captación
+if v_captacion_ms < 5:
+    st.warning("⚠️ **Captación Débil:** La velocidad en la boca es muy baja. Es posible que el polvo no entre a la campana.")
+elif v_captacion_ms > 25:
+    st.info("💡 **Captación Fuerte:** Velocidad alta en la boca, excelente para capturar partículas pesadas.")
 
-# Alertas de velocidad
-if v_campana_ms < 15:
-    st.error(f"🚨 **VELOCIDAD INSUFICIENTE:** {v_campana_ms:.2f} m/s es muy bajo. El polvo se sedimentará en los ramales. (Mínimo recomendado: 18-20 m/s)")
-elif v_campana_ms > 30:
-    st.warning(f"⚠️ **VELOCIDAD EXCESIVA:** {v_campana_ms:.2f} m/s. Estás desperdiciando energía y podrías dañar las mangas por abrasión.")
-else:
-    st.success(f"✅ **VELOCIDAD ÓPTIMA:** {v_campana_ms:.2f} m/s es ideal para transporte de virutas y polvo.")
+# Alertas de Transporte
+if v_transporte_ms < 15:
+    st.error("🚨 **Peligro de Sedimentación:** El material se acumulará dentro de los tubos.")
 
 st.markdown("---")
 
@@ -89,21 +102,16 @@ st.markdown("---")
 st.subheader("📊 Estado General del Sistema")
 res1, res2, res3 = st.columns(3)
 
-# Mangas
 area_f = n_mangas_act * (math.pi * (diam_manga/1000) * (largo_manga/1000))
 rel_at = caudal_total_m3h / (area_f * 60)
 res1.metric("Relación Aire/Tela", f"{rel_at:.2f} m/min")
-
-# Resistencia
-res2.metric("Pérdida de Presión", f"{total_perdidas_inH2O:.2f} inH2O")
-
-# HP
+res2.metric("Pérdida de Presión Est.", f"{total_perdidas_inH2O:.2f} inH2O")
 hp_op = (cfm_entrada * total_perdidas_inH2O) / (6356 * eficiencia_fan)
 res3.metric("Potencia Requerida", f"{hp_op:.1f} HP")
 
 # Diagnóstico Final
 balance = sp_ventilador - total_perdidas_inH2O
 if balance < 0:
-    st.error(f"❌ **FALLO DE DISEÑO:** El ventilador no tiene presión suficiente para mover el aire a esa velocidad.")
+    st.error(f"❌ **FALLO:** El ventilador no tiene presión suficiente para vencer la resistencia de {total_perdidas_inH2O:.2f} inH2O.")
 else:
-    st.info(f"ℹ️ Con esta configuración, el ventilador tiene una reserva de {balance:.2f} in H2O.")
+    st.success(f"✅ **SISTEMA OK:** Reserva de presión de {balance:.2f} in H2O.")
