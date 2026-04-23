@@ -5,9 +5,9 @@ import math
 import pandas as pd
 
 # Configuración de página
-st.set_page_config(page_title="Simulador Dinámico Clinker", layout="wide")
+st.set_page_config(page_title="Simulador Dinámico Clinker - Taponamiento", layout="wide")
 
-st.title("🌪️ Succión Dinámica: Simulación de Obstrucción y Taponamiento")
+st.title("🌪️ Succión Crítica: Simulación de Taponamiento y Análisis de Curvas")
 st.markdown("---")
 
 # --- BARRA LATERAL ---
@@ -20,9 +20,9 @@ with st.sidebar.expander("Ventilador y Entorno", expanded=True):
     altitud = st.sidebar.number_input("Altitud (msnm)", value=2500)
     v_transp_target = st.sidebar.slider("Velocidad Objetivo (m/s)", 20, 40, 25)
 
-# --- NUEVO: MODO TAPONAMIENTO ---
-st.sidebar.markdown("### 🛑 Modo Taponamiento (Obstrucción)")
-pct_obstruccion = st.sidebar.slider("% de Obstrucción en Ducto Principal", 0, 90, 0, help="Simula la acumulación de clinker que reduce el área de paso")
+# --- MODO TAPONAMIENTO ---
+st.sidebar.markdown("### 🛑 Simulación de Obstrucción")
+pct_obstruccion = st.sidebar.slider("% Obstrucción en Ducto Principal", 0, 90, 0)
 
 with st.sidebar.expander("Línea Principal"):
     diam_ppal_mm = st.number_input("Ø Ducto Principal (mm)", value=400)
@@ -33,9 +33,9 @@ with st.sidebar.expander("Línea Principal"):
     diam_boca_ppal = st.number_input("Ø Boca Principal (mm)", value=500)
     area_c_ppal = math.pi * (diam_boca_ppal / 1000)**2 / 4
 
-# --- RAMALES INDEPENDIENTES ---
+# --- RAMALES ---
 st.sidebar.markdown("### 🛠️ Configuración de Ramales")
-n_ramales = st.sidebar.number_input("Número de Ramales", min_value=1, max_value=20, value=2)
+n_ramales = st.sidebar.number_input("Número de Ramales", min_value=1, value=2)
 
 datos_ramales = []
 for i in range(n_ramales):
@@ -52,72 +52,68 @@ for i in range(n_ramales):
             w_c = st.number_input(f"Ancho R{i+1} (mm)", value=300, key=f"wc_{i}")
             h_c = st.number_input(f"Alto R{i+1} (mm)", value=200, key=f"hc_{i}")
             a_camp = (w_c / 1000) * (h_c / 1000)
-        datos_ramales.append({"id": i+1, "diam": d_r, "long": l_r, "codos": c_r, "area_c": a_camp})
+        datos_ramales.append({"id": i+1, "diam": d_r, "long": l_r, "area_c": a_camp})
 
 with st.sidebar.expander("Filtro de Mangas"):
     n_mangas_act = st.number_input("Número de Mangas", value=120)
     diam_manga = st.number_input("Ø Manga (mm)", value=120)
     largo_manga = st.number_input("Largo Manga (mm)", value=2115)
-    dp_filtro_limpio = st.number_input("DP Filtro (in H2O)", value=4.0)
+    dp_filtro = st.number_input("DP Filtro (in H2O)", value=4.0)
 
-# --- LÓGICA DE CÁLCULO DINÁMICO ---
+# --- LÓGICA DE CÁLCULO ---
 densidad_aire = 1.225 * math.exp(-altitud / 8500)
 
-# 1. Ajuste de área por obstrucción
-area_nominal_ppal = math.pi * (diam_ppal_mm / 1000)**2 / 4
-area_real_ppal = area_nominal_ppal * (1 - pct_obstruccion / 100)
+def calcular_sistema(obs_pct):
+    area_real = (math.pi * (diam_ppal_mm / 1000)**2 / 4) * (1 - obs_pct / 100)
+    v_base = (cfm_nominal * 1.699 / 3600) / area_real
+    p_fric = (0.022 * long_ppal / (diam_ppal_mm/1000)) * (0.5 * densidad_aire * v_base**2)
+    p_total = (p_fric / 249.08) + dp_filtro + ((obs_pct/10)**2 * 0.5 * densidad_aire * v_base**2 / 249.08 if obs_pct > 0 else 0)
+    f_caudal = math.sqrt(max(0.05, sp_ventilador / p_total)) if p_total > sp_ventilador else 1.0
+    q_real = cfm_nominal * 1.699 * f_caudal
+    return q_real, p_total
 
-# 2. Resistencia incrementada (La obstrucción aumenta la velocidad local y la fricción)
-# k_obs representa la pérdida por el cambio de sección del tapón
-k_obs = (pct_obstruccion / 10)**2 if pct_obstruccion > 0 else 0
-v_en_obstruccion = (cfm_nominal * 1.699 / 3600) / area_real_ppal
+q_actual, p_actual = calcular_sistema(pct_obstruccion)
+q_por_ramal = q_actual / n_ramales
 
-presion_friccion_pa = (0.022 * long_ppal / (diam_ppal_mm/1000)) * (0.5 * densidad_aire * v_en_obstruccion**2)
-perdida_total_inH2O = (presion_friccion_pa / 249.08) + dp_filtro_limpio + (k_obs * 0.5 * densidad_aire * v_en_obstruccion**2 / 249.08)
-
-# 3. Ajuste de Caudal Real del Ventilador
-# A mayor resistencia, el ventilador entrega menos CFM
-factor_caudal = math.sqrt(max(0.05, sp_ventilador / perdida_total_inH2O)) if perdida_total_inH2O > sp_ventilador else 1.0
-caudal_real_m3h = cfm_nominal * 1.699 * factor_caudal
-caudal_por_ramal = caudal_real_m3h / n_ramales
-
-# 4. Velocidades Resultantes
-resumen_final = []
-for r in datos_ramales:
-    area_ducto_r = math.pi * (r["diam"]/1000)**2 / 4
-    v_cap = (caudal_por_ramal / 3600) / r["area_c"]
-    v_tra = (caudal_por_ramal / 3600) / area_ducto_r
-    resumen_final.append({
-        "Ramal": f"#{r['id']}",
-        "Ø Ducto (mm)": r['diam'],
-        "V. Captación (m/s)": f"{v_cap:.2f}",
-        "V. Transporte (m/s)": f"{v_tra:.2f}",
-        "Estado": "✅ OK" if v_tra >= v_transp_target else "🚨 SEDIMENTANDO"
-    })
-
-# --- INTERFAZ DE RESULTADOS ---
-
-if pct_obstruccion > 0:
-    st.warning(f"⚠️ **SIMULACIÓN DE TAPONAMIENTO ACTIVA:** El ducto principal está obstruido al {pct_obstruccion}%.")
-
-# Métricas Clave
+# --- RESULTADOS ---
 c1, c2, c3, c4 = st.columns(4)
-c1.metric("Caudal Real Sistema", f"{caudal_real_m3h:.0f} m³/h", delta=f"{caudal_real_m3h - (cfm_nominal*1.699):.0f}")
-c2.metric("V. Principal (Real)", f"{(caudal_real_m3h/3600)/area_real_ppal:.2f} m/s")
-c3.metric("Resistencia Total", f"{perdida_total_inH2O:.2f} inH2O")
-c4.metric("Potencia Requerida", f"{(caudal_real_m3h/1.699 * perdida_total_inH2O)/(6356*eficiencia_fan):.1f} HP")
+c1.metric("Caudal Real", f"{q_actual:.0f} m³/h")
+c2.metric("Pérdida Sistema", f"{p_actual:.2f} inH2O")
+c3.metric("Relación Aire/Tela", f"{q_actual / (n_mangas_act * math.pi * (diam_manga/1000) * (largo_manga/1000) * 60):.2f}")
+c4.metric("Potencia", f"{(q_actual/1.699 * p_actual)/(6356*eficiencia_fan):.1f} HP")
 
-st.subheader("📋 Velocidad en Campanas de Ramales (Efecto del Taponamiento)")
-st.dataframe(pd.DataFrame(resumen_final), use_container_width=True)
+# TABLA DE RAMALES
+resumen = []
+for r in datos_ramales:
+    v_cap = (q_por_ramal / 3600) / r["area_c"]
+    v_tra = (q_por_ramal / 3600) / (math.pi * (r["diam"]/1000)**2 / 4)
+    resumen.append({"Ramal": f"#{r['id']}", "V. Captación (m/s)": f"{v_cap:.2f}", "V. Transporte (m/s)": f"{v_tra:.2f}", "Estado": "✅ OK" if v_tra >= v_transp_target else "🚨 SEDIMENTANDO"})
+st.subheader("📋 Velocidad en Campanas y Ramales")
+st.dataframe(pd.DataFrame(resumen), use_container_width=True)
 
-# Sección de Mangas (Sin cambios)
-area_total_f = n_mangas_act * (math.pi * (diam_manga/1000) * (largo_manga/1000))
-relacion_at = caudal_real_m3h / (area_total_f * 60)
-st.subheader("🧵 Capacidad del Filtro de Mangas")
-st.write(f"Con el caudal actual, la Relación Aire/Tela es de: **{relacion_at:.2f} m/min**.")
+# --- GRÁFICAS ---
+st.subheader("📈 Análisis de Comportamiento")
+g1, g2 = st.columns(2)
 
-# Diagnóstico Final
-if factor_caudal < 0.8:
-    st.error("🚨 **SISTEMA COLAPSADO:** La obstrucción en el ducto principal ha reducido el caudal a niveles críticos. La succión en los ramales es insuficiente.")
-elif pct_obstruccion > 30:
-    st.info("💡 **Dato Técnico:** Las acumulaciones de clinker suelen ser autoperpetuantes; al bajar la velocidad por el tapón, más material se cae en el mismo lugar.")
+with g1: # GRÁFICA DEL VENTILADOR (NO BORRADA)
+    st.markdown("**Curva del Ventilador vs Resistencia**")
+    q_plot = np.linspace(100, cfm_nominal * 1.5, 50)
+    k_actual = p_actual / (q_actual/1.699)**2
+    curva_res = k_actual * (q_plot**2)
+    fig1, ax1 = plt.subplots(figsize=(8, 5))
+    ax1.plot(q_plot, curva_res, color="#00FFAA", label="Resistencia (con Taponamiento)")
+    ax1.axhline(y=sp_ventilador, color='red', linestyle='--', label="Límite Ventilador")
+    ax1.scatter([q_actual/1.699], [p_actual], color='yellow', s=100, zorder=5)
+    ax1.set_xlabel("CFM"); ax1.set_ylabel("in H2O"); ax1.legend(); st.pyplot(fig1)
+
+with g2: # GRÁFICA DE TENDENCIA DE VELOCIDAD
+    st.markdown("**Caída de Velocidad en Campanas vs Taponamiento**")
+    obs_range = np.linspace(0, 90, 20)
+    v_tendencia = []
+    for o in obs_range:
+        q_sim, _ = calcular_sistema(o)
+        v_tendencia.append((q_sim / n_ramales / 3600) / datos_ramales[0]["area_c"])
+    fig2, ax2 = plt.subplots(figsize=(8, 5))
+    ax2.plot(obs_range, v_tendencia, color="orange", lw=3)
+    ax2.axvline(x=pct_obstruccion, color='white', linestyle=':', label="Obstrucción Actual")
+    ax2.set_xlabel("% Obstrucción Principal"); ax2.set_ylabel("V. Captación (m/s)"); ax2.legend(); st.pyplot(fig2)
