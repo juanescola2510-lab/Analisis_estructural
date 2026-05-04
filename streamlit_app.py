@@ -1,22 +1,25 @@
 import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.patches as patches
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Análisis de Ingeniería: Elevador de Cangilones", layout="wide")
+st.set_page_config(page_title="Análisis de Fatiga: Criterio de Soderberg", layout="wide")
 
-st.title("🏗️ Diagnóstico de Falla y Fatiga (Criterio de Goodman)")
-st.sidebar.header("📊 Parámetros de Operación")
+st.title("🛡️ Seguridad Crítica: Análisis de Fatiga (Criterio de Soderberg)")
+st.sidebar.header("📊 Parámetros del Sistema")
 
-# --- INPUTS ---
+# --- ENTRADAS ---
 tph = st.sidebar.number_input("Capacidad Real (Ton/h)", value=150)
 v_ms = st.sidebar.slider("Velocidad (m/s)", 0.5, 2.0, 1.2)
 altura = st.sidebar.number_input("Altura (m)", value=33.5)
 p_cadena = st.sidebar.number_input("Peso Cadena (lb)", value=2400)
-p_cangilones = st.sidebar.number_input("Peso Cangilones (lb)", value=11820)
-d_pin = st.sidebar.slider("Diámetro del Pin (mm)", 20.0, 50.0, 34.74)
-res_mpa = st.sidebar.number_input("Resistencia Tracción (Su) - MPa", value=980)
+p_cangilones = st.sidebar.number_input("Peso Total Cangilones (lb)", value=11820)
+d_pin = st.sidebar.slider("Diámetro del Pin (mm)", 20.0, 55.0, 34.74)
+
+# Propiedades del Acero 35CrMo (Tratado)
+st.sidebar.subheader("🛠️ Propiedades del Material")
+su_mpa = st.sidebar.number_input("Resistencia Última (Su) - MPa", value=980)
+sy_mpa = st.sidebar.number_input("Límite Elástico (Sy) - MPa", value=835)
 
 # --- CÁLCULOS TÉCNICOS ---
 flujo_kgs = (tph * 1000) / 3600
@@ -24,82 +27,75 @@ p_material_lb = ((flujo_kgs / v_ms) * altura) * 2.20462
 t_max_lb = p_cadena + p_cangilones + p_material_lb
 f_n = t_max_lb * 4.44822
 
-# Área Transversal (Doble Corte)
-area_simple = np.pi * (d_pin / 2)**2
-area_total = 2 * area_simple
+# Área Transversal y Esfuerzos Cortantes
+area_total = 2 * (np.pi * (d_pin / 2)**2)
+tau_m = f_n / area_total            # Esfuerzo medio
+tau_a = tau_m * 0.25                # Esfuerzo alternante (25% por impactos de clinker)
 
-# Esfuerzos Cortantes
-tau_medio = f_n / area_total
-# Asumimos esfuerzo alternante del 20% por vibraciones y arranque
-tau_alt = tau_medio * 0.20 
+# Propiedades de Corte (Von Mises)
+ssy = sy_mpa * 0.577                # Límite elástico al corte
+sse = su_mpa * 0.577 * 0.35         # Límite de fatiga corregido para ambiente agresivo
 
-# Resistencia al Corte (Von Mises)
-ssu = res_mpa * 0.577 # Resistencia última al corte
-sse = ssu * 0.40      # Límite de fatiga corregido (aprox)
+# Criterio de Soderberg
+# (tau_a / sse) + (tau_m / ssy) = 1/FS_soderberg
+fs_soderberg = 1 / ((tau_a / sse) + (tau_m / ssy))
 
-# Criterio de Goodman para Corte
-# (tau_alt / sse) + (tau_medio / ssu) = 1/FS_fatiga
-fs_fatiga = 1 / ((tau_alt / sse) + (tau_medio / ssu))
+# --- VISUALIZACIÓN ---
+col_graf1, col_graf2 = st.columns(2)
 
-# --- GRÁFICOS ---
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7))
+with col_graf1:
+    st.write("### Área Transversal y Distribución de Corte")
+    fig1, ax1 = plt.subplots(figsize=(6, 6))
+    # Pin
+    pin = plt.Circle((0.5, 0.5), 0.4, color='#BDBDBD', ec='black', lw=3)
+    ax1.add_patch(pin)
+    # Vectores de esfuerzo cortante
+    y_vals = np.linspace(0.2, 0.8, 15)
+    for y in y_vals:
+        # Perfil de esfuerzo parabólico
+        length = 0.3 * (1 - ((y-0.5)/0.3)**2)
+        ax1.annotate('', xy=(0.5 + length, y), xytext=(0.5, y),
+                     arrowprops=dict(arrowstyle='->', color='red', lw=1.5))
+    ax1.text(0.5, 0.5, "τ_medio", color='red', ha='center', fontweight='bold')
+    ax1.axis('off')
+    st.pyplot(fig1)
 
-# 1. DCL SPROCKET Y PIN REALISTA
-ax1.set_title("DCL: MECANISMO Y ENSAMBLE", fontweight='bold')
-ax1.add_patch(plt.Circle((0.3, 0.7), 0.15, color='#454545')) # Sprocket
-ax1.add_patch(plt.Rectangle((0.6, 0.4), 0.35, 0.08, color='#BDBDBD', ec='black')) # Pin
-ax1.add_patch(plt.Rectangle((0.6, 0.3), 0.06, 0.3, color='#757575')) # Placa Ext
-ax1.add_patch(plt.Rectangle((0.89, 0.3), 0.06, 0.3, color='#757575')) # Placa Ext
-ax1.text(0.77, 0.5, "SECCIÓN TRANSVERSAL", ha='center', fontsize=8, fontweight='bold')
-ax1.axis('off')
+with col_graf2:
+    st.write("### Diagrama de Soderberg")
+    fig2, ax2 = plt.subplots(figsize=(6, 6))
+    # Línea de Soderberg: Une Se con Sy
+    ax2.plot([0, ssy], [sse, 0], 'b-', lw=3, label='Línea de Soderberg (Seguridad)')
+    ax2.fill_between([0, ssy], [sse, 0], color='blue', alpha=0.1)
+    # Punto de operación
+    ax2.scatter(tau_m, tau_a, color='red', s=150, edgecolor='black', zorder=5, label='Estado de Carga Real')
+    
+    ax2.set_xlabel("Esfuerzo Medio τ_m (MPa)")
+    ax2.set_ylabel("Esfuerzo Alternante τ_a (MPa)")
+    ax2.set_xlim(0, ssy * 1.1)
+    ax2.set_ylim(0, sse * 1.2)
+    ax2.grid(True, alpha=0.3)
+    ax2.legend()
+    st.pyplot(fig2)
 
-# 2. DIAGRAMA DE ESFUERZOS CORTANTES EN EL ÁREA TRANSVERSAL
-ax2.set_title("ANÁLISIS DE ÁREA TRANSVERSAL Y CORTE", fontweight='bold')
-circle = plt.Circle((0.5, 0.5), 0.3, color='lightgray', ec='black', lw=2)
-ax2.add_patch(circle)
-# Distribución de esfuerzos cortantes (Parabólica simplificada)
-y = np.linspace(-0.3, 0.3, 100)
-tau_dist = (1 - (y/0.3)**2)
-for i in range(0, 100, 10):
-    ax2.annotate('', xy=(0.5 + tau_dist[i]*0.2, 0.5 + y[i]), xytext=(0.5, 0.5 + y[i]),
-                 arrowprops=dict(arrowstyle='->', color='red'))
-ax2.text(0.5, 0.85, f"Área: {area_total:.1f} mm²", ha='center', fontweight='bold')
-ax2.text(0.8, 0.5, "τ_max", color='red', fontweight='bold')
-ax2.axis('off')
-
-st.pyplot(fig)
-
-# --- ANÁLISIS DE FALLA: MÉTODO DE GOODMAN ---
+# --- PANEL DE RESULTADOS ---
 st.markdown("---")
-st.subheader("🏁 Análisis de Seguridad por Fatiga (Método de Goodman)")
+st.subheader("📋 Diagnóstico Final bajo Soderberg")
 
-col_left, col_right = st.columns(2)
-
-with col_left:
-    st.write("**Parámetros de Fatiga (Corte):**")
+res1, res2 = st.columns(2)
+with res1:
     st.info(f"""
-    - **Esfuerzo Cortante Medio (τm):** {tau_medio:.2f} MPa
-    - **Esfuerzo Cortante Alternante (τa):** {tau_alt:.2f} MPa
-    - **Resistencia Última al Corte (Ssu):** {ssu:.2f} MPa
-    - **Límite de Resistencia a la Fatiga (Sse):** {sse:.2f} MPa
+    **Análisis de Tensiones:**
+    - Esfuerzo Medio (τm): `{tau_m:.2f} MPa`
+    - Esfuerzo Alternante (τa): `{tau_a:.2f} MPa`
+    - Resistencia Fluencia Corte (Ssy): `{ssy:.2f} MPa`
     """)
 
-with col_right:
-    st.write("**Resultado del Criterio de Goodman:**")
-    if fs_fatiga > 1.5:
-        st.success(f"### FS FATIGA: {fs_fatiga:.2f}\nDiseño Seguro contra fatiga cíclica.")
+with res2:
+    if fs_soderberg > 1.2:
+        st.success(f"### FS SODERBERG: {fs_soderberg:.2f}\nDISEÑO SEGURO. No hay fluencia ni fatiga.")
     else:
-        st.error(f"### FS FATIGA: {fs_fatiga:.2f}\nFALLA INMINENTE POR FATIGA. La grieta se propagará.")
+        st.error(f"### FS SODERBERG: {fs_soderberg:.2f}\nRIESGO DE DEFORMACIÓN. El pin sufrirá elongación permanente.")
 
-# Gráfico de Goodman
-fig2, ax3 = plt.subplots(figsize=(8, 4))
-ax3.plot([0, ssu], [sse, 0], 'g--', label='Línea de Goodman (Corte)')
-ax3.scatter(tau_medio, tau_alt, color='red', s=100, zorder=5, label='Estado de Operación')
-ax3.set_xlabel("Esfuerzo Medio (τm) [MPa]")
-ax3.set_ylabel("Esfuerzo Alternante (τa) [MPa]")
-ax3.set_title("Diagrama de Goodman: Seguridad vs Fatiga")
-ax3.grid(True, alpha=0.3)
-ax3.legend()
-st.pyplot(fig2)
-
-st.warning("**Nota técnica:** La fractura que observaste en el pin original es característica de un punto de operación que sobrepasó la línea de Goodman debido al desgaste abrasivo del clinker, lo cual redujo la sección transversal y aumentó los esfuerzos reales.")
+st.markdown("""
+> **Diferencia Técnica:** A diferencia de Goodman, **Soderberg** no permite que el esfuerzo medio supere el límite elástico. Esto es fundamental en elevadores de una sola cadena, pues evita que los agujeros de las placas se ovalen y los pines se deformen antes de romperse.
+""")
