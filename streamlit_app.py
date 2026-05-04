@@ -1,128 +1,73 @@
-import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
-import math
-import pandas as pd
 
-# Configuración de página
-st.set_page_config(page_title="Ingeniería de Succión Clinker Pro", layout="wide")
-
-st.title("🌪️ Diagnóstico Pro: Presión Requerida vs. Capacidad Real")
-st.markdown("---")
-
-# --- BARRA LATERAL ---
-st.sidebar.header("📊 Datos de Entrada")
-
-with st.sidebar.expander("Ficha Técnica Ventilador", expanded=True):
-    cfm_nominal = st.sidebar.number_input("Caudal Nominal (CFM)", value=7600)
-    sp_ventilador = st.sidebar.number_input("Presión Máxima (in H2O)", value=17.0)
-    hp_motor_placa = st.sidebar.number_input("Potencia Motor (HP)", value=30.0)
-    eficiencia_fan = st.sidebar.slider("Eficiencia (%)", 40, 90, 65) / 100
-    altitud = st.sidebar.number_input("Altitud (msnm)", value=2500)
-    v_transp_target = st.sidebar.slider("Velocidad Transporte Objetivo (m/s)", 20, 40, 25)
-
-st.sidebar.markdown("### 🛑 Simulación de Obstrucción")
-pct_obstruccion = st.sidebar.slider("% Obstrucción Principal", 0, 90, 0)
-
-with st.sidebar.expander("Línea Principal (Hardox)"):
-    diam_ppal_mm = st.number_input("Ø Ducto Principal (mm)", value=400)
-    long_ppal = st.number_input("Longitud Principal (m)", value=50.0)
-    n_codos_ppal = st.number_input("Codos Línea Principal", value=5)
+def calcular_y_analizar(capacidad_tph, velocidad_ms, altura_m, peso_cadena_lb, peso_cangilones_lb, diametro_pin_mm, resistencia_mpa):
+    # 1. Cálculo del Peso del Material (Wm) basado en la capacidad
+    # tph a kg/s: (ton/h * 1000) / 3600
+    flujo_kgs = (capacidad_tph * 1000) / 3600
+    carga_lineal_kgm = flujo_kgs / velocidad_ms
+    peso_material_kg = carga_lineal_kgm * altura_m
+    peso_material_lb = peso_material_kg * 2.20462
     
-    st.markdown("**Boca de Línea Principal**")
-    diam_boca_ppal = st.number_input("Ø Boca Principal (mm)", value=500)
-    area_c_ppal = math.pi * (diam_boca_ppal / 1000)**2 / 4
-
-st.sidebar.markdown("### 🛠️ Configuración de Ramales")
-n_ramales = st.sidebar.number_input("Número de Ramales Abiertos", min_value=0, value=2)
-
-datos_ramales = []
-if n_ramales > 0:
-    for i in range(n_ramales):
-        with st.sidebar.expander(f"Ramal #{i+1}", expanded=False):
-            d_r = st.number_input(f"Ø Ducto Ramal {i+1} (mm)", value=150, key=f"dr_{i}")
-            l_r = st.number_input(f"Longitud Ramal {i+1} (m)", value=3.0, key=f"lr_{i}")
-            c_r = st.number_input(f"N° Codos R{i+1}", value=2, key=f"cr_{i}")
-            a_r = st.number_input(f"Ø Boca Campana R{i+1} (mm)", value=250, key=f"dc_{i}")
-            area_c = math.pi * (a_r / 1000)**2 / 4
-            datos_ramales.append({"id": i+1, "diam": d_r, "long": l_r, "codos": c_r, "area_c": area_c, "boca_mm": a_r})
-
-with st.sidebar.expander("Filtro de Mangas"):
-    n_mangas_act = st.number_input("Número de Mangas Instaladas", value=120)
-    diam_manga = st.number_input("Ø Manga (mm)", value=120)
-    largo_manga = st.number_input("Largo Manga (mm)", value=2115)
-    dp_filtro = st.number_input("DP Filtro (in H2O)", value=5.0)
-
-# --- LÓGICA DE CÁLCULO ---
-densidad_aire = 1.225 * math.exp(-altitud / 8500)
-
-def calcular_diagnostico(obs_pct):
-    d_m_ppal = diam_ppal_mm / 1000
-    area_real_ppal = (math.pi * (d_m_ppal**2) / 4) * (1 - obs_pct / 100)
+    # 2. Cálculo de Fuerzas Totales
+    lb_to_n = 4.44822
+    peso_total_lb = peso_cadena_lb + peso_cangilones_lb + peso_material_lb
+    fuerza_total_n = peso_total_lb * lb_to_n
     
-    # 1. Presión REQUERIDA (Lo que el sistema pide para mover el CFM nominal)
-    v_ppal_nom = (cfm_nominal * 1.699 / 3600) / max(0.01, area_real_ppal)
-    le_ppal = long_ppal + (n_codos_ppal * 25 * d_m_ppal)
-    p_req_pa = (0.022 * le_ppal / d_m_ppal) * (0.5 * densidad_aire * v_ppal_nom**2)
-    p_obs_pa = ((obs_pct/10)**2 * 0.5 * densidad_aire * v_ppal_nom**2) if obs_pct > 0 else 0
+    # 3. Análisis de Esfuerzos en el Pin (Doble Cortadura)
+    area_simple_mm2 = np.pi * (diametro_pin_mm / 2)**2
+    area_doble_mm2 = 2 * area_simple_mm2
+    esfuerzo_corte_mpa = fuerza_total_n / area_doble_mm2
     
-    p_ram_pa = 0
-    if n_ramales > 0:
-        for r in datos_ramales:
-            d_m_r = r["diam"] / 1000
-            v_r_nom = ((cfm_nominal * 1.699 / n_ramales) / 3600) / (math.pi * d_m_r**2 / 4)
-            le_r = r["long"] + (r["codos"] * 25 * d_m_r) + 20*d_m_r
-            p_ram_pa += (0.022 * le_r / d_m_r) * (0.5 * densidad_aire * v_r_nom**2)
-        p_req_total_in = ((p_req_pa + p_obs_pa + (p_ram_pa/n_ramales)) / 249.08) + dp_filtro
-    else:
-        p_req_total_in = ((p_req_pa + p_obs_pa) / 249.08) + dp_filtro
+    # Resistencia al corte (Von Mises 57.7%)
+    res_corte_material = resistencia_mpa * 0.577
+    factor_seguridad = res_corte_material / esfuerzo_corte_mpa
 
-    # 2. Caudal REAL (Lo que el ventilador puede mover realmente con su SP de 17")
-    f_q = math.sqrt(max(0.05, sp_ventilador / p_req_total_in)) if p_req_total_in > sp_ventilador else 1.0
-    q_real_m3h = cfm_nominal * 1.699 * f_q
+    # --- VISUALIZACIÓN ---
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7))
+
+    # Gráfico 1: DCL del Sprocket y Cargas
+    ax1.set_title(f"DCL Elevador: {capacidad_tph} TPH", fontweight='bold')
+    # Dibujo sprocket
+    sprocket = plt.Circle((0.5, 0.8), 0.15, color='darkgray', label='Sprocket Motriz')
+    ax1.add_patch(sprocket)
+    # Líneas de cadena
+    ax1.plot([0.35, 0.35], [0.1, 0.8], 'k--', lw=2) # Rama bajando
+    ax1.plot([0.65, 0.65], [0.1, 0.8], 'k-', lw=3, color='red') # Rama subiendo (Cargada)
     
-    return q_real_m3h, p_req_total_in, area_real_ppal
+    # Etiquetas de pesos
+    info_pesos = (f"Peso Material: {peso_material_lb:.0f} lb\n"
+                  f"Peso Cangilones: {peso_cangilones_lb} lb\n"
+                  f"Peso Cadena: {peso_cadena_lb} lb\n"
+                  f"TENSIÓN TOTAL: {peso_total_lb:.0f} lb")
+    ax1.text(0.7, 0.4, info_pesos, bbox=dict(facecolor='wheat', alpha=0.5))
+    ax1.axis('off')
 
-q_real, p_requerida, a_real_ppal = calcular_diagnostico(pct_obstruccion)
-v_real_ppal = (q_real / 3600) / a_real_ppal
-v_cap_ppal = (q_real / 3600) / area_c_ppal
-
-# --- PESTAÑAS ---
-tab1, tab2 = st.tabs(["📊 Diagnóstico y Gráficas", "💡 Recomendaciones Técnicas"])
-
-with tab1:
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Presión REQUERIDA", f"{p_requerida:.2f} in H2O", delta=f"{p_requerida - sp_ventilador:.2f}", delta_color="inverse")
-    c2.metric("Caudal REAL", f"{q_real:.0f} m³/h")
-    c3.metric("Potencia Requerida", f"{(q_real/1.699 * p_requerida)/(6356*eficiencia_fan):.1f} HP")
-
-    st.subheader("📋 Resumen del Estado Actual")
-    st.table(pd.DataFrame({
-        "Parámetro": ["Presión Sistema (Requerida)", "Caudal Real entregado", "V. Transporte Ppal", "V. Captación Ppal"],
-        "Valor": [f"{p_requerida:.2f} in H2O", f"{q_real:.0f} m³/h", f"{v_real_ppal:.2f} m/s", f"{v_cap_ppal:.2f} m/s"],
-        "Límite/Meta": [f"{sp_ventilador} in H2O", f"{cfm_nominal*1.699:.0f} m³/h", f"{v_transp_target} m/s", "12.00 m/s"]
-    }))
-
-    if n_ramales > 0:
-        st.subheader("🌿 Detalle de Velocidades por Ramal")
-        res_r = []
-        for r in datos_ramales:
-            v_cap = (q_real / n_ramales / 3600) / r["area_c"]
-            v_tra = (q_real / n_ramales / 3600) / (math.pi * (r["diam"]/1000)**2 / 4)
-            res_r.append({"Ramal": f"#{r['id']}", "V. Captación (m/s)": f"{v_cap:.2f}", "V. Transporte (m/s)": f"{v_tra:.2f}", "Estado": "✅ OK" if v_tra >= v_transp_target else "🚨 BAJA"})
-        st.dataframe(pd.DataFrame(res_r), use_container_width=True)
-
-    st.subheader("📈 Curva del Ventilador")
-    q_plot = np.linspace(100, cfm_nominal * 1.5, 50); k = p_requerida / (max(1, cfm_nominal))**2
-    fig1, ax1 = plt.subplots(figsize=(10, 3.5)); ax1.plot(q_plot, k*(q_plot**2), color="#00FFAA", label="Curva Sistema"); ax1.axhline(y=sp_ventilador, color='red', linestyle='--', label="Capacidad SP"); ax1.scatter([q_real/1.699], [min(sp_ventilador, p_requerida)], color='yellow', s=100); st.pyplot(fig1)
-
-with tab2:
-    st.subheader("🚀 Plan de Mejora")
-    if p_requerida > sp_ventilador:
-        st.error(f"❌ **SISTEMA SOBREPASADO:** El sistema pide {p_requerida:.2f} inH2O, pero el ventilador solo da {sp_ventilador}. Por eso el caudal bajó a {q_real:.0f} m3/h.")
+    # Gráfico 2: Diagrama de Corte en el Pin
+    ax2.set_title(f"Análisis de Corte Pin Ø{diametro_pin_mm}mm", fontweight='bold')
+    ax2.add_patch(plt.Rectangle((0.2, 0.4), 0.6, 0.2, color='silver', ec='black'))
+    # Vectores de fuerza
+    ax2.annotate('', xy=(0.5, 0.4), xytext=(0.5, 0.1), arrowprops=dict(facecolor='red', shrink=0.05))
+    ax2.text(0.52, 0.15, f"T_max: {fuerza_total_n/1000:.1f} kN", color='red')
     
-    st.markdown("### ⚙️ Recomendaciones de Red")
-    if v_real_ppal < v_transp_target:
-        st.warning(f"📐 **Ducto Principal:** La velocidad es insuficiente. Reducir Ø para evitar que el clinker se asiente.")
-    
-    st.info(f"📢 **Diseño Boca:** Para recuperar 12 m/s, las campanas de ramales deben medir **Ø {math.sqrt(4*((q_real/max(1,n_ramales)/3600)/12)/math.pi)*1000:.0f} mm**.")
+    # Resultados finales
+    res_final = (f"Esfuerzo Real: {esfuerzo_corte_mpa:.2f} MPa\n"
+                 f"Resistencia Material: {res_corte_material:.2f} MPa\n"
+                 f"FACTOR SEGURIDAD: {factor_seguridad:.2f}")
+    color_fs = 'green' if factor_seguridad > 8 else 'orange' if factor_seguridad > 5 else 'red'
+    ax2.text(0.5, 0.8, res_final, ha='center', fontsize=12, bbox=dict(facecolor=color_fs, alpha=0.3))
+    ax2.axis('off')
+
+    plt.tight_layout()
+    plt.show()
+
+# --- CAMBIA ESTOS VALORES PARA SIMULAR ---
+calcular_y_analizar(
+    capacidad_tph = 150,      # Toneladas por hora
+    velocidad_ms = 1.2,       # Velocidad (m/s)
+    altura_m = 33.5,          # Altura (m)
+    peso_cadena_lb = 2400,    # Peso total cadena
+    peso_cangilones_lb = 11820, # Peso total cangilones
+    diametro_pin_mm = 34.74,  # Diámetro del pasador
+    resistencia_mpa = 980     # Resistencia acero (35CrMo)
+)
