@@ -116,4 +116,4 @@ with col_tab:
     })
 
 st.warning(f"**Resultado:** El esfuerzo cortante máximo en el plano de contacto es de **{tau_m:.2f} MPa**. Al variar el peso de la cadena o cangilones, observa cómo se desplaza el punto de operación en el gráfico.")
-Usa el código con precaución.
+
