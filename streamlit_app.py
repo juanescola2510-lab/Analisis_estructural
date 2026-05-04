@@ -3,112 +3,75 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
-# --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Análisis Comparativo de Fatiga", layout="wide")
+# --- CONFIGURACIÓN ---
+st.set_page_config(page_title="Análisis de Atascamiento en Bota", layout="wide")
+st.title("🚜 Análisis de Sobrecarga por Acumulación en la Bota")
 
-st.title("🏗️ Análisis de Falla Multicriterio: Soderberg, Goodman y Gerber")
-st.sidebar.header("📊 Parámetros del Sistema")
-
-# --- ENTRADAS ---
+# --- SIDEBAR ---
+st.sidebar.header("⚙️ Parámetros de Operación")
 tph = st.sidebar.number_input("Capacidad Real (Ton/h)", value=150)
 v_ms = st.sidebar.slider("Velocidad (m/s)", 0.5, 2.0, 1.2)
 altura = st.sidebar.number_input("Altura (m)", value=33.5)
-p_cadena = st.sidebar.number_input("Peso Cadena (lb)", value=2400)
-p_cangilones = st.sidebar.number_input("Peso Total Cangilones (lb)", value=11820)
 d_pin = st.sidebar.slider("Diámetro del Pin (mm)", 20.0, 55.0, 34.74)
 
-# Propiedades del Acero 35CrMo
-st.sidebar.subheader("🛠️ Propiedades del Material")
-su_mpa = st.sidebar.number_input("Resistencia Última (Su) - MPa", value=980)
-sy_mpa = st.sidebar.number_input("Límite Elástico (Sy) - MPa", value=835)
+st.sidebar.header("⚠️ Condición de la Bota")
+nivel_acumulacion = st.sidebar.select_slider(
+    "Nivel de Acumulación/Atascamiento",
+    options=["Limpio", "Moderado", "Crítico", "Obstrucción Total"],
+    value="Limpio"
+)
 
-# --- CÁLCULOS TÉCNICOS ---
+# Definición de la fuerza de excavación extra (Fexc)
+# En ingeniería, esto se estima como un % extra de la carga de material
+mapeo_fexc = {"Limpio": 0.10, "Moderado": 0.50, "Crítico": 1.50, "Obstrucción Total": 3.00}
+factor_fexc = mapeo_fexc[nivel_acumulacion]
+
+# --- CÁLCULOS ---
 flujo_kgs = (tph * 1000) / 3600
 p_material_lb = ((flujo_kgs / v_ms) * altura) * 2.20462
-t_max_lb = p_cadena + p_cangilones + p_material_lb
-f_n = t_max_lb * 4.44822
+# Fuerza de excavación extra producida por el atascamiento
+f_excavacion_lb = p_material_lb * factor_fexc 
 
-# Esfuerzos Cortantes (Doble Corte)
+t_estatica_lb = 2400 + 11820 + p_material_lb # Cadena + Cangilones + Material
+t_total_lb = t_estatica_lb + f_excavacion_lb
+f_n = t_total_lb * 4.44822 # Convertir a Newtons
+
+# Esfuerzo Cortante Transversal
 area_total = 2 * (np.pi * (d_pin / 2)**2)
-tau_m = f_n / area_total            # Esfuerzo medio
-tau_a = tau_m * 0.25                # Esfuerzo alternante (picos del 25%)
+tau_real = f_n / area_total
 
-# Propiedades de Corte (Von Mises)
-ssu = su_mpa * 0.577                # Última al corte
-ssy = sy_mpa * 0.577                # Fluencia al corte
-sse = ssu * 0.35                    # Límite fatiga corregido (ambiente clinker)
+# --- INTERFAZ ---
+c1, c2, c3 = st.columns(3)
+c1.metric("Tensión por Atascamiento", f"{f_excavacion_lb:,.0f} lb", delta=f"+{factor_fexc*100:.0f}%")
+c2.metric("Tensión Total Real", f"{t_total_lb:,.0f} lb")
+c3.metric("Esfuerzo Cortante (τ)", f"{tau_real:.2f} MPa")
 
-# --- CÁLCULO DE FACTORES DE SEGURIDAD ---
-fs_soderberg = 1 / ((tau_a / sse) + (tau_m / ssy))
-fs_goodman = 1 / ((tau_a / sse) + (tau_m / ssu))
-# Gerber (Parabólico)
-fs_gerber = 1 / ((tau_a / sse) + (tau_m / ssu)**2) # Simplificación para Gerber
+# --- GRÁFICO DCL DE LA BOTA (NUEVO) ---
+st.write("### DCL: Resistencia en la Bota por Acumulación")
+fig_bota, ax_b = plt.subplots(figsize=(10, 4))
+# Dibujo de la bota y material
+ax_b.add_patch(plt.Rectangle((0.1, 0.1), 0.8, 0.2, color='#D2B48C', alpha=0.6)) # Material acumulado
+# Cangilón entrando
+ax_b.add_patch(plt.Rectangle((0.45, 0.2), 0.1, 0.15, color='gray', ec='black'))
+# Vectores
+ax_b.annotate('', xy=(0.55, 0.25), xytext=(0.8, 0.25), arrowprops=dict(facecolor='red', width=3))
+ax_b.text(0.6, 0.3, f"F_exc: {f_excavacion_lb:,.0f} lb", color='red', fontweight='bold')
+ax_b.axis('off')
+st.pyplot(fig_bota)
 
-# --- GRÁFICOS INICIALES (DCL SPROCKET Y ENSAMBLE PIN) ---
-col_dcl1, col_dcl2 = st.columns(2)
+# --- ANÁLISIS DE ESFUERZO CORTANTE TRANSVERSAL ---
+st.write("### Análisis de Distribución de Esfuerzo Cortante en el Pin")
+fig_tau, ax_t = plt.subplots(figsize=(6, 6))
+pin = plt.Circle((0.5, 0.5), 0.4, color='#BDBDBD', ec='black', lw=2)
+ax_t.add_patch(pin)
+# Gradiente de esfuerzo cortante (Parabólico)
+y = np.linspace(0.15, 0.85, 20)
+for val_y in y:
+    # tau = (V * Q) / (I * t) -> simplificado parabólico
+    l = 0.35 * (1 - ((val_y-0.5)/0.35)**2)
+    ax_t.annotate('', xy=(0.5 + l, val_y), xytext=(0.5, val_y), arrowprops=dict(arrowstyle='->', color='red'))
+ax_t.text(0.5, 0.5, f"τ_max = {tau_real:.2f} MPa", ha='center', color='red', fontweight='bold', bbox=dict(facecolor='white', alpha=0.7))
+ax_t.axis('off')
+st.pyplot(fig_tau)
 
-with col_dcl1:
-    st.write("### DCL: Mecanismo Superior")
-    fig_dcl1, ax_dcl1 = plt.subplots(figsize=(6, 6))
-    # Sprocket con dientes
-    ax_dcl1.add_patch(plt.Circle((0.5, 0.6), 0.25, color='#454545', zorder=2))
-    for i in range(12):
-        angle = np.deg2rad(i * 30); x = 0.5 + 0.27 * np.cos(angle); y = 0.6 + 0.27 * np.sin(angle)
-        ax_dcl1.add_patch(plt.Circle((x, y), 0.04, color='#454545'))
-    ax_dcl1.annotate('', xy=(0.78, 0.1), xytext=(0.78, 0.6), arrowprops=dict(facecolor='red', width=4))
-    ax_dcl1.text(0.8, 0.35, f"T_max: {t_max_lb:,.0f} lb", color='red', fontweight='bold')
-    ax_dcl1.axis('off')
-    st.pyplot(fig_dcl1)
-
-with col_dcl2:
-    st.write("### DCL: Ensamble del Pin")
-    fig_dcl2, ax_dcl2 = plt.subplots(figsize=(6, 6))
-    # Pin y Placas
-    ax_dcl2.add_patch(plt.Rectangle((0.1, 0.45), 0.8, 0.1, color='#BDBDBD', ec='black', zorder=4))
-    ax_dcl2.add_patch(plt.Rectangle((0.1, 0.3), 0.12, 0.4, color='#757575', alpha=0.9)) # Placa Ext
-    ax_dcl2.add_patch(plt.Rectangle((0.78, 0.3), 0.12, 0.4, color='#757575', alpha=0.9)) # Placa Ext
-    ax_dcl2.add_patch(plt.Rectangle((0.32, 0.35), 0.36, 0.3, color='#9E9E9E', hatch='//')) # Placa Int
-    ax_dcl2.axvline(0.27, color='red', ls='--'); ax_dcl2.axvline(0.73, color='red', ls='--')
-    ax_dcl2.axis('off')
-    st.pyplot(fig_dcl2)
-
-st.markdown("---")
-
-# --- GRÁFICO COMPARATIVO DE FATIGA (Soderberg, Goodman, Gerber) ---
-st.write("### Comparativa de Criterios de Falla: Soderberg vs Goodman vs Gerber")
-fig_fat, ax_fat = plt.subplots(figsize=(10, 6))
-
-# Rango de esfuerzos medios para las curvas
-tau_m_range = np.linspace(0, ssu, 100)
-
-# Línea de Soderberg (Recta Se a Sy)
-ax_fat.plot([0, ssy], [sse, 0], 'green', lw=2, label='SODERBERG (Más Conservador)')
-# Línea de Goodman (Recta Se a Su)
-ax_fat.plot([0, ssu], [sse, 0], 'blue', lw=2, ls='--', label='GOODMAN (Estándar)')
-# Línea de Gerber (Parábola Se a Su)
-tau_a_gerber = sse * (1 - (tau_m_range / ssu)**2)
-ax_fat.plot(tau_m_range, tau_a_gerber, 'orange', lw=2, label='GERBER (Menos Conservador)')
-
-# Punto de Operación Real
-ax_fat.scatter(tau_m, tau_a, color='red', s=150, edgecolor='black', zorder=10, label='Punto de Carga Real')
-
-ax_fat.set_xlabel("Esfuerzo Medio τ_m (MPa)")
-ax_fat.set_ylabel("Esfuerzo Alternante τ_a (MPa)")
-ax_fat.set_xlim(0, ssu * 1.1); ax_fat.set_ylim(0, sse * 1.2)
-ax_fat.grid(True, alpha=0.3)
-ax_fat.legend()
-st.pyplot(fig_fat)
-
-# --- TABLA COMPARATIVA DE RESULTADOS ---
-st.write("### Resumen de Factores de Seguridad")
-st.table({
-    "Criterio de Falla": ["Soderberg (Fluencia)", "Goodman (Fractura)", "Gerber (Parabólico)"],
-    "Factor de Seguridad (FS)": [f"{fs_soderberg:.2f}", f"{fs_goodman:.2f}", f"{fs_gerber:.2f}"],
-    "Estado": [
-        "✅ Seguro" if fs_soderberg > 1.2 else "❌ Riesgo",
-        "✅ Seguro" if fs_goodman > 1.2 else "❌ Riesgo",
-        "✅ Seguro" if fs_gerber > 1.2 else "❌ Riesgo"
-    ]
-})
-
-st.info("**Interpretación:** Si tu punto rojo está por debajo de la línea verde (Soderberg), el pin es extremadamente seguro. Si está entre la verde y la azul (Goodman), el pin resistirá la rotura pero podría tener ligeras deformaciones.")
+st.error(f"**Nota de Falla:** Con un nivel de **{nivel_acumulacion}**, el esfuerzo cortante en el pin ha subido a **{tau_real:.2f} MPa**. Si este valor se acerca al límite de fatiga (~180-200 MPa), el pin se romperá instantáneamente ante cualquier obstrucción sólida de clinker.")
