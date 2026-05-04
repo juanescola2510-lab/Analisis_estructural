@@ -3,89 +3,107 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 
-# --- CONFIGURACIÓN ---
-st.set_page_config(page_title="Simulador Profesional de Elevadores", layout="wide")
-st.title("🔩 Análisis de Ingeniería: Componentes y Fatiga")
+# --- CONFIGURACIÓN DE PÁGINA ---
+st.set_page_config(page_title="Análisis Integral de Falla - Elevador", layout="wide")
+st.title("🛡️ Sistema de Diagnóstico de Ingeniería: Elevador de Cangilones")
 
-# --- SIDEBAR INPUTS ---
-st.sidebar.header("📊 Parámetros de Operación")
+# --- SIDEBAR: DATOS DE ENTRADA ---
+st.sidebar.header("📊 Operación y Cargas")
 tph = st.sidebar.number_input("Capacidad (Ton/h)", value=150)
 v_ms = st.sidebar.slider("Velocidad (m/s)", 0.5, 2.0, 1.2)
-altura = st.sidebar.number_input("Altura (m)", value=33.5)
-d_pin = st.sidebar.slider("Diámetro del Pin (mm)", 20.0, 55.0, 34.74)
+altura = st.sidebar.number_input("Altura entre centros (m)", value=33.5)
 
-st.sidebar.header("⚠️ Estado de la Bota")
-nivel_acum = st.sidebar.select_slider("Atascamiento", 
+st.sidebar.header("⚙️ Geometría y Material")
+d_pin = st.sidebar.slider("Diámetro del Pin (mm)", 20.0, 60.0, 34.74)
+su_mpa = st.sidebar.number_input("Resistencia Última Su (MPa)", value=980)
+sy_mpa = st.sidebar.number_input("Límite Elástico Sy (MPa)", value=835)
+
+st.sidebar.header("⚠️ Condición de la Bota")
+nivel_acum = st.sidebar.select_slider("Nivel de Atascamiento", 
     options=["Limpio", "Moderado", "Crítico", "Total"], value="Limpio")
 
 # --- LÓGICA DE CÁLCULO ---
 flujo_kgs = (tph * 1000) / 3600
 p_mat_lb = ((flujo_kgs / v_ms) * altura) * 2.20462
-p_cad_lb, p_cang_lb = 2400, 11820
+p_cad_lb, p_cang_lb = 2400, 11820 # Valores fijos según historial
 f_exc_map = {"Limpio": 0.1, "Moderado": 0.5, "Crítico": 1.5, "Total": 3.0}
 f_exc_lb = p_mat_lb * f_exc_map[nivel_acum]
 
 t_total_lb = p_cad_lb + p_cang_lb + p_mat_lb + f_exc_lb
 f_n = t_total_lb * 4.44822
-reaccion_n = f_n / 2 # Reacción en cada placa lateral
+reaccion_n = f_n / 2
 
-# --- GRÁFICOS ---
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
+# Esfuerzos y Fatiga
+area_doble = 2 * (np.pi * (d_pin/2)**2)
+tau_m = f_n / area_doble
+tau_a = tau_m * 0.25 # Esfuerzo alternante estimado
+ssu, ssy = su_mpa * 0.577, sy_mpa * 0.577
+sse = ssu * 0.35 # Límite de fatiga corregido
 
-# 1. SPROCKET CON DIENTES INDUSTRIALES
-ax1.set_title("DCL: Sprocket y Tensión de Cadena", fontsize=14, fontweight='bold')
-# Cuerpo del sprocket
-cuerpo = plt.Circle((0.5, 0.6), 0.22, color='#333333', zorder=2)
-ax1.add_patch(cuerpo)
-# Dibujo de dientes trapezoidales
-for i in range(12):
-    ang = np.deg2rad(i * 30)
-    # Puntos para formar un diente trapezoidal
-    p1 = [0.5 + 0.22*np.cos(ang-0.1), 0.6 + 0.22*np.sin(ang-0.1)]
-    p2 = [0.5 + 0.30*np.cos(ang-0.05), 0.6 + 0.30*np.sin(ang-0.05)]
-    p3 = [0.5 + 0.30*np.cos(ang+0.05), 0.6 + 0.30*np.sin(ang+0.05)]
-    p4 = [0.5 + 0.22*np.cos(ang+0.1), 0.6 + 0.22*np.sin(ang+0.1)]
-    ax1.add_patch(patches.Polygon([p1, p2, p3, p4], color='#333333', zorder=1))
+# --- BLOQUE 1: DIAGRAMAS REALISTAS (DCL) ---
+col1, col2 = st.columns(2)
 
-# Vector T_total y desglose
-ax1.annotate('', xy=(0.8, 0.1), xytext=(0.8, 0.6), arrowprops=dict(facecolor='red', width=4))
-ax1.text(0.82, 0.4, f"T_Total: {t_total_lb:,.0f} lb", color='red', fontweight='bold', fontsize=12)
-ax1.text(0.82, 0.3, f"• Mat: {p_mat_lb:,.0f} lb\n• Bota: {f_exc_lb:,.0f} lb\n• Cang: {p_cang_lb:,.0f} lb\n• Cad: {p_cad_lb:,.0f} lb", color='#555', fontsize=10)
-ax1.axis('off')
+with col1:
+    st.write("### DCL: Sprocket con Desglose de Pesos")
+    fig1, ax1 = plt.subplots(figsize=(8, 8))
+    # Cuerpo Sprocket
+    ax1.add_patch(plt.Circle((0.5, 0.6), 0.22, color='#333333', zorder=2))
+    # Dientes Trapezoidales Reales
+    for i in range(12):
+        ang = np.deg2rad(i * 30)
+        p = [[0.5 + 0.22*np.cos(ang-0.1), 0.6 + 0.22*np.sin(ang-0.1)],
+             [0.5 + 0.30*np.cos(ang-0.06), 0.6 + 0.30*np.sin(ang-0.06)],
+             [0.5 + 0.30*np.cos(ang+0.06), 0.6 + 0.30*np.sin(ang+0.06)],
+             [0.5 + 0.22*np.cos(ang+0.1), 0.6 + 0.22*np.sin(ang+0.1)]]
+        ax1.add_patch(patches.Polygon(p, color='#333333', zorder=1))
+    # Vector T_total y Valores
+    ax1.annotate('', xy=(0.8, 0.1), xytext=(0.8, 0.6), arrowprops=dict(facecolor='red', width=4))
+    ax1.text(0.82, 0.45, f"T_Total: {t_total_lb:,.0f} lb", color='red', fontweight='bold', fontsize=12)
+    ax1.text(0.82, 0.15, f"DETALLE DE CARGAS:\n• Material: {p_mat_lb:,.0f} lb\n• Bota: {f_exc_lb:,.0f} lb\n• Cangilones: {p_cang_lb:,.0f} lb\n• Cadena: {p_cad_lb:,.0f} lb", color='gray', fontsize=9)
+    ax1.axis('off'); st.pyplot(fig1)
 
-# 2. DCL DEL PIN CON REACCIONES Y VALORES
-ax2.set_title("DCL: Esfuerzos y Reacciones en el Pin", fontsize=14, fontweight='bold')
-# Pin y Placas
-ax2.add_patch(plt.Rectangle((0.1, 0.45), 0.8, 0.1, color='#BDBDBD', ec='black', zorder=4))
-ax2.add_patch(plt.Rectangle((0.1, 0.3), 0.12, 0.4, color='#757575', alpha=0.9)) # Placa Izq
-ax2.add_patch(plt.Rectangle((0.78, 0.3), 0.12, 0.4, color='#757575', alpha=0.9)) # Placa Der
-ax2.add_patch(plt.Rectangle((0.32, 0.35), 0.36, 0.3, color='#9E9E9E', hatch='//')) # Buje/Carga
+with col2:
+    st.write("### DCL: Pin con Reacciones y Fuerzas")
+    fig2, ax2 = plt.subplots(figsize=(8, 8))
+    # Ensamble Pin y Placas
+    ax2.add_patch(plt.Rectangle((0.1, 0.45), 0.8, 0.1, color='#BDBDBD', ec='black', zorder=4))
+    ax2.add_patch(plt.Rectangle((0.1, 0.3), 0.12, 0.4, color='#757575', alpha=0.9)) # Placa Izq
+    ax2.add_patch(plt.Rectangle((0.78, 0.3), 0.12, 0.4, color='#757575', alpha=0.9)) # Placa Der
+    ax2.add_patch(plt.Rectangle((0.32, 0.35), 0.36, 0.3, color='#9E9E9E', hatch='//')) # Carga central
+    # Vectores de Reacción (R/2)
+    ax2.annotate('', xy=(0.16, 0.9), xytext=(0.16, 0.7), arrowprops=dict(facecolor='blue', width=3))
+    ax2.annotate('', xy=(0.84, 0.9), xytext=(0.84, 0.7), arrowprops=dict(facecolor='blue', width=3))
+    ax2.text(0.16, 0.93, f"R/2: {reaccion_n:,.0f} N", color='blue', ha='center', fontsize=9)
+    ax2.text(0.84, 0.93, f"R/2: {reaccion_n:,.0f} N", color='blue', ha='center', fontsize=9)
+    # Vector Carga Central
+    ax2.annotate('', xy=(0.5, 0.1), xytext=(0.5, 0.45), arrowprops=dict(facecolor='red', width=5))
+    ax2.text(0.52, 0.15, f"Carga Total: {f_n:,.0f} N", color='red', fontweight='bold')
+    ax2.axis('off'); st.pyplot(fig2)
 
-# Vectores de Reacción (Hacia Arriba)
-ax2.annotate('', xy=(0.16, 0.9), xytext=(0.16, 0.7), arrowprops=dict(facecolor='blue', width=3))
-ax2.annotate('', xy=(0.84, 0.9), xytext=(0.84, 0.7), arrowprops=dict(facecolor='blue', width=3))
-ax2.text(0.16, 0.95, f"R/2: {reaccion_n/1000:.1f} kN", color='blue', ha='center', fontweight='bold')
-ax2.text(0.84, 0.95, f"R/2: {reaccion_n/1000:.1f} kN", color='blue', ha='center', fontweight='bold')
-
-# Vector de Carga (Hacia Abajo)
-ax2.annotate('', xy=(0.5, 0.1), xytext=(0.5, 0.45), arrowprops=dict(facecolor='red', width=5))
-ax2.text(0.52, 0.15, f"Carga: {f_n/1000:.1f} kN", color='red', fontweight='bold')
-
-ax2.axis('off')
-st.pyplot(fig)
-
-# --- RESUMEN TÉCNICO ---
+# --- BLOQUE 2: COMPARATIVA DE CRITERIOS DE FALLA ---
 st.markdown("---")
-st.write("### Análisis Transversal del Pin")
-col_t1, col_t2 = st.columns(2)
-area_mm2 = 2 * (np.pi * (d_pin/2)**2)
-tau_mpa = f_n / area_mm2
+st.write("### Análisis de Fatiga: Comparativa Multicriterio")
+col_graf, col_tab = st.columns([2, 1])
 
-with col_t1:
-    st.info(f"**Área de Doble Corte:** {area_mm2:.2f} mm²")
-    st.info(f"**Esfuerzo Cortante Real:** {tau_mpa:.2f} MPa")
+with col_graf:
+    fig3, ax3 = plt.subplots(figsize=(10, 6))
+    tm_range = np.linspace(0, ssu, 100)
+    ax3.plot([0, ssy], [sse, 0], 'green', label='SODERBERG (Fluencia)', lw=2)
+    ax3.plot([0, ssu], [sse, 0], 'blue', ls='--', label='GOODMAN (Fractura)', lw=2)
+    ax3.plot(tm_range, sse*(1-(tm_range/ssu)**2), 'orange', label='GERBER (Parabólico)', lw=2)
+    ax3.scatter(tau_m, tau_a, color='red', s=200, edgecolor='black', zorder=10, label='Punto de Operación')
+    ax3.set_xlabel("τ_medio (MPa)"); ax3.set_ylabel("τ_alternante (MPa)"); ax3.legend(); ax3.grid(True, alpha=0.3)
+    st.pyplot(fig3)
 
-with col_t2:
-    st.write("**Resumen de Fuerzas en el Pin:**")
-    st.write(f"- Fuerza aplicada (Carga): {f_n:,.0f} N")
-    st.write(f"- Reacción en soportes laterales: {reaccion_n:,.0f} N cada uno")
+with col_tab:
+    st.write("**Factores de Seguridad (FS):**")
+    fs_sod = 1 / ((tau_a/sse) + (tau_m/ssy))
+    fs_goo = 1 / ((tau_a/sse) + (tau_m/ssu))
+    fs_ger = 1 / ((tau_a/sse) + (tau_m/ssu)**2)
+    st.table({
+        "Criterio": ["Soderberg", "Goodman", "Gerber"],
+        "FS": [f"{fs_sod:.2f}", f"{fs_goo:.2f}", f"{fs_ger:.2f}"],
+        "Estado": ["OK" if fs_sod > 1.2 else "RIESGO" for _ in range(3)]
+    })
+
+st.warning(f"**Nota Técnica:** Para el diámetro de **{d_pin} mm**, el esfuerzo cortante es de **{tau_m:.2f} MPa**. Verifique que el punto de operación esté siempre debajo de la línea verde (Soderberg) para evitar elongaciones.")
