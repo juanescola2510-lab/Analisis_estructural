@@ -198,46 +198,41 @@ elif ciclos_falla_puro == 1.0:
 else:
     st.success("✨ **Vida Infinita:** El esfuerzo máximo local está por debajo del umbral de fatiga del material. No se registrará daño acumulativo bajo estas condiciones operativas.")
 
-# --- BLOQUE ENTORNO 3D: MAPEO NODAL CON ESFUERZOS EN LOS EXTREMOS DE ASENTAMIENTO ---
+# --- BLOQUE ENTORNO 3D: MAPEO NODAL DE ALTA DENSIDAD (SÓLIDO COMPACTO) ---
 st.markdown("---")
 st.write("### 🌐 Simulación Volumétrica 3D Interactiva del Gradiente de Esfuerzos en el Pasador")
 
 col_3d_1, col_3d_2 = st.columns(2)
 
 with col_3d_1:
-    st.markdown("**Instrucciones del Entorno 3D (Modelo de Malla Nodal FEA)**")
+    st.markdown("**Instrucciones del Entorno 3D (Modelo de Malla Nodal FEA de Alta Densidad)**")
     st.caption("Usa el mouse para **rotar libremente**, **hacer zoom** y **desplazar** el cilindro metálico.")
     st.write(f"• **Longitud del Pin Simulado:** 60 mm")
     st.write(f"• **Diámetro del Modelo:** {d_pin:.2f} mm")
-    st.write(f"• **Interpretación:** Los planos de color rojo crítico se han relocalizado simétricamente cerca de ambos extremos del pasador ($Z \\approx \\pm 18$ mm), simulando la zona real de cizalladura y asentamiento mecánico contra los eslabones laterales de la cadena.")
+    st.write(f"• **Modificación de Densidad:** Se cuadruplicó la resolución geométrica de los nodos para compactar visualmente el volumen y dar un acabado de sólido continuo.")
 
 with col_3d_2:
     radio_mm = d_pin / 2
     longitud_mm = 60.0
     
-    # Mapeo espacial de nodos internos y externos del cilindro
-    r_coords = np.linspace(0, radio_mm, 8)
-    theta_coords = np.linspace(0, 2 * np.pi, 30)
-    z_coords = np.linspace(-longitud_mm/2, longitud_mm/2, 35)
+    # SE INCREMENTA LA RESOLUCIÓN NODAL: R=18, Theta=45, Z=70 para un volumen mucho más denso y cerrado
+    r_coords = np.linspace(0, radio_mm, 18)
+    theta_coords = np.linspace(0, 2 * np.pi, 45)
+    z_coords = np.linspace(-longitud_mm/2, longitud_mm/2, 70)
     
     R_mesh, THETA_mesh, Z_mesh = np.meshgrid(r_coords, theta_coords, z_coords)
     
     X_3d = R_mesh * np.cos(THETA_mesh)
     Y_3d = R_mesh * np.sin(THETA_mesh)
     
-    # NUEVA MATRIZ FÍSICA: El esfuerzo base máximo se localiza simétricamente en los planos de apoyo laterales (Z = +-18 mm)
-    z_asentamiento = longitud_mm * 0.3  # Plano de corte localizado a 18mm del centro
+    z_asentamiento = longitud_mm * 0.3  
     distancia_a_cortes = np.minimum(abs(Z_mesh - z_asentamiento), abs(Z_mesh + z_asentamiento))
     
-    # El esfuerzo decrece exponencialmente a medida que nos alejamos de las zonas de corte externas hacia el centro u extremos libres
     base_shear = tau_nominal * (R_mesh / radio_mm) * np.exp(-distancia_a_cortes / (longitud_mm / 8))
-    
-    # Aplicación periférica localizada del concentrador Kt en el cuadrante superior (Y > 0) sobre los planos de asentamiento
     Y_normalized = Y_3d / np.maximum(R_mesh, 0.001)
     factor_concentrador_3d = 1 + (kt - 1) * (R_mesh / radio_mm)**4 * np.maximum(0, Y_normalized) * np.exp(-distancia_a_cortes / 1.5)
     Stress_3D = base_shear * factor_concentrador_3d
     
-    # Aplanar las matrices para Plotly Vector
     X_flat = X_3d.flatten()
     Y_flat = Y_3d.flatten()
     Z_flat = Z_mesh.flatten()
@@ -249,12 +244,12 @@ with col_3d_2:
         z=Z_flat,
         mode='markers',
         marker=dict(
-            size=3.5,
+            size=2.2, # Reducción leve de tamaño individual por la cercanía espacial de los nodos
             color=Stress_flat,
             colorscale='Jet',
             cmin=0,
             cmax=max(ssy, tau_m) * 1.05,
-            opacity=0.75,
+            opacity=0.85, # Incremento de la opacidad para acentuar el aspecto sólido
             colorbar=dict(title=dict(text="Esfuerzo Cortante (MPa)", side="right"))
         )
     ))
