@@ -27,7 +27,7 @@ condicion_superficie = st.sidebar.selectbox(
     "Estado Superficial del Pin", 
     ["Nuevo (Pulido)", "Rayado por Clinker (Pitting)", "Grieta Inicial Detectada"]
 )
-mapeo_kt = {"Nuevo (Pulido)": 1.0, "Rayado por Clinker (Pitting)": 1.7, "Grieta Inicial Detected": 2.5}
+mapeo_kt = {"Nuevo (Pulido)": 1.0, "Rayado por Clinker (Pitting)": 1.7, "Grieta Inicial Detectada": 2.5}
 kt = mapeo_kt.get(condicion_superficie, 2.5)
 
 st.sidebar.header("⚠️ Condición de la Bota")
@@ -146,7 +146,8 @@ st.write("### 🔨 Análisis Matemático de Vida Útil Operativa (Regla de Miner
 
 col_miner1, col_miner2 = st.columns(2)
 with col_miner1:
-    frecuencia_impacto = st.slider("Frecuencia del Impacto Transitorio (Cada 'X' minutos)", 1, 60, 5)
+    # CONFIGURADO: Selección directa de impactos por hora mediante el control deslizante
+    impactos_por_hora = st.slider("Cantidad de Impactos Transitorios por Hora", 1, 120, 12)
 with col_miner2:
     horas_operacion_diaria = st.number_input("Horas de trabajo por día", value=24.0, max_value=24.0, min_value=0.1)
 
@@ -167,8 +168,7 @@ else:
 
 # Renderizado del análisis de durabilidad real por impactos y RPM
 if ciclos_falla_puro != float('inf') and ciclos_falla_puro > 1:
-    # Cuantificación de impactos en base a tiempo
-    impactos_por_hora = 60 / frecuencia_impacto
+    # Cálculo directo de los impactos diarios usando la nueva variable de la barra
     impactos_por_dia = impactos_por_hora * horas_operacion_diaria
     
     # Cálculo de Vida Útil mediante la acumulación lineal de daño de Miner
@@ -184,13 +184,10 @@ if ciclos_falla_puro != float('inf') and ciclos_falla_puro > 1:
     with c_m3:
         st.metric(label="Vida Útil Estimada (Días)", value=f"{dias_vida_miner:,.1f} días")
         
-    # Condición de advertencia basada en las RPM ingresadas
-    ciclos_totales_giro_dia = rpm_sprocket * 60 * horas_operacion_diaria
-    
     if tau_m > ssy:
         st.error(f"🚨 **ALERTA CRÍTICA:** El esfuerzo cortante máximo de **{tau_m:.2f} MPa** superó el límite elástico al corte ({ssy:.2f} MPa). Se producirá deformación plástica permanente en el primer impacto. Reemplace el pin o disminuya la bota.")
     else:
-        st.warning(f"⚠️ **Diagnóstico:** Operando a **{rpm_sprocket:.1f} RPM**, el pin soporta la rotación normal, pero el daño acumulado por los impactos transitorios limita su supervivencia estructural a **{dias_vida_miner:,.1f} días**.")
+        st.warning(f"⚠️ **Diagnóstico:** Operando a **{rpm_sprocket:.1f} RPM**, el pin soporta la rotación normal, pero el daño acumulado por los {impactos_por_hora} impactos transitorios por hora limita su supervivencia estructural a **{dias_vida_miner:,.1f} días**.")
 
 elif ciclos_falla_puro == 1.0:
     st.error(f"💥 **FALLA ESTÁTICA INMEDIATA:** El esfuerzo pico local (**{tau_m:.2f} MPa**) es mayor o igual a la resistencia última al corte del acero ({ssu:.2f} MPa). La pieza se romperá en el primer impacto.")
