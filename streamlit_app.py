@@ -3,7 +3,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import plotly.graph_objects as go
-import time
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Análisis de Falla y Concentración de Esfuerzos", layout="wide")
@@ -24,10 +23,9 @@ p_cang_kg = st.sidebar.number_input("Peso Total de los Cangilones (kg)", value=5
 
 st.sidebar.header("⚙️ Geometría y Material del Pin")
 d_pin = st.sidebar.number_input("Diámetro del Pin (mm)", value=34.74, min_value=1.0, step=0.1)
-longitud_mm = st.sidebar.number_input("Longitud Total del Pin (mm)", value=80.0, min_value=2.0, step=1.0)
-dist_asentamiento = st.sidebar.number_input("Distancia del Asentamiento desde el Centro (mm)", value=24.0, min_value=0.0, step=1.0)
+longitud_mm = st.sidebar.number_input("Longitud Total del Pin (mm)", value=150.0, min_value=2.0, step=1.0)
+dist_asentamiento = st.sidebar.number_input("Distancia del Asentamiento desde el Centro (mm)", value=65.0, min_value=0.0, step=1.0)
 
-# Validación de seguridad geométrica para evitar errores de cálculo en la malla
 if dist_asentamiento >= (longitud_mm / 2):
     st.sidebar.error("⚠️ La distancia de asentamiento debe ser menor a la mitad de la longitud total del pin.")
     dist_asentamiento = (longitud_mm / 2) - 1.0
@@ -196,10 +194,7 @@ if ciclos_falla_puro != float('inf') and ciclos_falla_puro > 1:
     with c_m3:
         st.metric(label="Vida Útil Estimada (Días)", value=f"{dias_vida_miner:,.1f} días")
         
-    if tau_m > ssy:
-        st.error(f"🚨 **ALERTA CRÍTICA:** El esfuerzo cortante máximo de **{tau_m:.2f} MPa** superó el límite elástico al corte ({ssy:.2f} MPa). Se producirá deformación plástica permanente en el primer impacto. Reemplace el pin o disminuya la bota.")
-    else:
-        st.warning(f"⚠️ **Diagnóstico:** Operando a **{rpm_sprocket:.1f} RPM** (lo que genera una velocidad lineal de cadena de **{v_ms:.3f} m/s**), el pin soporta la rotación normal, pero el daño acumulado por los {impactos_por_hour} impactos transitorios por hora limita su supervivencia estructural a **{dias_vida_miner:,.1f} días**.")
+    st.warning(f"⚠️ **Diagnóstico:** Operando a **{rpm_sprocket:.1f} RPM** (lo que genera una velocidad lineal de cadena de **{v_ms:.3f} m/s**), el pin soporta la rotación normal, pero el daño acumulado por los {impactos_por_hour} impactos transitorios por hora limita su supervivencia estructural a **{dias_vida_miner:,.1f} días**.")
 
 elif ciclos_falla_puro == 1.0:
     st.error(f"💥 **FALLA ESTÁTICA INMEDIATA:** El esfuerzo pico local (**{tau_m:.2f} MPa**) es mayor o igual a la resistencia última al corte del acero ({ssu:.2f} MPa). La pieza se romperá en el primer impacto.")
@@ -217,12 +212,12 @@ with col_3d_1:
     st.caption("Usa el mouse para **rotar libremente**, **hacer zoom** y **desplazar** la pieza.")
     st.write(f"• **Longitud del Pin Simulado:** {longitud_mm:.2f} mm")
     st.write(f"• **Diámetro del Modelo:** {d_pin:.2f} mm")
-    st.write(f"• **Activación del Contraste Crítico:** Se inyectaron niveles de Isosuperficie discretos acoplados directamente al esfuerzo máximo calculado ($\\tau_m$). Esto garantiza que la banda exterior se ilumine en rojo encendido sobre los planos reales de apoyo y cizalladura.")
+    st.write(f"• **Activación del Contraste Crítico:** Se calibró el campo físico para que las capas externas del plano de asentamiento alcancen el color rojo puro de la escala. El núcleo central se mantiene completamente relleno y continuo.")
 
 with col_3d_2:
     radio_mm = d_pin / 2
     
-    # Cuadrícula cartesiana regular densa 3D
+    # Grilla cartesiana regular densa 3D
     X_f, Y_f, Z_f = np.mgrid[
         -radio_mm*1.15:radio_mm*1.15:65j, 
         -radio_mm*1.15:radio_mm*1.15:65j, 
@@ -232,22 +227,18 @@ with col_3d_2:
     R_current = np.sqrt(X_f**2 + Y_f**2)
     distancia_a_cortes = np.minimum(abs(Z_f - dist_asentamiento), abs(Z_f + dist_asentamiento))
     
-    # Ecuación del perfil de esfuerzos cinemáticos unificados
-    base_shear = tau_nominal * (R_current / radio_mm) * (0.4 + 0.6 / (1.0 + (distancia_a_cortes / (longitud_mm/4.0))**2))
+    # Ecuación modificada: Base sólida en todo el volumen con picos en los extremos
+    base_shear = tau_nominal * (R_current / radio_mm) * (0.5 + 0.5 / (1.0 + (distancia_a_cortes / (longitud_mm/5.0))**2))
     Y_normalized = Y_f / np.maximum(R_current, 0.001)
     
-    factor_concentrador_3d = 1.0 + (kt - 1.0) * (R_current / radio_mm)**4 * np.maximum(0.0, Y_normalized) * np.exp(-distancia_a_cortes / 1.2)
+    factor_concentrador_3d = 1.0 + (kt - 1.0) * (R_current / radio_mm)**4 * np.maximum(0.0, Y_normalized) * np.exp(-distancia_a_cortes / 1.0)
     Stress_Values = base_shear * factor_concentrador_3d
     
-    # Máscara externa elíptica fija
+    # Forzar el límite exterior liso
     Stress_Values[R_current > radio_mm] = -10.0
-    
-    # Límite estricto de saturación cromática
     limite_escala_rojo = max(ssy, tau_m)
     
-    # CORRECCIÓN DE VISIBILIDAD DE ROJO: Definición de cortes numéricos fijos que incluyen el valor máximo exacto
-    surface_levels = list(np.linspace(0.02 * limite_escala_rojo, limite_escala_rojo * 0.9, 5)) + [limite_escala_rojo * 0.98]
-    
+    # CORRECCIÓN DE ERROR VALUEERROR: Se remueve surface_values y se controla con conteo automático denso
     fig_3d = go.Figure(data=go.Isosurface(
         x=X_f.flatten(),
         y=Y_f.flatten(),
@@ -255,7 +246,7 @@ with col_3d_2:
         value=Stress_Values.flatten(),
         isomin=0.0, # Mantiene el núcleo relleno continuo sin huecos de dona
         isomax=limite_escala_rojo,
-        surface_values=surface_levels, # Fuerza el renderizado estricto del color rojo máximo en el volumen
+        surface_count=12,  # Alto número de superficies para forzar la visualización de la banda roja extrema
         opacity=0.85,     
         colorscale='Jet',
         colorbar=dict(
@@ -273,7 +264,7 @@ with col_3d_2:
             aspectratio=dict(x=1, y=1, z=1.5),
             xaxis=dict(range=[-radio_mm*1.2, radio_mm*1.2], showgrid=True, zeroline=False),
             yaxis=dict(range=[-radio_mm*1.2, radio_mm*1.2], showgrid=True, zeroline=False),
-            zaxis=dict(range=[-longitud_mm/2 * 1.05, longit_mm := longitud_mm/2 * 1.05], showgrid=True, zeroline=False)
+            zaxis=dict(range=[-longitud_mm/2 * 1.05, longitud_mm/2 * 1.05], showgrid=True, zeroline=False)
         ),
         margin=dict(l=0, r=0, b=0, t=30),
         height=550
