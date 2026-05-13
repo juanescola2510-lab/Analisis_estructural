@@ -31,7 +31,7 @@ condicion_superficie = st.sidebar.selectbox(
     "Estado Superficial del Pin", 
     ["Nuevo (Pulido)", "Rayado superficial", "Grieta Inicial Detectada"]
 )
-mapeo_kt = {"Nuevo (Pulido)": 1.0, "Rayado superficial": 1.75, "Grieta Inicial Detectada": 2.75}
+mapeo_kt = {"Nuevo (Pulido)": 1.0, "Rayado superficial": 1.75, "Grieta Inicial Detectada": 2.65}
 kt = mapeo_kt.get(condicion_superficie, 2.5)
 
 st.sidebar.header("⚠️ Condición de la Bota")
