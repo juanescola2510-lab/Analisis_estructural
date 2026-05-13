@@ -2,6 +2,7 @@ import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+import plotly.graph_objects as go
 import time
 
 # --- CONFIGURACIÓN DE PÁGINA ---
@@ -197,66 +198,73 @@ elif ciclos_falla_puro == 1.0:
 else:
     st.success("✨ **Vida Infinita:** El esfuerzo máximo local está por debajo del umbral de fatiga del material. No se registrará daño acumulativo bajo estas condiciones operativas.")
 
-# --- NUEVO BLOQUE: SIMULACIÓN DE DISTRIBUCIÓN DE ESFUERZOS EN EL PASADOR ---
+# --- NUEVO BLOQUE: SIMULACIÓN EN 3D DE ESFUERZOS EN EL PASADOR ---
 st.markdown("---")
-st.write("### 🧲 Simulación de Distribución de Esfuerzos Cortantes en el Pin (Sección Transversal)")
+st.write("### 🌐 Simulación Volumétrica 3D Interactiva del Gradiente de Esfuerzos en el Pasador")
 
-col_stress1, col_stress2 = st.columns([1, 2])
+col_3d_1, col_3d_2 = st.columns([1, 2])
 
-with col_stress1:
-    st.markdown("**Interpretación Estructural**")
-    st.write(f"• **Esfuerzo de Fluencia al Corte ($\\tau_{{sy}}$):** {ssy:.2f} MPa")
-    st.write(f"• **Esfuerzo Cortante Nominal Máximo (Cuerpo):** {tau_nominal:.2f} MPa")
-    st.write(f"• **Esfuerzo Cortante Pico Localizado (Muesca):** {tau_m:.2f} MPa")
-    
-    if tau_m >= ssy:
-        st.error("❌ **Zona Periférica Plastificada:** Los niveles rojos indican que el borde exterior ha superado el límite elástico. Se iniciará una microgrieta por fatiga en este contorno.")
-    else:
-        st.success("✔ **Rango Elástico:** La sección exterior trabaja con esfuerzos altos pero se mantiene dentro del comportamiento elástico seguro bajo condiciones estáticas.")
+with col_3d_1:
+    st.markdown("**Instrucciones del Entorno 3D**")
+    st.caption("Usa el mouse para **rotar**, **hacer zoom** y **desplazar** el sólido volumétrico del pasador en tiempo real.")
+    st.write(f"• **Longitud del Pin Simulado:** 60 mm")
+    st.write(f"• **Diámetro del Modelo:** {d_pin:.2f} mm")
+    st.write(f"• **Punto de Concentración Crítica:** Plano central ($Z=0$, Cuadrante Superior $Y>0$)")
 
-with col_stress2:
-    # Generación de la sección transversal circular (Mapeo numérico)
-    radio_pin_mm = d_pin / 2
-    x_grid = np.linspace(-radio_pin_mm, radio_pin_mm, 200)
-    y_grid = np.linspace(-radio_pin_mm, radio_pin_mm, 200)
-    X_mat, Y_mat = np.meshgrid(x_grid, y_grid)
+with col_3d_2:
+    # Generación paramétrica del volumen cilíndrico del pasador
+    radio_mm = d_pin / 2
+    longitud_mm = 60.0
     
-    # Calcular el radio radial para cada punto discretizado de la grilla
-    R_mat = np.sqrt(X_mat**2 + Y_mat**2)
+    # Crear la malla interna cilíndrica (Coordenadas cilíndricas a cartesianas)
+    r_coords = np.linspace(0, radio_mm, 10)
+    theta_coords = np.linspace(0, 2 * np.pi, 24)
+    z_coords = np.linspace(-longitud_mm/2, longitud_mm/2, 15)
     
-    # Ecuación analítica del gradiente de corte mecánico + Efecto concentrador en la superficie exterior (muesca)
-    # El esfuerzo cortante por torsión/flexión pura crece linealmente hacia el radio exterior
-    Stress_Field = tau_nominal * (R_mat / radio_pin_mm)
+    R_mesh, THETA_mesh, Z_mesh = np.meshgrid(r_coords, theta_coords, z_coords)
     
-    # Simular la muesca localizada en el cuadrante superior (Concentración por factor Kt en la superficie exterior)
-    concentracion_periferica = 1 + (kt - 1) * (R_mat / radio_pin_mm)**4 * (Y_mat / np.maximum(R_mat, 0.001))
-    Stress_Field = Stress_Field * np.maximum(1.0, concentracion_periferica)
+    X_3d = R_mesh * np.cos(THETA_mesh)
+    Y_3d = R_mesh * np.sin(THETA_mesh)
     
-    # Máscara para recortar los puntos fuera del diámetro cilíndrico real del pasador
-    Stress_Field[R_mat > radio_pin_mm] = np.nan
+    # Ecuación analítica tridimensional del campo de esfuerzo
+    # El esfuerzo decae exponencialmente al alejarse del plano central de corte Z = 0
+    base_shear = tau_nominal * (R_mesh / radio_mm) * np.exp(-abs(Z_mesh) / (longitud_mm / 4))
     
-    fig_stress, ax_stress = plt.subplots(figsize=(7, 6))
-    # Contorno de colores dinámico basado en el mapa térmico Jet (Azul = Seguro, Rojo = Crítico)
-    cont_plot = ax_stress.contourf(X_mat, Y_mat, Stress_Field, levels=25, cmap='jet', vmin=0, vmax=max(ssy, tau_m)*1.1)
+    # Inyección matemática del concentrador superficial Kt localizado en la fibra superior (Y > 0)
+    factor_concentrador_3d = 1 + (kt - 1) * (R_mesh / radio_mm)**4 * np.maximum(0, Y_mesh := Y_3d / np.maximum(R_mesh, 0.001)) * np.exp(-abs(Z_mesh) / 2.0)
+    Stress_3D = base_shear * factor_concentrador_3d
     
-    # Dibujar la frontera del pin
-    ax_stress.add_patch(plt.Circle((0, 0), radio_pin_mm, color='black', fill=False, lw=2))
+    # Aplanar las matrices densas para Plotly Volume
+    X_flat = X_3d.flatten()
+    Y_flat = Y_3d.flatten()
+    Z_flat = Z_mesh.flatten()
+    Stress_flat = Stress_3D.flatten()
     
-    # Marca de indicador en la muesca superior concentradora de esfuerzos
-    ax_stress.plot([0], [radio_pin_mm], marker='v', color='black', markersize=12, label='Zona de Concentración ($K_t$)')
+    # Crear la figura volumétrica 3D interactiva
+    fig_3d = go.Figure(data=go.Volume(
+        x=X_flat,
+        y=Y_flat,
+        z=Z_flat,
+        value=Stress_flat,
+        isomin=0,
+        isomax=max(ssy, tau_m) * 1.05,
+        opacity=0.4, # Transparencia para ver el gradiente en las capas internas
+        surface_count=20,
+        colorscale='Jet',
+        colorbar=dict(title="Esfuerzo Cortante (MPa)", titleside="right")
+    ))
     
-    cbar = fig_stress.colorbar(cont_plot, ax=ax_stress)
-    cbar.set_label('Esfuerzo Cortante Equivalente $\\tau$ (MPa)', fontsize=10)
-    
-    ax_stress.set_xlim(-radio_pin_mm * 1.1, radio_pin_mm * 1.1)
-    ax_stress.set_ylim(-radio_pin_mm * 1.1, radio_pin_mm * 1.1)
-    ax_stress.set_xlabel("Eje X (mm)", fontsize=9)
-    ax_stress.set_ylabel("Eje Y (mm)", fontsize=9)
-    ax_stress.set_title(f"Gradiente Térmico de Esfuerzos Cortantes (Pin $\\phi$ = {d_pin:.2f} mm)", fontsize=11, fontweight='bold')
-    ax_stress.axis('equal')
-    ax_stress.grid(True, alpha=0.15)
-    st.pyplot(fig_stress)
-    plt.close(fig_stress)
+    fig_3d.update_layout(
+        scene=dict(
+            xaxis_title='Eje X (mm)',
+            yaxis_title='Eje Y (mm)',
+            zaxis_title='Longitud Z (mm)',
+            aspectratio=dict(x=1, y=1, z=1.5)
+        ),
+        margin=dict(l=0, r=0, b=0, t=30),
+        height=550
+    )
+    st.plotly_chart(fig_3d, use_container_width=True)
 
 # --- BLOQUE DE SIMULACIÓN REALISTA CON TRAYECTORIA CURVA EN SPROCKETS ---
 st.markdown("---")
@@ -334,8 +342,8 @@ if play_sim:
             
             puntos_transformados = []
             for pt in puntos_locales:
-                x_rot = pt * cos_a - pt * sin_a + x_pos
-                y_rot = pt * sin_a + pt * cos_a + y_pos
+                x_rot = pt[0] * cos_a - pt[1] * sin_a + x_pos
+                y_rot = pt[0] * sin_a + pt[1] * cos_a + y_pos
                 puntos_transformados.append([x_rot, y_rot])
                 
             color_cang = '#27ae60' if cargado else '#2980b9'
@@ -347,8 +355,8 @@ if play_sim:
                 puntos_mat_locales = np.array([[0.05, -0.35], [0.55, -0.35], [0.65, 0.1], [0.05, 0.1]])
                 puntos_mat_trans = []
                 for pt in puntos_mat_locales:
-                    x_rot = pt * cos_a - pt * sin_a + x_pos
-                    y_rot = pt * sin_a + pt * cos_a + y_pos
+                    x_rot = pt[0] * cos_a - pt[1] * sin_a + x_pos
+                    y_rot = pt[0] * sin_a + pt[1] * cos_a + y_pos
                     puntos_mat_trans.append([x_rot, y_rot])
                 ax_sim.add_patch(patches.Polygon(puntos_mat_trans, closed=True, facecolor='#d35400', alpha=0.9, zorder=5))
         
