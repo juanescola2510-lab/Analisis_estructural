@@ -119,8 +119,6 @@ st.markdown("---")
 st.write(f"### Análisis de Fatiga Estática y Límites Tolerables (Factor $K_t$ = {kt})")
 col_graf, col_tab = st.columns(2)
 
-sse_corregido = su_mpa * 0.5 * 0.577
-
 with col_graf:
     fig3, ax3 = plt.subplots(figsize=(10, 6))
     tm_range = np.linspace(0, ssu, 100)
@@ -168,9 +166,6 @@ with col_miner1:
 with col_miner2:
     horas_operacion_diaria = st.number_input("Horas de trabajo por día", value=24.0, max_value=24.0, min_value=0.1)
 
-sf_103 = 0.9 * ssu  
-f_limite = sse_corregido  
-
 if tau_m >= ssu:
     ciclos_falla_puro = 1.0
 elif tau_m <= f_limite:
@@ -201,7 +196,7 @@ elif ciclos_falla_puro == 1.0:
 else:
     st.success("✨ **Vida Infinita:** El esfuerzo máximo local está por debajo del umbral de fatiga del material. No se registrará daño acumulativo bajo estas condiciones operativas.")
 
-# --- BLOQUE ENTORNO 3D PERFECCIONADO: RENDIMIENTO CILÍNDRICO SÓLIDO CON LECTURA DE HOVER MOUSE REALISTA ---
+# --- BLOQUE ENTORNO 3D PERFECCIONADO: RENDIMIENTO CILÍNDRICO SÓLIDO TOTAL RELLENO CON ROJO CRÍTICO ---
 st.markdown("---")
 st.write("### 🌐 Simulación Volumétrica 3D Interactiva del Gradiente de Esfuerzos en el Pasador")
 
@@ -212,12 +207,12 @@ with col_3d_1:
     st.caption("Usa el mouse para **rotar libremente**, **hacer zoom** y **desplazar** la pieza.")
     st.write(f"• **Longitud del Pin Simulado:** {longitud_mm:.2f} mm")
     st.write(f"• **Diámetro del Modelo:** {d_pin:.2f} mm")
-    st.write(f"• **Lectura Puntual Activa:** Posicione el puntero del mouse sobre las bandas rojas o cualquier sección del pasador. La interfaz desplegará un cuadro flotante indicando el valor de esfuerzo real en ese nodo exacto.")
+    st.write(f"• **Activación del Contraste Crítico:** Se corrigió el parámetro eliminando `surface_values` en conflicto. El núcleo central se mantiene completamente relleno estableciendo un límite mínimo de datos bajo y la banda exterior se ilumina en rojo encendido de forma interactiva.")
 
 with col_3d_2:
     radio_mm = d_pin / 2
     
-    # Grilla cartesiana regular densa 3D
+    # Cuadrícula cartesiana regular densa 3D
     X_f, Y_f, Z_f = np.mgrid[
         -radio_mm*1.15:radio_mm*1.15:65j, 
         -radio_mm*1.15:radio_mm*1.15:65j, 
@@ -227,29 +222,27 @@ with col_3d_2:
     R_current = np.sqrt(X_f**2 + Y_f**2)
     distancia_a_cortes = np.minimum(abs(Z_f - dist_asentamiento), abs(Z_f + dist_asentamiento))
     
-    # Ecuación de perfil de esfuerzos con amplificación local periférica
-    base_shear = tau_nominal * (R_current / radio_mm) * (0.4 + 0.6 / (1.0 + (distancia_a_cortes / (longitud_mm/4.0))**2))
+    # Ecuación del perfil de esfuerzos cinemáticos unificados de alto contraste mecánico
+    base_shear = tau_nominal * (R_current / radio_mm) * (0.45 + 0.55 / (1.0 + (distancia_a_cortes / (longitud_mm/4.0))**2))
     Y_normalized = Y_f / np.maximum(R_current, 0.001)
     
     factor_concentrador_3d = 1.0 + (kt - 1.0) * (R_current / radio_mm)**4 * np.maximum(0.0, Y_normalized) * np.exp(-distancia_a_cortes / 1.2)
     Stress_Values = base_shear * factor_concentrador_3d
     
-    # Máscara externa elíptica
-    Stress_Values[R_current > radio_mm] = -10.0
+    # Forzar el límite exterior liso recortando el cubo excedente
+    Stress_Values[R_current > radio_mm] = -5.0
     limite_escala_rojo = max(ssy, tau_m)
     
-    # Niveles discretos automáticos de capas
-    surface_levels = list(np.linspace(0.02 * limite_escala_rojo, limite_escala_rojo * 0.9, 5)) + [limite_escala_rojo * 0.98]
-    
-    # SE MODIFICA: Configuración avanzada de hovertemplate para lectura interactiva al pasar el mouse
+    # CORRECCIÓN DEFINITIVA: Se remueve el parámetro surface_values causante del ValueError
+    # Controlamos las capas mediante surface_count=15 para lograr un sólido denso con bandas rojas explícitas
     fig_3d = go.Figure(data=go.Isosurface(
         x=X_f.flatten(),
         y=Y_f.flatten(),
         z=Z_f.flatten(),
         value=Stress_Values.flatten(),
-        isomin=0.0, 
+        isomin=0.0, # Evita el corte en la mitad asegurando un cilindro macizo relleno
         isomax=limite_escala_rojo,
-        surface_values=surface_levels, 
+        surface_count=15,  
         opacity=0.85,     
         colorscale='Jet',
         colorbar=dict(
@@ -257,7 +250,6 @@ with col_3d_2:
             dtick=25
         ),
         caps=dict(x_show=False, y_show=False, z_show=False),
-        # PARÁMETROS DE LECTURA DE MOUSE ACTIVADOS
         hoverinfo="all",
         hovertemplate=(
             "<b>Coordenadas del Nodo:</b><br>" +
@@ -265,7 +257,7 @@ with col_3d_2:
             "Y (Ancho): %{y:.2f} mm<br>" +
             "Z (Longitud): %{z:.2f} mm<br>" +
             "<span style='color:yellow'><b>Esfuerzo Cortante: %{value:.2f} MPa</b></span>" +
-            "<extra></extra>" # Elimina la etiqueta secundaria de Plotly por estética
+            "<extra></extra>" 
         )
     ))
     
