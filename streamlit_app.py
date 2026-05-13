@@ -49,7 +49,7 @@ v_ms = (rpm_sprocket * perimetro_sprocket) / 60
 # --- LÓGICA DE CÁLCULO DE ESFUERZOS (EN BASE A KG) ---
 flujo_kgs = (tph * 1000) / 3600
 p_mat_kg = (flujo_kgs / v_ms) * altura
-f_exc_map = {"Limpio": 0.1, "Moderado": 0.5, "Crítico": 1.5, "Total": 3.0}
+f_exc_map = {"Limpio": 0.1, "Moderado": 0.4, "Crítico": 1.5, "Total": 3.0}
 f_exc_kg = p_mat_kg * f_exc_map[nivel_acum]
 
 # Sumatoria de masa en kilogramos y conversión directa a Newtons (gravedad = 9.80665 m/s²)
