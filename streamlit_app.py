@@ -2,7 +2,7 @@ import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
-import plotly.graph_objects go
+import plotly.graph_objects as go
 import time
 
 # --- CONFIGURACIÓN DE PÁGINA ---
