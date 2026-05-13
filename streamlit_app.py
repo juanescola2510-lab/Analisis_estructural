@@ -13,13 +13,13 @@ tph = st.sidebar.number_input("Capacidad Real (Ton/h)", value=150)
 altura = st.sidebar.number_input("Altura entre centros (m)", value=33.5)
 
 st.sidebar.header("⚙️ Geometría del Sprocket y Cadena")
-# NUEVOS PARÁMETROS SOLICITADOS DE FORMA DIRECTA
 paso_pulg = st.sidebar.number_input("Paso de la Cadena (pulgadas)", value=6.0, min_value=0.1)
 num_dientes = st.sidebar.number_input("Número de Dientes del Sprocket", value=12, min_value=1)
 
-st.sidebar.header("⚖️ Pesos del Sistema (lb)")
-p_cad_lb = st.sidebar.number_input("Peso Total de la Cadena (lb)", value=2400)
-p_cang_lb = st.sidebar.number_input("Peso Total de los Cangilones (lb)", value=11820)
+# SE MODIFICA: Los pesos ahora se ingresan y rotulan directamente en Kilogramos (kg)
+st.sidebar.header("⚖️ Pesos del Sistema (kg)")
+p_cad_kg = st.sidebar.number_input("Peso Total de la Cadena (kg)", value=1089)
+p_cang_kg = st.sidebar.number_input("Peso Total de los Cangilones (kg)", value=5361)
 
 st.sidebar.header("⚙️ Geometría y Material del Pin")
 d_pin = st.sidebar.slider("Diámetro del Pin (mm)", 20.0, 60.0, 34.74)
@@ -42,22 +42,27 @@ st.sidebar.header("⏱️ Parámetros Operativos del Tiempo")
 rpm_sprocket = st.sidebar.number_input("Velocidad del Sprocket (RPM)", value=41.0, min_value=1.0)
 
 # --- LÓGICA DE CÁLCULO CINEMÁTICO (AUTOMÁTICO) ---
-# Conversión del paso de pulgadas a metros
 paso_m = paso_pulg * 0.0254
-# Perímetro lineal por revolución del sprocket
 perimetro_sprocket = num_dientes * paso_m
-# Cálculo automático de la velocidad de la cadena (m/s)
 v_ms = (rpm_sprocket * perimetro_sprocket) / 60
 
-# --- LÓGICA DE CÁLCULO DE ESFUERZOS ---
+# --- LÓGICA DE CÁLCULO DE ESFUERZOS (EN BASE A KG) ---
 flujo_kgs = (tph * 1000) / 3600
-p_mat_lb = ((flujo_kgs / v_ms) * altura) * 2.20462
+p_mat_kg = (flujo_kgs / v_ms) * altura
 f_exc_map = {"Limpio": 0.1, "Moderado": 0.5, "Crítico": 1.5, "Total": 3.0}
-f_exc_lb = p_mat_lb * f_exc_map[nivel_acum]
+f_exc_kg = p_mat_kg * f_exc_map[nivel_acum]
 
-t_total_lb = p_cad_lb + p_cang_lb + p_mat_lb + f_exc_lb
-f_n = t_total_lb * 4.44822
+# Sumatoria de masa en kilogramos y conversión directa a Newtons (gravedad = 9.80665 m/s²)
+peso_total_kg = p_cad_kg + p_cang_kg + p_mat_kg + f_exc_kg
+f_n = peso_total_kg * 9.80665
 reaccion_n = f_n / 2
+
+# Para mantener la compatibilidad gráfica del DCL, se guarda la equivalencia informativa en lb
+t_total_lb = peso_total_kg * 2.20462
+p_mat_lb = p_mat_kg * 2.20462
+f_exc_lb = f_exc_kg * 2.20462
+p_cang_lb = p_cang_kg * 2.20462
+p_cad_lb = p_cad_kg * 2.20462
 
 # Esfuerzos (Área Simple)
 area_pin = (np.pi * (d_pin/2)**2)
@@ -87,8 +92,8 @@ with col1:
              [0.5 + 0.22*np.cos(ang+0.1), 0.6 + 0.22*np.sin(ang+0.1)]]
         ax1.add_patch(patches.Polygon(p, color='#333333', zorder=1))
     ax1.annotate('', xy=(0.8, 0.1), xytext=(0.8, 0.6), arrowprops=dict(facecolor='red', width=4))
-    ax1.text(0.82, 0.45, f"T_Total: {t_total_lb:,.0f} lb", color='red', fontweight='bold', fontsize=12)
-    ax1.text(0.82, 0.15, f"• Mat: {p_mat_lb:,.0f} lb\n• Bota: {f_exc_lb:,.0f} lb\n• Cang: {p_cang_lb:,.0f} lb\n• Cad: {p_cad_lb:,.0f} lb", color='gray', fontsize=9)
+    ax1.text(0.82, 0.45, f"T_Total: {peso_total_kg:,.0f} kg", color='red', fontweight='bold', fontsize=12)
+    ax1.text(0.82, 0.15, f"• Mat: {p_mat_kg:,.0f} kg\n• Bota: {f_exc_kg:,.0f} kg\n• Cang: {p_cang_kg:,.0f} kg\n• Cad: {p_cad_kg:,.0f} kg", color='gray', fontsize=9)
     ax1.axis('off')
     st.pyplot(fig1)
 
@@ -166,8 +171,8 @@ with col_miner2:
     horas_operacion_diaria = st.number_input("Horas de trabajo por día", value=24.0, max_value=24.0, min_value=0.1)
 
 # Cálculo puro de la curva S-N para el Esfuerzo Máximo Local (tau_m)
-sf_103 = 0.9 * ssu  # Límite superior a 10^3 ciclos
-f_limite = sse_corregido  # Límite inferior de fatiga
+sf_103 = 0.9 * ssu  
+f_limite = sse_corregido  
 
 if tau_m >= ssu:
     ciclos_falla_puro = 1.0
