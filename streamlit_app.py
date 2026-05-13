@@ -201,7 +201,6 @@ else:
 st.markdown("---")
 st.write("### 🔄 Simulación Dinámica Industrial del Movimiento de Cangilones")
 
-# CORRECCIÓN DE ERROR EN LÍNEA 204: Agregado el parámetro entero '2'
 col_sim1, col_sim2 = st.columns(2)
 
 with col_sim1:
@@ -216,7 +215,8 @@ with col_sim2:
     placeholder_grafico = st.empty()
 
 if play_sim:
-    num_cangilones_sim = 12
+    # SE MODIFICA: Se duplicó la cantidad de cangilones (de 12 a 24) para que se vean más seguidos
+    num_cangilones_sim = 24
     posiciones_fase = np.linspace(0, perimetro_total_lazo, num_cangilones_sim, endpoint=False)
     
     for t_step in range(80):
@@ -272,7 +272,6 @@ if play_sim:
                 [0.0, 0.3]         
             ])
             
-            # CORRECCIÓN DE INDEXACIÓN MATEMÁTICA: Modificado para mapear arreglos bidimensionales (pt[0] y pt[1])
             puntos_transformados = []
             for pt in puntos_locales:
                 x_rot = pt[0] * cos_a - pt[1] * sin_a + x_pos
