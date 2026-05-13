@@ -185,7 +185,7 @@ if ciclos_falla_puro != float('inf') and ciclos_falla_puro > 1:
     with c_m2:
         st.metric(label="Vida Útil Estimada (Horas)", value=f"{horas_vida_miner:,.1f} h")
     with c_m3:
-        st.metric(label="Vida Útil Estimada (Días)", value=f"{dias_vida_miner:,.1f} days")
+        st.metric(label="Vida Útil Estimada (Días)", value=f"{dias_vida_miner:,.1f} días")
         
     if tau_m > ssy:
         st.error(f"🚨 **ALERTA CRÍTICA:** El esfuerzo cortante máximo de **{tau_m:.2f} MPa** superó el límite elástico al corte ({ssy:.2f} MPa). Se producirá deformación plástica permanente en el primer impacto. Reemplace el pin o disminuya la bota.")
@@ -197,84 +197,124 @@ elif ciclos_falla_puro == 1.0:
 else:
     st.success("✨ **Vida Infinita:** El esfuerzo máximo local está por debajo del umbral de fatiga del material. No se registrará daño acumulativo bajo estas condiciones operativas.")
 
-# --- BLOQUE DE SIMULACIÓN REALISTA MEJORADO ---
+# --- BLOQUE DE SIMULACIÓN REALISTA CON TRAYECTORIA CURVA EN SPROCKETS ---
 st.markdown("---")
 st.write("### 🔄 Simulación Dinámica Industrial del Movimiento de Cangilones")
 
-col_sim1, col_sim2 = st.columns([1, 2])
+col_sim1, col_sim2 = st.columns()
 
 with col_sim1:
     st.markdown("**Control de Animación**")
-    tiempo_viaje_subida = altura / v_ms if v_ms > 0 else 0
-    st.write(f"⏱️ **Tiempo de transporte vertical:** {tiempo_viaje_subida:.2f} segundos")
+    radio_sprocket_sim = 1.2
+    # El lazo completo mide: 2 tramos rectos de 'altura' + 2 semicircunferencias (pi * R cada una = 2 * pi * R total)
+    perimetro_total_lazo = (2 * altura) + (2 * np.pi * radio_sprocket_sim)
+    tiempo_vuelta_completa = perimetro_total_lazo / v_ms if v_ms > 0 else 0
+    st.write(f"⏱️ **Tiempo de ciclo completo de un cangilón:** {tiempo_vuelta_completa:.2f} segundos")
     play_sim = st.button("▶️ Iniciar / Reiniciar Simulación")
 
 with col_sim2:
     placeholder_grafico = st.empty()
 
 if play_sim:
-    num_cangilones_sim = 10
-    posiciones_fase = np.linspace(0, 2 * altura, num_cangilones_sim, endpoint=False)
-    radio_sprocket_sim = 1.2
+    num_cangilones_sim = 12
+    posiciones_fase = np.linspace(0, perimetro_total_lazo, num_cangilones_sim, endpoint=False)
     
-    for t_step in range(60):
-        dt = 0.4
-        desplazamiento = (v_ms * t_step * dt) % (2 * altura)
+    # Animación interactiva en bucle de 80 cuadros
+    for t_step in range(80):
+        dt = 0.35
+        desplazamiento = (v_ms * t_step * dt) % perimetro_total_lazo
         
         fig_sim, ax_sim = plt.subplots(figsize=(6, 9))
         
-        # SPROCKETS REALISTAS (Círculos sólidos con mazas y ejes)
+        # SPROCKETS REALISTAS (Círculos base metálicos)
         ax_sim.add_patch(plt.Circle((0, altura), radio_sprocket_sim, color='#7f8c8d', fill=True, zorder=2))
-        ax_sim.add_patch(plt.Circle((0, altura), 0.3, color='#2c3e50', fill=True, zorder=3)) # Eje
+        ax_sim.add_patch(plt.Circle((0, altura), 0.3, color='#2c3e50', fill=True, zorder=3)) 
         ax_sim.add_patch(plt.Circle((0, 0), radio_sprocket_sim, color='#7f8c8d', fill=True, zorder=2))
-        ax_sim.add_patch(plt.Circle((0, 0), 0.3, color='#2c3e50', fill=True, zorder=3)) # Eje
+        ax_sim.add_patch(plt.Circle((0, 0), 0.3, color='#2c3e50', fill=True, zorder=3)) 
         
-        # LINEAS DE CADENA DE TRANSMISIÓN
+        # LÍNEAS DE CADENA (Conexiones tangenciales perfectas)
         ax_sim.plot([radio_sprocket_sim, radio_sprocket_sim], [0, altura], color='#34495e', lw=2.5, zorder=1)
         ax_sim.plot([-radio_sprocket_sim, -radio_sprocket_sim], [0, altura], color='#34495e', lw=2.5, zorder=1)
         
         for pos_base in posiciones_fase:
-            pos_actual = (pos_base + desplazamiento) % (2 * altura)
+            pos_actual = (pos_base + desplazamiento) % perimetro_total_lazo
             
+            # MAIZADO DE TRAYECTORIA PARAMÉTRICA CONTINUA (Lazo de la oruga)
             if pos_actual <= altura:
-                # RAMAL DERECHO: Subiendo cargado
+                # 1. Tramo recto de subida (Derecha)
                 x_pos = radio_sprocket_sim
                 y_pos = pos_actual
+                angulo_rotacion = 0.0
+                cargado = True
+            elif pos_actual <= (altura + np.pi * radio_sprocket_sim):
+                # 2. Giro Semicircular Superior (Sprocket de cabeza)
+                dist_arco = pos_actual - altura
+                angulo_arco = dist_arco / radio_sprocket_sim  # Ángulo en radianes (va de 0 a pi)
                 
-                # Geometría poligonal del cangilón real industrial (perfil de tolva hacia afuera)
-                cangilon_puntos = [
-                    [x_pos, y_pos - 0.4],             # Base posterior
-                    [x_pos + 0.6, y_pos - 0.4],       # Proyección labio inferior
-                    [x_pos + 0.8, y_pos + 0.3],       # Labio superior de descarga
-                    [x_pos, y_pos + 0.3]              # Fijación superior a cadena
-                ]
-                ax_sim.add_patch(patches.Polygon(cangilon_puntos, closed=True, facecolor='#27ae60', edgecolor='#1e8449', lw=1.5, zorder=4))
-                # Dibujar material (Llenado de mineral/grano dentro del balde)
-                mat_puntos = [[x_pos+0.05, y_pos-0.35], [x_pos+0.55, y_pos-0.35], [x_pos+0.65, y_pos+0.1], [x_pos+0.05, y_pos+0.1]]
-                ax_sim.add_patch(patches.Polygon(mat_puntos, closed=True, facecolor='#d35400', alpha=0.9, zorder=5))
-                
-            else:
-                # RAMAL IZQUIERDO: Bajando vacío (Cangilón invertido)
+                # Coordenadas polares con centro en (0, altura)
+                x_pos = radio_sprocket_sim * np.cos(angulo_arco)
+                y_pos = altura + radio_sprocket_sim * np.sin(angulo_arco)
+                angulo_rotacion = angulo_arco
+                cargado = angulo_arco < (np.pi / 2) # Descarga a la mitad del giro superior
+            elif pos_actual <= (2 * altura + np.pi * radio_sprocket_sim):
+                # 3. Tramo recto de bajada (Izquierda)
                 x_pos = -radio_sprocket_sim
-                y_pos = 2 * altura - pos_actual
+                y_pos = altura - (pos_actual - (altura + np.pi * radio_sprocket_sim))
+                angulo_rotacion = np.pi
+                cargado = False
+            else:
+                # 4. Giro Semicircular Inferior (Sprocket de bota)
+                dist_arco = pos_actual - (2 * altura + np.pi * radio_sprocket_sim)
+                angulo_arco = dist_arco / radio_sprocket_sim
                 
-                # Geometría poligonal invertida en el descenso
-                cangilon_puntos = [
-                    [x_pos, y_pos + 0.4],
-                    [x_pos - 0.6, y_pos + 0.4],
-                    [x_pos - 0.8, y_pos - 0.3],
-                    [x_pos, y_pos - 0.3]
-                ]
-                ax_sim.add_patch(patches.Polygon(cangilon_puntos, closed=True, facecolor='#2980b9', edgecolor='#1f618d', lw=1.5, zorder=4))
+                # Coordenadas polares con centro en (0, 0)
+                x_pos = -radio_sprocket_sim * np.cos(angulo_arco)
+                y_pos = -radio_sprocket_sim * np.sin(angulo_arco)
+                angulo_rotacion = np.pi + angulo_arco
+                cargado = False
+
+            # MATRIZ DE ROTACIÓN GEOMÉTRICA (Para inclinar el cangilón dinámicamente en las curvas)
+            cos_a, sin_a = np.cos(angulo_rotacion), np.sin(angulo_rotacion)
+            
+            # Perfil base de la tolva del cangilón
+            puntos_locales = np.array([
+                [0.0, -0.4],       # Fijación base posterior
+                [0.6, -0.4],       # Proyección labio inferior
+                [0.8, 0.3],        # Labio superior de descarga
+                [0.0, 0.3]         # Fijación superior a cadena
+            ])
+            
+            # Aplicar rotación y traslación global a la geometría del balde
+            puntos_transformados = []
+            for pt in puntos_locales:
+                x_rot = pt[0] * cos_a - pt[1] * sin_a + x_pos
+                y_rot = pt[0] * sin_a + pt[1] * cos_a + y_pos
+                puntos_transformados.append([x_rot, y_rot])
+                
+            color_cang = '#27ae60' if cargado else '#2980b9'
+            color_borde = '#1e8449' if cargado else '#1f618d'
+            
+            # Renderizar el cuerpo del cangilón rotado
+            ax_sim.add_patch(patches.Polygon(puntos_transformados, closed=True, facecolor=color_cang, edgecolor=color_borde, lw=1.5, zorder=4))
+            
+            # Dibujar la carga de mineral si el cangilón sigue lleno en el ascenso o al inicio del volteo
+            if cargado:
+                puntos_mat_locales = np.array([[0.05, -0.35], [0.55, -0.35], [0.65, 0.1], [0.05, 0.1]])
+                puntos_mat_trans = []
+                for pt in puntos_mat_locales:
+                    x_rot = pt[0] * cos_a - pt[1] * sin_a + x_pos
+                    y_rot = pt[0] * sin_a + pt[1] * cos_a + y_pos
+                    puntos_mat_trans.append([x_rot, y_rot])
+                ax_sim.add_patch(patches.Polygon(puntos_mat_trans, closed=True, facecolor='#d35400', alpha=0.9, zorder=5))
         
-        # CONFIGURACIÓN DE ENTORNO VISUAL
+        # CONFIGURACIÓN DE ENTORNO VISUAL CONTINUO
         ax_sim.set_xlim(-4, 4)
-        ax_sim.set_ylim(-3, altura + 3)
-        ax_sim.set_title(f"Flujo Continuo Sincronizado | Velocidad Lineal: {v_ms:.2f} m/s", fontsize=10, fontweight='bold')
+        ax_sim.set_ylim(-radio_sprocket_sim - 2, altura + radio_sprocket_sim + 2)
+        ax_sim.set_title(f"Cinemática Paramétrica Completa | Velocidad: {v_ms:.2f} m/s", fontsize=10, fontweight='bold')
         ax_sim.set_xlabel("Ancho de Carcasa (m)")
         ax_sim.set_ylabel("Altura de Elevación Vertical (m)")
-        ax_sim.grid(True, alpha=0.15, ls=':')
+        ax_sim.grid(True, alpha=0.12, ls=':')
         
         placeholder_grafico.pyplot(fig_sim)
         plt.close(fig_sim)
-        time.sleep(0.05)
+        time.sleep(0.04)
