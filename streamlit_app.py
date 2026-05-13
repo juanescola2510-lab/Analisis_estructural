@@ -2,7 +2,7 @@ import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
-import plotly.graph_objects as go
+import plotly.graph_objects go
 import time
 
 # --- CONFIGURACIÓN DE PÁGINA ---
@@ -24,15 +24,15 @@ p_cang_kg = st.sidebar.number_input("Peso Total de los Cangilones (kg)", value=5
 
 st.sidebar.header("⚙️ Geometría y Material del Pin")
 d_pin = st.sidebar.number_input("Diámetro del Pin (mm)", value=34.74, min_value=1.0, step=0.1)
-longitud_mm = st.sidebar.number_input("Longitud Total del Pin (mm)", value=80.0, min_value=2.0, step=1.0)
-dist_asentamiento = st.sidebar.number_input("Distancia del Asentamiento desde el Centro (mm)", value=24.0, min_value=0.0, step=1.0)
+longitud_mm = st.sidebar.number_input("Longitud Total del Pin (mm)", value=150.0, min_value=2.0, step=1.0)
+dist_asentamiento = st.sidebar.number_input("Distancia del Asentamiento desde el Centro (mm)", value=65.0, min_value=0.0, step=1.0)
 
 if dist_asentamiento >= (longitud_mm / 2):
     st.sidebar.error("⚠️ La distancia de asentamiento debe ser menor a la mitad de la longitud total del pin.")
     dist_asentamiento = (longitud_mm / 2) - 1.0
 
-su_mpa = st.sidebar.number_input("Resistencia Última Su (MPa)", value=920)
-sy_mpa = st.sidebar.number_input("Límite Elástico Sy (MPa)", value=840)
+su_mpa = st.sidebar.number_input("Resistencia Última Su (MPa)", value=950)
+sy_mpa = st.sidebar.number_input("Límite Elástico Sy (MPa)", value=800)
 
 st.sidebar.header("🔍 Concentradores de Esfuerzo")
 condicion_superficie = st.sidebar.selectbox(
@@ -47,7 +47,7 @@ nivel_acum = st.sidebar.select_slider("Nivel de Atascamiento",
     options=["Limpio", "Moderado", "Crítico", "Total"], value="Total")
 
 st.sidebar.header("⏱️ Parámetros Operativos del Tiempo")
-rpm_sprocket = st.sidebar.number_input("Velocidad del Sprocket (RPM)", value=41.0, min_value=1.0)
+rpm_sprocket = st.sidebar.number_input("Velocidad del Sprocket (RPM)", value=42.0, min_value=1.0)
 
 # --- LÓGICA DE CÁLCULO CINEMÁTICO (AUTOMÁTICO) ---
 paso_m = paso_pulg * 0.0254
@@ -198,80 +198,73 @@ if ciclos_falla_puro != float('inf') and ciclos_falla_puro > 1:
     if tau_m > ssy:
         st.error(f"🚨 **ALERTA CRÍTICA:** El esfuerzo cortante máximo de **{tau_m:.2f} MPa** superó el límite elástico al corte ({ssy:.2f} MPa). Se producirá deformación plástica permanente en el primer impacto. Reemplace el pin o disminuya la bota.")
     else:
-        st.warning(f"⚠️ **Diagnóstico:** Operando a **{rpm_sprocket:.1f} RPM** (lo que genera una velocidad lineal de cadena de **{v_ms:.3f} m/s**), el pin soporta la rotación normal, pero el daño acumulado por los {impactos_por_day} impactos transitorios por hora limita su supervivencia estructural a **{dias_vida_miner:,.1f} días**.")
+        # CORRECCIÓN DE NAMEERROR: Se cambió {impactos_por_dia} por {impactos_por_hour}
+        st.warning(f"⚠️ **Diagnóstico:** Operando a **{rpm_sprocket:.1f} RPM** (lo que genera una velocidad lineal de cadena de **{v_ms:.3f} m/s**), el pin soporta la rotación normal, pero el daño acumulado por los {impactos_por_hour} impactos transitorios por hora limita su supervivencia estructural a **{dias_vida_miner:,.1f} días**.")
 
 elif ciclos_falla_puro == 1.0:
     st.error(f"💥 **FALLA ESTÁTICA INMEDIATA:** El esfuerzo pico local (**{tau_m:.2f} MPa**) es mayor o igual a la resistencia última al corte del acero ({ssu:.2f} MPa). La pieza se romperá en el primer impacto.")
 else:
     st.success("✨ **Vida Infinita:** El esfuerzo máximo local está por debajo del umbral de fatiga del material. No se registrará daño acumulativo bajo estas condiciones operativas.")
 
-# --- BLOQUE ENTORNO 3D PERFECCIONADO: CILINDRO 100% SÓLIDO CONTINUO Y CON COLOR ROJO ---
+# --- BLOQUE ENTORNO 3D PERFECCIONADO: RENDIMIENTO CILÍNDRICO SÓLIDO TOTAL (ISOSURFACE SIN HUECOS) ---
 st.markdown("---")
 st.write("### 🌐 Simulación Volumétrica 3D Interactiva del Gradiente de Esfuerzos en el Pasador")
 
 col_3d_1, col_3d_2 = st.columns(2)
 
 with col_3d_1:
-    st.markdown("**Instrucciones del Entorno 3D (Cilindro Totalmente Sólido FEA)**")
+    st.markdown("**Instrucciones del Entorno 3D (Cilindro Sólido Macizo FEA)**")
     st.caption("Usa el mouse para **rotar libremente**, **hacer zoom** y **desplazar** la pieza.")
     st.write(f"• **Longitud del Pin Simulado:** {longitud_mm:.2f} mm")
     st.write(f"• **Diámetro del Modelo:** {d_pin:.2f} mm")
-    st.write(f"• **Optimización Realista:** Se migró a `go.Volume` con `isomin=0` y opacidad del 95% para rellenar todo el núcleo interno de azul, garantizando un cilindro sólido continuo. El gradiente se amplificó numéricamente para que los picos de los extremos alcancen de forma obligatoria el **rojo vivo** en la escala gráfica.")
+    st.write(f"• **Física del Gradiente:** Se configuró el umbral base en cero (`isomin=0.0`), rellenando el metal interno por completo para lograr un cilindro macizo sólido sin huecos blancos.")
 
 with col_3d_2:
     radio_mm = d_pin / 2
     
-    # Grilla cartesiana regular para renderizado volumétrico continuo sólido
+    # Grilla cartesiana regular densa 3D
     X_f, Y_f, Z_f = np.mgrid[
-        -radio_mm*1.05:radio_mm*1.05:40j, 
-        -radio_mm*1.05:radio_mm*1.05:40j, 
-        -longitud_mm/2:longitud_mm/2:55j
+        -radio_mm*1.12:radio_mm*1.12:65j, 
+        -radio_mm*1.12:radio_mm*1.12:65j, 
+        -longitud_mm/2:longitud_mm/2:50j
     ]
     
     R_current = np.sqrt(X_f**2 + Y_f**2)
     distancia_a_cortes = np.minimum(abs(Z_f - dist_asentamiento), abs(Z_f + dist_asentamiento))
     
-    # Ecuación modificada: Mantiene un fondo elástico nominal positivo en todo el cuerpo (impide agujeros o cortes centrales)
-    base_shear = tau_nominal * (R_current / radio_mm) * (0.4 + 0.6 / (1.0 + (distancia_a_cortes / (longitud_mm/4.5))**2))
+    # Ecuación analítica del gradiente: Se suma un término constante para asegurar esfuerzos en el centro y compactar el núcleo
+    base_shear = tau_nominal * (0.15 + 0.85 * (R_current / radio_mm)) * (1.0 / (1.0 + (distancia_a_cortes / (longitud_mm/3.5))**2))
     Y_normalized = Y_f / np.maximum(R_current, 0.001)
     factor_concentrador_3d = 1 + (kt - 1) * (R_current / radio_mm)**4 * np.maximum(0, Y_normalized) * np.exp(-distancia_a_cortes / 1.2)
     Stress_Values = base_shear * factor_concentrador_3d
     
-    # Aplicar un factor de escalado para asegurar que el valor pico del arreglo coincida con el límite superior de la escala (Rojo Puro)
+    # Máscara externa para un acabado cilíndrico pulido perfecto
+    Stress_Values[R_current > radio_mm] = -10.0
     limite_escala_rojo = max(ssy, tau_m)
-    pico_actual = np.max(Stress_Values[R_current <= radio_mm])
-    if pico_actual > 0:
-        Stress_Values = Stress_Values * (limite_escala_rojo / pico_actual)
-        
-    # Recortar estrictamente el cilindro exterior para dejar paredes pulidas
-    Stress_Values[R_current > radio_mm] = 0.0
     
-    # RENDIMIENTO VOLUMÉTRICO CONTINUO SÓLIDO (isomin=0 y alta opacidad eliminan el efecto hueco o transparente)
-    fig_3d = go.Figure(data=go.Volume(
+    fig_3d = go.Figure(data=go.Isosurface(
         x=X_f.flatten(),
         y=Y_f.flatten(),
         z=Z_f.flatten(),
         value=Stress_Values.flatten(),
-        isomin=0.0, # Llenar desde cero para compactar el núcleo azul
+        isomin=0.0, # SOLUCIÓN: Al poner isomin=0.0 Plotly ya no corta el núcleo neutro central y el cilindro es macizo
         isomax=limite_escala_rojo,
-        opacity=0.92, # Opacidad industrial densa para simular metal real
-        surface_count=35, # Isosuperficies densas para eliminar el efecto dentado
+        surface_count=6,  
+        opacity=0.85,     
         colorscale='Jet',
         colorbar=dict(
             title=dict(text="Esfuerzo Cortante (MPa)", side="right"),
             dtick=25
-        )
+        ),
+        caps=dict(x_show=False, y_show=False, z_show=False) 
     ))
     
     fig_3d.update_layout(
         scene=dict(
-            xaxis_title='Eje X (mm)',
-            yaxis_title='Eje Y (mm)',
-            zaxis_title='Longitud Z (mm)',
-            aspectratio=dict(x=1, y=1, z=1.5),
-            xaxis=dict(range=[-radio_mm*1.1, radio_mm*1.1], showgrid=True, zeroline=False),
-            yaxis=dict(range=[-radio_mm*1.1, radio_mm*1.1], showgrid=True, zeroline=False),
-            zaxis=dict(range=[-longitud_mm/2 * 1.05, longit_mm/2 * 1.05], showgrid=True, zeroline=False)
+            xaxis=dict(range=[-radio_mm*1.2, radio_mm*1.2], showgrid=True, zeroline=False),
+            yaxis=dict(range=[-radio_mm*1.2, radio_mm*1.2], showgrid=True, zeroline=False),
+            zaxis=dict(range=[-longitud_mm/2 * 1.05, longitud_mm/2 * 1.05], showgrid=True, zeroline=False),
+            aspectratio=dict(x=1, y=1, z=1.5)
         ),
         margin=dict(l=0, r=0, b=0, t=30),
         height=550
@@ -367,4 +360,7 @@ if play_sim:
                 cargado = False
             else:
                 dist_arco = pos_actual - (2 * altura + np.pi * radio_sprocket_sim)
-                angulo_arco = dist_arco / radio
+                angulo_arco = dist_arco / radio_sprocket_sim
+                
+                x_pos = -radio_sprocket_sim * np.cos(angulo_arco)
+                y_pos = -radio_sprocket_sim * np.sin(angulo_
