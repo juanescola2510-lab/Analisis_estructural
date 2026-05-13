@@ -2,6 +2,7 @@ import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
+import time
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Análisis de Falla y Concentración de Esfuerzos", layout="wide")
@@ -16,7 +17,6 @@ st.sidebar.header("⚙️ Geometría del Sprocket y Cadena")
 paso_pulg = st.sidebar.number_input("Paso de la Cadena (pulgadas)", value=6.0, min_value=0.1)
 num_dientes = st.sidebar.number_input("Número de Dientes del Sprocket", value=12, min_value=1)
 
-# SE MODIFICA: Los pesos ahora se ingresan y rotulan directamente en Kilogramos (kg)
 st.sidebar.header("⚖️ Pesos del Sistema (kg)")
 p_cad_kg = st.sidebar.number_input("Peso Total de la Cadena (kg)", value=1089)
 p_cang_kg = st.sidebar.number_input("Peso Total de los Cangilones (kg)", value=5361)
@@ -29,9 +29,9 @@ sy_mpa = st.sidebar.number_input("Límite Elástico Sy (MPa)", value=840)
 st.sidebar.header("🔍 Concentradores de Esfuerzo")
 condicion_superficie = st.sidebar.selectbox(
     "Estado Superficial del Pin", 
-    ["Nuevo (Pulido)", "Rayado superficial", "Grieta Inicial Detectada"]
+    ["Nuevo (Pulido)", "Rayado por Clinker (Pitting)", "Grieta Inicial Detectada"]
 )
-mapeo_kt = {"Nuevo (Pulido)": 1.0, "Rayado superficial": 1.75, "Grieta Inicial Detectada": 2.6}
+mapeo_kt = {"Nuevo (Pulido)": 1.0, "Rayado por Clinker (Pitting)": 1.7, "Grieta Inicial Detectada": 2.5}
 kt = mapeo_kt.get(condicion_superficie, 2.5)
 
 st.sidebar.header("⚠️ Condición de la Bota")
@@ -49,25 +49,16 @@ v_ms = (rpm_sprocket * perimetro_sprocket) / 60
 # --- LÓGICA DE CÁLCULO DE ESFUERZOS (EN BASE A KG) ---
 flujo_kgs = (tph * 1000) / 3600
 p_mat_kg = (flujo_kgs / v_ms) * altura
-f_exc_map = {"Limpio": 0.1, "Moderado": 0.37, "Crítico": 1.37, "Total": 3.0}
+f_exc_map = {"Limpio": 0.1, "Moderado": 0.5, "Crítico": 1.5, "Total": 3.0}
 f_exc_kg = p_mat_kg * f_exc_map[nivel_acum]
 
-# Sumatoria de masa en kilogramos y conversión directa a Newtons (gravedad = 9.80665 m/s²)
 peso_total_kg = p_cad_kg + p_cang_kg + p_mat_kg + f_exc_kg
 f_n = peso_total_kg * 9.80665
 reaccion_n = f_n / 2
 
-# Para mantener la compatibilidad gráfica del DCL, se guarda la equivalencia informativa en lb
-t_total_lb = peso_total_kg * 2.20462
-p_mat_lb = p_mat_kg * 2.20462
-f_exc_lb = f_exc_kg * 2.20462
-p_cang_lb = p_cang_kg * 2.20462
-p_cad_lb = p_cad_kg * 2.20462
-
 # Esfuerzos (Área Simple)
 area_pin = (np.pi * (d_pin/2)**2)
 tau_nominal = f_n / area_pin 
-# Esfuerzo Pico Máximo (Aplicando Kt)
 tau_m = tau_nominal * kt
 tau_a = tau_m * 0.25 
 
@@ -170,7 +161,6 @@ with col_miner1:
 with col_miner2:
     horas_operacion_diaria = st.number_input("Horas de trabajo por día", value=24.0, max_value=24.0, min_value=0.1)
 
-# Cálculo puro de la curva S-N para el Esfuerzo Máximo Local (tau_m)
 sf_103 = 0.9 * ssu  
 f_limite = sse_corregido  
 
@@ -183,7 +173,6 @@ else:
     a_param = (sf_103**2) / f_limite
     ciclos_falla_puro = (tau_m / a_param)**(1 / b_param)
 
-# Renderizado del análisis de durabilidad real por impactos y RPM
 if ciclos_falla_puro != float('inf') and ciclos_falla_puro > 1:
     impactos_por_dia = impactos_por_hora * horas_operacion_diaria
     dias_vida_miner = ciclos_falla_puro / impactos_por_dia
@@ -207,3 +196,72 @@ elif ciclos_falla_puro == 1.0:
     st.error(f"💥 **FALLA ESTÁTICA INMEDIATA:** El esfuerzo pico local (**{tau_m:.2f} MPa**) es mayor o igual a la resistencia última al corte del acero ({ssu:.2f} MPa). La pieza se romperá en el primer impacto.")
 else:
     st.success("✨ **Vida Infinita:** El esfuerzo máximo local está por debajo del umbral de fatiga del material. No se registrará daño acumulativo bajo estas condiciones operativas.")
+
+# --- NUEVO BLOQUE: SIMULACIÓN EN TIEMPO REAL DEL MOVIMIENTO DEL ELEVADOR ---
+st.markdown("---")
+st.write("### 🔄 Simulación Dinámica del Movimiento de Cangilones")
+
+col_sim1, col_sim2 = st.columns([1, 3])
+
+with col_sim1:
+    st.markdown("**Control de Animación**")
+    tiempo_viaje_subida = altura / v_ms if v_ms > 0 else 0
+    st.write(f"⏱️ **Tiempo de subida:** {tiempo_viaje_subida:.2f} segundos")
+    play_sim = st.button("▶️ Iniciar / Reiniciar Simulación")
+
+with col_sim2:
+    placeholder_grafico = st.empty()
+
+if play_sim:
+    # Parámetros geométricos fijos para la animación visual
+    num_cangilones_sim = 8
+    posiciones_fase = np.linspace(0, 2 * altura, num_cangilones_sim, endpoint=False)
+    
+    # Bucle de animación (Simula 40 pasos de tiempo en Streamlit)
+    for t_step in range(40):
+        # Desplazamiento lineal basado en el paso del tiempo y la velocidad de la cadena calculada
+        dt = 0.5 
+        desplazamiento = (v_ms * t_step * dt) % (2 * altura)
+        
+        fig_sim, ax_sim = plt.subplots(figsize=(6, 8))
+        
+        # Dibujar los sprockets de cabeza y bota como referencia
+        ax_sim.add_patch(plt.Circle((0, altura), 1.0, color='gray', fill=False, lw=2, ls='--'))
+        ax_sim.add_patch(plt.Circle((0, 0), 1.0, color='gray', fill=False, lw=2, ls='--'))
+        
+        # Dibujar las líneas de la cadena (Ramal de subida a la derecha, bajada a la izquierda)
+        ax_sim.plot([1, 1], [0, altura], color='#555555', lw=1.5)
+        ax_sim.plot([-1, -1], [0, altura], color='#555555', lw=1.5)
+        
+        for pos_base in posiciones_fase:
+            # Calcular la posición de cada cangilón en el lazo cerrado
+            pos_actual = (pos_base + desplazamiento) % (2 * altura)
+            
+            if pos_actual <= altura:
+                # Ramal de subida (Lado derecho X = 1)
+                x_pos = 1.0
+                y_pos = pos_actual
+                color_cang = 'green' # Subiendo con carga
+                marcador = '>'
+            else:
+                # Ramal de bajada (Lado izquierdo X = -1)
+                x_pos = -1.0
+                y_pos = 2 * altura - pos_actual
+                color_cang = 'blue' # Bajando vacío
+                marcador = '<'
+            
+            # Dibujar cangilón individual en el gráfico
+            ax_sim.scatter(x_pos, y_pos, color=color_cang, marker=marcador, s=250, zorder=5)
+        
+        # Configuración estética de la ventana de simulación
+        ax_sim.set_xlim(-3, 3)
+        ax_sim.set_ylim(-3, altura + 3)
+        ax_sim.set_title(f"Velocidad: {v_ms:.2f} m/s | Dirección de Flujo", fontsize=10)
+        ax_sim.set_xlabel("Eje de Simetría")
+        ax_sim.set_ylabel("Altura Vertical (m)")
+        ax_sim.grid(True, alpha=0.2)
+        
+        # Actualizar el contenedor dinámico de Streamlit
+        placeholder_grafico.pyplot(fig_sim)
+        plt.close(fig_sim)
+        time.sleep(0.08) # Pausa para emular la velocidad del cuadro
