@@ -24,6 +24,10 @@ p_cang_kg = st.sidebar.number_input("Peso Total de los Cangilones (kg)", value=5
 
 st.sidebar.header("⚙️ Geometría y Material del Pin")
 d_pin = st.sidebar.slider("Diámetro del Pin (mm)", 20.0, 60.0, 34.74)
+# NUEVAS ENTRADAS SOLICITADAS: Control de longitud y ubicación del asentamiento
+longitud_mm = st.sidebar.slider("Longitud Total del Pin (mm)", 40.0, 150.0, 80.0)
+dist_asentamiento = st.sidebar.slider("Distancia del Asentamiento desde el Centro (mm)", 5.0, (longitud_mm / 2) - 2.0, 24.0)
+
 su_mpa = st.sidebar.number_input("Resistencia Última Su (MPa)", value=920)
 sy_mpa = st.sidebar.number_input("Límite Elástico Sy (MPa)", value=840)
 
@@ -198,24 +202,23 @@ elif ciclos_falla_puro == 1.0:
 else:
     st.success("✨ **Vida Infinita:** El esfuerzo máximo local está por debajo del umbral de fatiga del material. No se registrará daño acumulativo bajo estas condiciones operativas.")
 
-# --- BLOQUE ENTORNO 3D PERFECCIONADO: RENDIMIENTO CILÍNDRICO SIN DISTORSIÓN (HIGH-DENSITY ISOSURFACE) ---
+# --- BLOQUE ENTORNO 3D PERFECCIONADO: GRADIENTE ACOPLADO A LA LONGITUD Y ASENTAMIENTO REGULABLES ---
 st.markdown("---")
 st.write("### 🌐 Simulación Volumétrica 3D Interactiva del Gradiente de Esfuerzos en el Pasador")
 
 col_3d_1, col_3d_2 = st.columns(2)
 
 with col_3d_1:
-    st.markdown("**Instrucciones del Entorno 3D (Cilindro Sólido de Alta Definición FEA)**")
+    st.markdown("**Instrucciones del Entorno 3D (Cilindro Sólido Dinámico FEA)**")
     st.caption("Usa el mouse para **rotar libremente**, **hacer zoom** y **desplazar** la pieza.")
-    st.write(f"• **Longitud del Pin Simulado:** 60 mm")
+    st.write(f"• **Longitud Regulada del Pin:** {longitud_mm:.1f} mm")
     st.write(f"• **Diámetro del Modelo:** {d_pin:.2f} mm")
-    st.write(f"• **Optimización Anti-Distorsión:** Se incrementó drásticamente la resolución transversal de la malla cartesiana (65x65) y se aplicó un filtro paramétrico con umbral sigmoide. Esto elimina las deformaciones perimetrales por pixelado cúbico, logrando paredes cilíndricas perfectamente lisas.")
+    st.write(f"• **Planos de Asentamiento ($Z$):** Localizados de forma exacta a $\\pm$ **{dist_asentamiento:.1f} mm** respecto al centro geométrico ($Z=0$). Cambie las barras de la izquierda para ver cómo se redistribuyen las zonas rojas de cizalladura.")
 
 with col_3d_2:
     radio_mm = d_pin / 2
-    longitud_mm = 60.0
     
-    # SE OPTIMIZA: Se eleva la grilla a 65j en los ejes X e Y para suavizar el contorno exterior de forma masiva
+    # Malla cartesiana densa adaptada a la longitud configurada
     X_f, Y_f, Z_f = np.mgrid[
         -radio_mm*1.15:radio_mm*1.15:65j, 
         -radio_mm*1.15:radio_mm*1.15:65j, 
@@ -224,17 +227,16 @@ with col_3d_2:
     
     R_current = np.sqrt(X_f**2 + Y_f**2)
     
-    z_asentamiento = longitud_mm * 0.3  
-    distancia_a_cortes = np.minimum(abs(Z_f - z_asentamiento), abs(Z_f + z_asentamiento))
+    # SE ACTUALIZA: La distancia se calcula basándose en el parámetro de la barra deslizante 'dist_asentamiento'
+    distancia_a_cortes = np.minimum(abs(Z_f - dist_asentamiento), abs(Z_f + dist_asentamiento))
     
-    # Ecuación de esfuerzos analítica continua y unificada
+    # Ecuación unificada de esfuerzos acoplada a las nuevas dimensiones geométricas
     base_shear = tau_nominal * (R_current / radio_mm) * (1.0 / (1.0 + (distancia_a_cortes / (longitud_mm/3.5))**2))
     Y_normalized = Y_f / np.maximum(R_current, 0.001)
     factor_concentrador_3d = 1 + (kt - 1) * (R_current / radio_mm)**4 * np.maximum(0, Y_normalized) * np.exp(-distancia_a_cortes / 1.5)
     Stress_Values = base_shear * factor_concentrador_3d
     
-    # MEJORA GEOMÉTRICA CRÍTICA: Se inyecta un sumando condicional muy bajo fuera de la frontera cilíndrica.
-    # Esto elimina el "ruido de sierra" matemático (aliasing) en los límites cilíndricos, forzando superficies exteriores limpias.
+    # Máscara anti-distorsión periférica para lograr la redondez perfecta
     Stress_Values[R_current > radio_mm] = -1.0
     
     limite_escala_rojo = max(ssy, tau_m)
@@ -244,13 +246,13 @@ with col_3d_2:
         y=Y_f.flatten(),
         z=Z_f.flatten(),
         value=Stress_Values.flatten(),
-        isomin=0.01 * limite_escala_rojo, # Filtra la máscara exterior para dibujar la cara lisa real del pin
+        isomin=0.01 * limite_escala_rojo, 
         isomax=limite_escala_rojo,
-        surface_count=5,  # Isosuperficies calibradas para no entorpecer el degradado ni la redondez exterior
+        surface_count=5,  
         opacity=0.75,     
         colorscale='Jet',
         colorbar=dict(title=dict(text="Esfuerzo Cortante (MPa)", side="right")),
-        caps=dict(x_show=False, y_show=False, z_show=False) # Apaga las tapas extremas planas para suavizar el borde
+        caps=dict(x_show=False, y_show=False, z_show=False) 
     ))
     
     fig_3d.update_layout(
@@ -261,6 +263,7 @@ with col_3d_2:
             aspectratio=dict(x=1, y=1, z=1.5),
             xaxis=dict(range=[-radio_mm*1.2, radio_mm*1.2], showgrid=True, zeroline=False),
             yaxis=dict(range=[-radio_mm*1.2, radio_mm*1.2], showgrid=True, zeroline=False),
+            # Ajuste de escala dinámico para el eje Z en función de la longitud ingresada
             zaxis=dict(range=[-longitud_mm/2 * 1.05, longitud_mm/2 * 1.05], showgrid=True, zeroline=False)
         ),
         margin=dict(l=0, r=0, b=0, t=30),
