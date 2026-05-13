@@ -198,7 +198,7 @@ elif ciclos_falla_puro == 1.0:
 else:
     st.success("✨ **Vida Infinita:** El esfuerzo máximo local está por debajo del umbral de fatiga del material. No se registrará daño acumulativo bajo estas condiciones operativas.")
 
-# --- CORRECCIÓN ENTORNO 3D: MAPEO NODAL FEA MEDIANTE SCATTER3D (100% INMUNE A ERRORES) ---
+# --- BLOQUE ENTORNO 3D: MAPEO NODAL CON ESFUERZOS EN LOS EXTREMOS DE ASENTAMIENTO ---
 st.markdown("---")
 st.write("### 🌐 Simulación Volumétrica 3D Interactiva del Gradiente de Esfuerzos en el Pasador")
 
@@ -209,7 +209,7 @@ with col_3d_1:
     st.caption("Usa el mouse para **rotar libremente**, **hacer zoom** y **desplazar** el cilindro metálico.")
     st.write(f"• **Longitud del Pin Simulado:** 60 mm")
     st.write(f"• **Diámetro del Modelo:** {d_pin:.2f} mm")
-    st.write(f"• **Interpretación:** La nube densa muestra los puntos de cálculo. La concentración roja del plano central representa el efecto de entalladura crítico ($K_t$).")
+    st.write(f"• **Interpretación:** Los planos de color rojo crítico se han relocalizado simétricamente cerca de ambos extremos del pasador ($Z \\approx \\pm 18$ mm), simulando la zona real de cizalladura y asentamiento mecánico contra los eslabones laterales de la cadena.")
 
 with col_3d_2:
     radio_mm = d_pin / 2
@@ -225,19 +225,24 @@ with col_3d_2:
     X_3d = R_mesh * np.cos(THETA_mesh)
     Y_3d = R_mesh * np.sin(THETA_mesh)
     
-    # Campo de esfuerzos físicos reales decrementales hacia los extremos libres Z
-    base_shear = tau_nominal * (R_mesh / radio_mm) * np.exp(-abs(Z_mesh) / (longitud_mm / 4))
+    # NUEVA MATRIZ FÍSICA: El esfuerzo base máximo se localiza simétricamente en los planos de apoyo laterales (Z = +-18 mm)
+    z_asentamiento = longitud_mm * 0.3  # Plano de corte localizado a 18mm del centro
+    distancia_a_cortes = np.minimum(abs(Z_mesh - z_asentamiento), abs(Z_mesh + z_asentamiento))
+    
+    # El esfuerzo decrece exponencialmente a medida que nos alejamos de las zonas de corte externas hacia el centro u extremos libres
+    base_shear = tau_nominal * (R_mesh / radio_mm) * np.exp(-distancia_a_cortes / (longitud_mm / 8))
+    
+    # Aplicación periférica localizada del concentrador Kt en el cuadrante superior (Y > 0) sobre los planos de asentamiento
     Y_normalized = Y_3d / np.maximum(R_mesh, 0.001)
-    factor_concentrador_3d = 1 + (kt - 1) * (R_mesh / radio_mm)**4 * np.maximum(0, Y_normalized) * np.exp(-abs(Z_mesh) / 2.0)
+    factor_concentrador_3d = 1 + (kt - 1) * (R_mesh / radio_mm)**4 * np.maximum(0, Y_normalized) * np.exp(-distancia_a_cortes / 1.5)
     Stress_3D = base_shear * factor_concentrador_3d
     
-    # Aplanado estricto unidimensional para vectores de Plotly
+    # Aplanar las matrices para Plotly Vector
     X_flat = X_3d.flatten()
     Y_flat = Y_3d.flatten()
     Z_flat = Z_mesh.flatten()
     Stress_flat = Stress_3D.flatten()
     
-    # REEMPLAZADO: Scatter3D con marcadores densos que asegura el renderizado correcto sin importar el navegador
     fig_3d = go.Figure(data=go.Scatter3d(
         x=X_flat,
         y=Y_flat,
