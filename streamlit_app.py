@@ -1,51 +1,131 @@
+import streamlit as st
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 
-# COMPLETAR EN LA BARRA LATERAL (AGREGAR ESTO DEBAJO DE LA CONDICIÓN DE LA BOTA)
-# ==============================================================================
+# --- CONFIGURACIÓN DE PÁGINA ---
+st.set_page_config(page_title="Análisis de Falla y Concentración de Esfuerzos", layout="wide")
+st.title("🛡️ Diagnóstico de Ingeniería: Análisis de Falla con Concentradores de Esfuerzo")
+
+# --- SIDEBAR: DATOS DE ENTRADA ---
+st.sidebar.header("📊 Operación y Cargas")
+tph = st.sidebar.number_input("Capacidad Real (Ton/h)", value=150)
+v_ms = st.sidebar.slider("Velocidad de Cadena (m/s)", 0.5, 2.0, 1.2)
+altura = st.sidebar.number_input("Altura entre centros (m)", value=33.5)
+
+st.sidebar.header("⚖️ Pesos del Sistema (lb)")
+p_cad_lb = st.sidebar.number_input("Peso Total de la Cadena (lb)", value=2400)
+p_cang_lb = st.sidebar.number_input("Peso Total de los Cangilones (lb)", value=11820)
+
+st.sidebar.header("⚙️ Geometría y Material")
+d_pin = st.sidebar.slider("Diámetro del Pin (mm)", 20.0, 60.0, 34.74)
+su_mpa = st.sidebar.number_input("Resistencia Última Su (MPa)", value=980)
+sy_mpa = st.sidebar.number_input("Límite Elástico Sy (MPa)", value=835)
+
+st.sidebar.header("🔍 Concentradores de Esfuerzo")
+condicion_superficie = st.sidebar.selectbox(
+    "Estado Superficial del Pin", 
+    ["Nuevo (Pulido)", "Rayado por Clinker (Pitting)", "Grieta Inicial Detectada"]
+)
+mapeo_kt = {"Nuevo (Pulido)": 1.0, "Rayado por Clinker (Pitting)": 1.7, "Grieta Inicial Detectada": 2.5}
+kt = mapeo_kt[condicion_superficie]
+
+st.sidebar.header("⚠️ Condición de la Bota")
+nivel_acum = st.sidebar.select_slider("Nivel de Atascamiento", 
+    options=["Limpio", "Moderado", "Crítico", "Total"], value="Limpio")
+
 st.sidebar.header("⏱️ Parámetros Operativos del Tiempo")
 rpm_sprocket = st.sidebar.number_input("Velocidad del Sprocket (RPM)", value=45.0, min_value=1.0)
 
+# --- LÓGICA DE CÁLCULO ---
+flujo_kgs = (tph * 1000) / 3600
+p_mat_lb = ((flujo_kgs / v_ms) * altura) * 2.20462
+f_exc_map = {"Limpio": 0.1, "Moderado": 0.5, "Crítico": 1.5, "Total": 3.0}
+f_exc_lb = p_mat_lb * f_exc_map[nivel_acum]
 
-# ==============================================================================
-# --- REEMPLAZAR EL BLOQUE 2 COMPLETO POR ESTA VERSIÓN CON VIDA ÚTIL ---
-# ==============================================================================
+t_total_lb = p_cad_lb + p_cang_lb + p_mat_lb + f_exc_lb
+f_n = t_total_lb * 4.44822
+reaccion_n = f_n / 2
+
+# Esfuerzos (Área Simple)
+area_pin = (np.pi * (d_pin/2)**2)
+tau_nominal = f_n / area_pin 
+# Esfuerzo Pico (Aplicando Kt)
+tau_m = tau_nominal * kt
+tau_a = tau_m * 0.25 
+
+# Propiedades de Corte (Von Mises)
+ssu, ssy = su_mpa * 0.577, sy_mpa * 0.577
+
+# --- BLOQUE 1: DIAGRAMAS REALISTAS (DCL) ---
+col1, col2 = st.columns(2)
+
+with col1:
+    st.write("### DCL: Sprocket con Desglose de Pesos")
+    fig1, ax1 = plt.subplots(figsize=(8, 8))
+    ax1.add_patch(plt.Circle((0.5, 0.6), 0.22, color='#333333', zorder=2))
+    for i in range(12):
+        ang = np.deg2rad(i * 30)
+        p = [[0.5 + 0.22*np.cos(ang-0.1), 0.6 + 0.22*np.sin(ang-0.1)],
+             [0.5 + 0.30*np.cos(ang-0.06), 0.6 + 0.30*np.sin(ang-0.06)],
+             [0.5 + 0.30*np.cos(ang+0.06), 0.6 + 0.30*np.sin(ang+0.06)],
+             [0.5 + 0.22*np.cos(ang+0.1), 0.6 + 0.22*np.sin(ang+0.1)]]
+        ax1.add_patch(patches.Polygon(p, color='#333333', zorder=1))
+    ax1.annotate('', xy=(0.8, 0.1), xytext=(0.8, 0.6), arrowprops=dict(facecolor='red', width=4))
+    ax1.text(0.82, 0.45, f"T_Total: {t_total_lb:,.0f} lb", color='red', fontweight='bold', fontsize=12)
+    ax1.text(0.82, 0.15, f"• Mat: {p_mat_lb:,.0f} lb\n• Bota: {f_exc_lb:,.0f} lb\n• Cang: {p_cang_lb:,.0f} lb\n• Cad: {p_cad_lb:,.0f} lb", color='gray', fontsize=9)
+    ax1.axis('off'); st.pyplot(fig1)
+
+with col2:
+    st.write("### DCL: Pin con Reacciones y Concentrador")
+    fig2, ax2 = plt.subplots(figsize=(8, 8))
+    ax2.add_patch(plt.Rectangle((0.1, 0.45), 0.8, 0.1, color='#BDBDBD', ec='black', zorder=4))
+    ax2.add_patch(plt.Rectangle((0.1, 0.3), 0.12, 0.4, color='#757575', alpha=0.9)) # Placa Izq
+    ax2.add_patch(plt.Rectangle((0.78, 0.3), 0.12, 0.4, color='#757575', alpha=0.9)) # Placa Der
+    ax2.add_patch(plt.Rectangle((0.32, 0.35), 0.36, 0.3, color='#9E9E9E', hatch='//')) # Carga central
+    ax2.annotate('', xy=(0.16, 0.9), xytext=(0.16, 0.7), arrowprops=dict(facecolor='blue', width=3))
+    ax2.annotate('', xy=(0.84, 0.9), xytext=(0.84, 0.7), arrowprops=dict(facecolor='blue', width=3))
+    ax2.text(0.16, 0.93, f"R/2: {reaccion_n:,.0f} N", color='blue', ha='center', fontsize=9)
+    ax2.text(0.84, 0.93, f"R/2: {reaccion_n:,.0f} N", color='blue', ha='center', fontsize=9)
+    ax2.annotate('', xy=(0.5, 0.1), xytext=(0.5, 0.45), arrowprops=dict(facecolor='red', width=5))
+    ax2.text(0.52, 0.15, f"Carga Total: {f_n:,.0f} N", color='red', fontweight='bold')
+    # Marca del concentrador
+    if kt > 1:
+        ax2.scatter(0.27, 0.5, color='yellow', s=100, edgecolors='black', zorder=10, label='Fisura/Raya')
+        ax2.text(0.27, 0.4, f"Kt={kt}", color='black', fontsize=8, ha='center', fontweight='bold')
+    ax2.axis('off'); st.pyplot(fig2)
+
+# --- BLOQUE 2: COMPARATIVA DE FATIGA Y VIDA ÚTIL ---
 st.markdown("---")
 st.write(f"### Análisis de Fatiga y Estimación de Vida Útil (Factor $K_t$ = {kt})")
 col_graf, col_tab = st.columns(2)
 
-# Corrección analítica rigurosa del límite de fatiga a cortante
+# Corrección analítica rigurosa del límite de fatiga a cortante (Shigley)
 sse_corregido = su_mpa * 0.5 * 0.577  # ~0.288 * Su
 
 # --- CÁLCULO DE VIDA ÚTIL Y CICLOS (TEORÍA S-N) ---
-# Esfuerzo invertido equivalente usando el criterio de Goodman modificado
-# S_eq es el esfuerzo puramente alternante que causaría el mismo daño que la combinación actual
 if tau_m < ssu:
     tau_eq = tau_a / (1 - (tau_m / ssu))
 else:
-    tau_eq = tau_a + tau_m  # Condición extrema fuera de rango seguro
+    tau_eq = tau_a + tau_m
 
-# Propiedades de la curva S-N para aceros en cortante
 sf_103 = 0.9 * ssu  # Resistencia estimada a 10^3 ciclos
 f_limite = sse_corregido
 
 if tau_eq <= f_limite:
     ciclos_estimados = float('inf')
     vida_horas = float('inf')
-    txt_vida = "♾️ Vida Infinita (Fatiga Controlada)"
     txt_horas = "Sin límite teórico bajo estas cargas"
 elif tau_eq >= sf_103:
     ciclos_estimados = 1000.0
     vida_horas = ciclos_estimados / (rpm_sprocket * 60)
-    txt_vida = "⚠️ Falla Próxima o Fatiga de Bajo Ciclaje"
     txt_horas = f"{vida_horas:.2f} horas de operación continua"
 else:
-    # Ecuaciones constituyentes de la curva S-N: log(S) = b*log(N) + log(a)
     b_param = (1/3) * np.log10(f_limite / sf_103)
     a_param = (sf_103**2) / f_limite
     
-    # Despeje de ciclos de vida aproximados: N = (tau_eq / a)^(1/b)
     ciclos_estimados = (tau_eq / a_param)**(1 / b_param)
     vida_horas = ciclos_estimados / (rpm_sprocket * 60)
-    txt_vida = f"{ciclos_estimados:,.0f} ciclos"
     txt_horas = f"{vida_horas:,.1f} horas operativas ({vida_horas/24:,.1f} días aprox.)"
 
 # --- RENDERIZADO DEL GRÁFICO ---
@@ -90,7 +170,6 @@ with col_tab:
     }
     st.table(data_tabla)
     
-    # Nueva Sección de Diagnóstico de Vida Útil
     st.write("**⌛ Estimación de Durabilidad de la Pieza:**")
     col_c1, col_c2 = st.columns(2)
     with col_c1:
