@@ -198,57 +198,64 @@ elif ciclos_falla_puro == 1.0:
 else:
     st.success("✨ **Vida Infinita:** El esfuerzo máximo local está por debajo del umbral de fatiga del material. No se registrará daño acumulativo bajo estas condiciones operativas.")
 
-# --- BLOQUE ENTORNO 3D: RENDERIZADO VOLUMÉTRICO COMPLETAMENTE SÓLIDO (INMUNE A ESPACIOS VACÍOS) ---
+# --- BLOQUE ENTORNO 3D: CILINDRO PERFECTO PARAMÉTRICO Y SÓLIDO CONTINUO UNIFICADO ---
 st.markdown("---")
 st.write("### 🌐 Simulación Volumétrica 3D Interactiva del Gradiente de Esfuerzos en el Pasador")
 
 col_3d_1, col_3d_2 = st.columns(2)
 
 with col_3d_1:
-    st.markdown("**Instrucciones del Entorno 3D (Modelo Continuo Volumétrico FEA)**")
-    st.caption("Usa el mouse para **rotar libremente**, **hacer zoom** y **desplazar** el sólido continuo.")
+    st.markdown("**Instrucciones del Entorno 3D (Cilindro Unificado FEA)**")
+    st.caption("Usa el mouse para **rotar libremente**, **hacer zoom** y **desplazar** el cilindro sólido.")
     st.write(f"• **Longitud del Pin Simulado:** 60 mm")
     st.write(f"• **Diámetro del Modelo:** {d_pin:.2f} mm")
-    st.write(f"• **Modificación del Modelo:** Cambiado de nube de puntos a interpolación volumétrica continua (`go.Volume`). Las bandas rojas representan de manera exacta los planos de cizallamiento y apoyo lateral contra las placas de la cadena.")
+    st.write(f"• **Unificación de Núcleo:** Se eliminaron discontinuidades en el centro geométrico. El cilindro se muestra continuo unificado en la mitad. Los extremos rojos simulan de manera sólida los planos límites de corte mecánico contra las placas de la cadena.")
 
 with col_3d_2:
     radio_mm = d_pin / 2
     longitud_mm = 60.0
     
-    # Grid regular cartesiano denso para go.Volume
-    X_f, Y_f, Z_f = np.mgrid[
-        -radio_mm:radio_mm:30j, 
-        -radio_mm:radio_mm:30j, 
-        -longitud_mm/2:longitud_mm/2:45j
-    ]
+    # SE REPROGRAMA CON MALLA PARAMÉTRICA CILÍNDRICA PURA (Elimina el efecto plano y hueco)
+    r_vals = np.linspace(0, radio_mm, 20)
+    theta_vals = np.linspace(0, 2 * np.pi, 45)
+    z_vals = np.linspace(-longitud_mm/2, longitud_mm/2, 65)
     
-    # Calcular coordenadas radiales de control cilíndrico
-    R_mesh = np.sqrt(X_f**2 + Y_f**2)
+    R_mesh, THETA_mesh, Z_mesh = np.meshgrid(r_vals, theta_vals, z_vals)
     
+    # Transformación explícita para asegurar un cilindro perfecto en el espacio 3D
+    X_3d = R_mesh * np.cos(THETA_mesh)
+    Y_3d = R_mesh * np.sin(THETA_mesh)
+    
+    # Plano de corte localizado simétricamente en los extremos de apoyo externos (Z = +-18 mm)
     z_asentamiento = longitud_mm * 0.3  
-    distancia_a_cortes = np.minimum(abs(Z_f - z_asentamiento), abs(Z_f + z_asentamiento))
+    distancia_a_cortes = np.minimum(abs(Z_mesh - z_asentamiento), abs(Z_mesh + z_asentamiento))
     
-    # Ecuación del perfil de esfuerzos con amplificación exponencial de contraste
-    base_shear = tau_nominal * (R_mesh / radio_mm)**2 * np.exp(-distancia_a_cortes / (longitud_mm / 10))
-    Y_normalized = Y_f / np.maximum(R_mesh, 0.001)
-    factor_concentrador_3d = 1 + (kt - 1) * (R_mesh / radio_mm)**4 * np.maximum(0, Y_normalized) * np.exp(-distancia_a_cortes / 1.0)
+    # NUEVA FUNCIÓN DE ESFUERZO: Distribución lineal parabólica en R unificada uniformemente en el centro
+    # Evita el decaimiento central que vaciaba ópticamente la mitad del pasador
+    base_shear = tau_nominal * (R_mesh / radio_mm) * (1.0 / (1.0 + (distancia_a_cortes / (longitud_mm/3))**2))
+    
+    Y_normalized = Y_3d / np.maximum(R_mesh, 0.001)
+    factor_concentrador_3d = 1 + (kt - 1) * (R_mesh / radio_mm)**4 * np.maximum(0, Y_normalized) * np.exp(-distancia_a_cortes / 1.5)
     Stress_3D = base_shear * factor_concentrador_3d
     
-    # Aplicar máscara geométrica estricta para recortar y formar el cilindro perfecto
-    Stress_3D[R_mesh > radio_mm] = 0.0
+    # Aplanar las coordenadas paramétricas cilíndricas para el graficador go.Volume
+    X_flat = X_3d.flatten()
+    Y_flat = Y_3d.flatten()
+    Z_flat = Z_mesh.flatten()
+    Stress_flat = Stress_3D.flatten()
     
     limite_escala_rojo = max(ssy, tau_m)
     
-    # RENDERIZADO VOLUMÉTRICO: go.Volume rellena el espacio de forma sólida en lugar de dejar puntos libres
+    # Renderizado volumétrico continuo con altas capas de interpolación para máxima densidad y solidez
     fig_3d = go.Figure(data=go.Volume(
-        x=X_f.flatten(),
-        y=Y_f.flatten(),
-        z=Z_f.flatten(),
-        value=Stress_3D.flatten(),
-        isomin=0.05 * limite_escala_rojo, # Recorta el ruido del fondo azul base para dar transparencia
+        x=X_flat,
+        y=Y_flat,
+        z=Z_flat,
+        value=Stress_flat,
+        isomin=0.02 * limite_escala_rojo, # Captura el volumen central unificado de esfuerzos bajos
         isomax=limite_escala_rojo,
-        opacity=0.5, # Opacidad estructural para ver el núcleo interno
-        surface_count=35, # Número de capas de isosuperficies para lograr un degradado suave y denso
+        opacity=0.6, # Opacidad estructural densa para consolidar el cilindro metálico
+        surface_count=45, # Alta densidad de superficies para un degradado uniforme sin cortes
         colorscale='Jet',
         colorbar=dict(title=dict(text="Esfuerzo Cortante (MPa)", side="right"))
     ))
@@ -258,7 +265,10 @@ with col_3d_2:
             xaxis_title='Eje X (mm)',
             yaxis_title='Eje Y (mm)',
             zaxis_title='Longitud Z (mm)',
-            aspectratio=dict(x=1, y=1, z=1.5)
+            aspectratio=dict(x=1, y=1, z=1.5),
+            xaxis=dict(range=[-radio_mm*1.1, radio_mm*1.1]),
+            yaxis=dict(range=[-radio_mm*1.1, radio_mm*1.1]),
+            zaxis=dict(range=[-longitud_mm/2 * 1.1, longitud_mm/2 * 1.1])
         ),
         margin=dict(l=0, r=0, b=0, t=30),
         height=550
