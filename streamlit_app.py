@@ -215,8 +215,8 @@ with col_sim2:
     placeholder_grafico = st.empty()
 
 if play_sim:
-    # SE MODIFICA: Se duplicó la cantidad de cangilones (de 12 a 24) para que se vean más seguidos
-    num_cangilones_sim = 24
+    # SE MODIFICA: Se elevó la cantidad de cangilones a 48 para flujo de máxima densidad
+    num_cangilones_sim = 48
     posiciones_fase = np.linspace(0, perimetro_total_lazo, num_cangilones_sim, endpoint=False)
     
     for t_step in range(80):
@@ -274,8 +274,8 @@ if play_sim:
             
             puntos_transformados = []
             for pt in puntos_locales:
-                x_rot = pt[0] * cos_a - pt[1] * sin_a + x_pos
-                y_rot = pt[0] * sin_a + pt[1] * cos_a + y_pos
+                x_rot = pt * cos_a - pt * sin_a + x_pos
+                y_rot = pt * sin_a + pt * cos_a + y_pos
                 puntos_transformados.append([x_rot, y_rot])
                 
             color_cang = '#27ae60' if cargado else '#2980b9'
@@ -287,8 +287,8 @@ if play_sim:
                 puntos_mat_locales = np.array([[0.05, -0.35], [0.55, -0.35], [0.65, 0.1], [0.05, 0.1]])
                 puntos_mat_trans = []
                 for pt in puntos_mat_locales:
-                    x_rot = pt[0] * cos_a - pt[1] * sin_a + x_pos
-                    y_rot = pt[0] * sin_a + pt[1] * cos_a + y_pos
+                    x_rot = pt * cos_a - pt * sin_a + x_pos
+                    y_rot = pt * sin_a + pt * cos_a + y_pos
                     puntos_mat_trans.append([x_rot, y_rot])
                 ax_sim.add_patch(patches.Polygon(puntos_mat_trans, closed=True, facecolor='#d35400', alpha=0.9, zorder=5))
         
