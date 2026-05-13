@@ -185,7 +185,7 @@ if ciclos_falla_puro != float('inf') and ciclos_falla_puro > 1:
     with c_m2:
         st.metric(label="Vida Útil Estimada (Horas)", value=f"{horas_vida_miner:,.1f} h")
     with c_m3:
-        st.metric(label="Vida Útil Estimada (Días)", value=f"{dias_vida_miner:,.1f} días")
+        st.metric(label="Vida Útil Estimada (Días)", value=f"{dias_vida_miner:,.1f} days")
         
     if tau_m > ssy:
         st.error(f"🚨 **ALERTA CRÍTICA:** El esfuerzo cortante máximo de **{tau_m:.2f} MPa** superó el límite elástico al corte ({ssy:.2f} MPa). Se producirá deformación plástica permanente en el primer impacto. Reemplace el pin o disminuya la bota.")
@@ -197,71 +197,84 @@ elif ciclos_falla_puro == 1.0:
 else:
     st.success("✨ **Vida Infinita:** El esfuerzo máximo local está por debajo del umbral de fatiga del material. No se registrará daño acumulativo bajo estas condiciones operativas.")
 
-# --- NUEVO BLOQUE: SIMULACIÓN EN TIEMPO REAL DEL MOVIMIENTO DEL ELEVADOR ---
+# --- BLOQUE DE SIMULACIÓN REALISTA MEJORADO ---
 st.markdown("---")
-st.write("### 🔄 Simulación Dinámica del Movimiento de Cangilones")
+st.write("### 🔄 Simulación Dinámica Industrial del Movimiento de Cangilones")
 
-col_sim1, col_sim2 = st.columns([1, 3])
+col_sim1, col_sim2 = st.columns([1, 2])
 
 with col_sim1:
     st.markdown("**Control de Animación**")
     tiempo_viaje_subida = altura / v_ms if v_ms > 0 else 0
-    st.write(f"⏱️ **Tiempo de subida:** {tiempo_viaje_subida:.2f} segundos")
+    st.write(f"⏱️ **Tiempo de transporte vertical:** {tiempo_viaje_subida:.2f} segundos")
     play_sim = st.button("▶️ Iniciar / Reiniciar Simulación")
 
 with col_sim2:
     placeholder_grafico = st.empty()
 
 if play_sim:
-    # Parámetros geométricos fijos para la animación visual
-    num_cangilones_sim = 8
+    num_cangilones_sim = 10
     posiciones_fase = np.linspace(0, 2 * altura, num_cangilones_sim, endpoint=False)
+    radio_sprocket_sim = 1.2
     
-    # Bucle de animación (Simula 40 pasos de tiempo en Streamlit)
-    for t_step in range(40):
-        # Desplazamiento lineal basado en el paso del tiempo y la velocidad de la cadena calculada
-        dt = 0.5 
+    for t_step in range(60):
+        dt = 0.4
         desplazamiento = (v_ms * t_step * dt) % (2 * altura)
         
-        fig_sim, ax_sim = plt.subplots(figsize=(6, 8))
+        fig_sim, ax_sim = plt.subplots(figsize=(6, 9))
         
-        # Dibujar los sprockets de cabeza y bota como referencia
-        ax_sim.add_patch(plt.Circle((0, altura), 1.0, color='gray', fill=False, lw=2, ls='--'))
-        ax_sim.add_patch(plt.Circle((0, 0), 1.0, color='gray', fill=False, lw=2, ls='--'))
+        # SPROCKETS REALISTAS (Círculos sólidos con mazas y ejes)
+        ax_sim.add_patch(plt.Circle((0, altura), radio_sprocket_sim, color='#7f8c8d', fill=True, zorder=2))
+        ax_sim.add_patch(plt.Circle((0, altura), 0.3, color='#2c3e50', fill=True, zorder=3)) # Eje
+        ax_sim.add_patch(plt.Circle((0, 0), radio_sprocket_sim, color='#7f8c8d', fill=True, zorder=2))
+        ax_sim.add_patch(plt.Circle((0, 0), 0.3, color='#2c3e50', fill=True, zorder=3)) # Eje
         
-        # Dibujar las líneas de la cadena (Ramal de subida a la derecha, bajada a la izquierda)
-        ax_sim.plot([1, 1], [0, altura], color='#555555', lw=1.5)
-        ax_sim.plot([-1, -1], [0, altura], color='#555555', lw=1.5)
+        # LINEAS DE CADENA DE TRANSMISIÓN
+        ax_sim.plot([radio_sprocket_sim, radio_sprocket_sim], [0, altura], color='#34495e', lw=2.5, zorder=1)
+        ax_sim.plot([-radio_sprocket_sim, -radio_sprocket_sim], [0, altura], color='#34495e', lw=2.5, zorder=1)
         
         for pos_base in posiciones_fase:
-            # Calcular la posición de cada cangilón en el lazo cerrado
             pos_actual = (pos_base + desplazamiento) % (2 * altura)
             
             if pos_actual <= altura:
-                # Ramal de subida (Lado derecho X = 1)
-                x_pos = 1.0
+                # RAMAL DERECHO: Subiendo cargado
+                x_pos = radio_sprocket_sim
                 y_pos = pos_actual
-                color_cang = 'green' # Subiendo con carga
-                marcador = '>'
+                
+                # Geometría poligonal del cangilón real industrial (perfil de tolva hacia afuera)
+                cangilon_puntos = [
+                    [x_pos, y_pos - 0.4],             # Base posterior
+                    [x_pos + 0.6, y_pos - 0.4],       # Proyección labio inferior
+                    [x_pos + 0.8, y_pos + 0.3],       # Labio superior de descarga
+                    [x_pos, y_pos + 0.3]              # Fijación superior a cadena
+                ]
+                ax_sim.add_patch(patches.Polygon(cangilon_puntos, closed=True, facecolor='#27ae60', edgecolor='#1e8449', lw=1.5, zorder=4))
+                # Dibujar material (Llenado de mineral/grano dentro del balde)
+                mat_puntos = [[x_pos+0.05, y_pos-0.35], [x_pos+0.55, y_pos-0.35], [x_pos+0.65, y_pos+0.1], [x_pos+0.05, y_pos+0.1]]
+                ax_sim.add_patch(patches.Polygon(mat_puntos, closed=True, facecolor='#d35400', alpha=0.9, zorder=5))
+                
             else:
-                # Ramal de bajada (Lado izquierdo X = -1)
-                x_pos = -1.0
+                # RAMAL IZQUIERDO: Bajando vacío (Cangilón invertido)
+                x_pos = -radio_sprocket_sim
                 y_pos = 2 * altura - pos_actual
-                color_cang = 'blue' # Bajando vacío
-                marcador = '<'
-            
-            # Dibujar cangilón individual en el gráfico
-            ax_sim.scatter(x_pos, y_pos, color=color_cang, marker=marcador, s=250, zorder=5)
+                
+                # Geometría poligonal invertida en el descenso
+                cangilon_puntos = [
+                    [x_pos, y_pos + 0.4],
+                    [x_pos - 0.6, y_pos + 0.4],
+                    [x_pos - 0.8, y_pos - 0.3],
+                    [x_pos, y_pos - 0.3]
+                ]
+                ax_sim.add_patch(patches.Polygon(cangilon_puntos, closed=True, facecolor='#2980b9', edgecolor='#1f618d', lw=1.5, zorder=4))
         
-        # Configuración estética de la ventana de simulación
-        ax_sim.set_xlim(-3, 3)
+        # CONFIGURACIÓN DE ENTORNO VISUAL
+        ax_sim.set_xlim(-4, 4)
         ax_sim.set_ylim(-3, altura + 3)
-        ax_sim.set_title(f"Velocidad: {v_ms:.2f} m/s | Dirección de Flujo", fontsize=10)
-        ax_sim.set_xlabel("Eje de Simetría")
-        ax_sim.set_ylabel("Altura Vertical (m)")
-        ax_sim.grid(True, alpha=0.2)
+        ax_sim.set_title(f"Flujo Continuo Sincronizado | Velocidad Lineal: {v_ms:.2f} m/s", fontsize=10, fontweight='bold')
+        ax_sim.set_xlabel("Ancho de Carcasa (m)")
+        ax_sim.set_ylabel("Altura de Elevación Vertical (m)")
+        ax_sim.grid(True, alpha=0.15, ls=':')
         
-        # Actualizar el contenedor dinámico de Streamlit
         placeholder_grafico.pyplot(fig_sim)
         plt.close(fig_sim)
-        time.sleep(0.08) # Pausa para emular la velocidad del cuadro
+        time.sleep(0.05)
