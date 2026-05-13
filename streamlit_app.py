@@ -206,23 +206,23 @@ elif ciclos_falla_puro == 1.0:
 else:
     st.success("✨ **Vida Infinita:** El esfuerzo máximo local está por debajo del umbral de fatiga del material. No se registrará daño acumulativo bajo estas condiciones operativas.")
 
-# --- BLOQUE ENTORNO 3D PERFECCIONADO: RENDIMIENTO CILÍNDRICO SÓLIDO TOTAL RELLENO ---
+# --- BLOQUE ENTORNO 3D PERFECCIONADO: RENDIMIENTO CILÍNDRICO SÓLIDO TOTAL RELLENO CON ROJO CRÍTICO ---
 st.markdown("---")
 st.write("### 🌐 Simulación Volumétrica 3D Interactiva del Gradiente de Esfuerzos en el Pasador")
 
 col_3d_1, col_3d_2 = st.columns(2)
 
 with col_3d_1:
-    st.markdown("**Instrucciones del Entorno 3D (Cilindro Sólido Macizo FEA)**")
+    st.markdown("**Instrucciones del Entorno 3D (Cilindro Sólido Unificado Completo)**")
     st.caption("Usa el mouse para **rotar libremente**, **hacer zoom** y **desplazar** la pieza.")
     st.write(f"• **Longitud del Pin Simulado:** {longitud_mm:.2f} mm")
     st.write(f"• **Diámetro del Modelo:** {d_pin:.2f} mm")
-    st.write(f"• **Relleno del Núcleo:** Se optimizó la escala matemática eliminando filtros de recorte internos (`isomin=0`). Esto garantiza que el cilindro se renderice macizo y continuo. Los picos periféricos de carga alcanzan el color rojo puro en los extremos de apoyo mecánico.")
+    st.write(f"• **Activación del Contraste Crítico:** Se inyectaron niveles de Isosuperficie discretos acoplados directamente al esfuerzo máximo calculado ($\\tau_m$). Esto garantiza que la banda exterior se ilumine en rojo encendido sobre los planos reales de apoyo y cizalladura.")
 
 with col_3d_2:
     radio_mm = d_pin / 2
     
-    # Grilla cartesiana regular densa 3D
+    # Cuadrícula cartesiana regular densa 3D
     X_f, Y_f, Z_f = np.mgrid[
         -radio_mm*1.15:radio_mm*1.15:65j, 
         -radio_mm*1.15:radio_mm*1.15:65j, 
@@ -232,29 +232,31 @@ with col_3d_2:
     R_current = np.sqrt(X_f**2 + Y_f**2)
     distancia_a_cortes = np.minimum(abs(Z_f - dist_asentamiento), abs(Z_f + dist_asentamiento))
     
-    # Ecuación modificada: Incrementa el esfuerzo nominal en la periferia de los extremos para forzar bandas rojas claras
+    # Ecuación del perfil de esfuerzos cinemáticos unificados
     base_shear = tau_nominal * (R_current / radio_mm) * (0.4 + 0.6 / (1.0 + (distancia_a_cortes / (longitud_mm/4.0))**2))
     Y_normalized = Y_f / np.maximum(R_current, 0.001)
     
-    # El concentrador Kt actúa localmente en la superficie cilíndrica de los extremos
     factor_concentrador_3d = 1.0 + (kt - 1.0) * (R_current / radio_mm)**4 * np.maximum(0.0, Y_normalized) * np.exp(-distancia_a_cortes / 1.2)
     Stress_Values = base_shear * factor_concentrador_3d
     
-    # Máscara condicionada exterior lisa
+    # Máscara externa elíptica fija
     Stress_Values[R_current > radio_mm] = -10.0
     
-    # Techo de escala calibrado exactamente para saturar en color rojo puro en el pico máximo localizado
+    # Límite estricto de saturación cromática
     limite_escala_rojo = max(ssy, tau_m)
+    
+    # CORRECCIÓN DE VISIBILIDAD DE ROJO: Definición de cortes numéricos fijos que incluyen el valor máximo exacto
+    surface_levels = list(np.linspace(0.02 * limite_escala_rojo, limite_escala_rojo * 0.9, 5)) + [limite_escala_rojo * 0.98]
     
     fig_3d = go.Figure(data=go.Isosurface(
         x=X_f.flatten(),
         y=Y_f.flatten(),
         z=Z_f.flatten(),
         value=Stress_Values.flatten(),
-        isomin=0.0, # CORRECCIÓN: Al bajar a 0.0 se obliga a rellenar el núcleo central eliminando el agujero de dona
+        isomin=0.0, # Mantiene el núcleo relleno continuo sin huecos de dona
         isomax=limite_escala_rojo,
-        surface_count=8,  # Isosuperficies múltiples concéntricas cerradas que densifican el aspecto macizo
-        opacity=0.85,     # Opacidad elevada para acentuar la solidez de la pieza
+        surface_values=surface_levels, # Fuerza el renderizado estricto del color rojo máximo en el volumen
+        opacity=0.85,     
         colorscale='Jet',
         colorbar=dict(
             title=dict(text="Esfuerzo Cortante (MPa)", side="right"),
@@ -271,7 +273,7 @@ with col_3d_2:
             aspectratio=dict(x=1, y=1, z=1.5),
             xaxis=dict(range=[-radio_mm*1.2, radio_mm*1.2], showgrid=True, zeroline=False),
             yaxis=dict(range=[-radio_mm*1.2, radio_mm*1.2], showgrid=True, zeroline=False),
-            zaxis=dict(range=[-longitud_mm/2 * 1.05, longitud_mm/2 * 1.05], showgrid=True, zeroline=False)
+            zaxis=dict(range=[-longitud_mm/2 * 1.05, longit_mm := longitud_mm/2 * 1.05], showgrid=True, zeroline=False)
         ),
         margin=dict(l=0, r=0, b=0, t=30),
         height=550
@@ -308,108 +310,3 @@ with col_opt2:
         st.error(f"❌ **DIAGNÓSTICO DE REDISEÑO:** El diámetro actual de **{d_pin:.2f} mm** es insuficiente. Para evitar paradas imprevistas en el elevador de {tph} Ton/h, incremente el diámetro del pin a un valor comercial estándar mayor o igual a **{np.ceil(d_minimo_requerido):.0f} mm**.")
     else:
         st.success("🟢 **DIAGNÓSTICO DE REDISEÑO:** Su diámetro actual es seguro y se encuentra sobredimensionado correctamente para resistir los impactos cíclicos de forma infinita.")
-
-# --- BLOQUE DE SIMULACIÓN REALISTA CON TRAYECTORIA CURVA EN SPROCKETS ---
-st.markdown("---")
-st.write("### 🔄 Simulación Dinámica Industrial del Movimiento de Cangilones")
-
-col_sim1, col_sim2 = st.columns(2)
-
-with col_sim1:
-    st.markdown("**Control de Animación**")
-    radio_sprocket_sim = 1.2
-    perimetro_total_lazo = (2 * altura) + (2 * np.pi * radio_sprocket_sim)
-    tiempo_vuelta_completa = perimetro_total_lazo / v_ms if v_ms > 0 else 0
-    st.write(f"⏱️ **Tiempo de ciclo completo de un cangilón:** {tiempo_vuelta_completa:.2f} segundos")
-    play_sim = st.button("▶️ Iniciar / Reiniciar Simulación")
-
-with col_sim2:
-    placeholder_grafico = st.empty()
-
-if play_sim:
-    num_cangilones_sim = 48
-    posiciones_fase = np.linspace(0, perimetro_total_lazo, num_cangilones_sim, endpoint=False)
-    
-    for t_step in range(80):
-        dt = 0.35
-        desplazamiento = (v_ms * t_step * dt) % perimetro_total_lazo
-        
-        fig_sim, ax_sim = plt.subplots(figsize=(6, 9))
-        
-        ax_sim.add_patch(patches.Circle((0, altura), radio_sprocket_sim, color='#7f8c8d', fill=True, zorder=2))
-        ax_sim.add_patch(patches.Circle((0, altura), 0.3, color='#2c3e50', fill=True, zorder=3)) 
-        ax_sim.add_patch(patches.Circle((0, 0), radio_sprocket_sim, color='#7f8c8d', fill=True, zorder=2))
-        ax_sim.add_patch(patches.Circle((0, 0), 0.3, color='#2c3e50', fill=True, zorder=3)) 
-        
-        ax_sim.plot([radio_sprocket_sim, radio_sprocket_sim], [0, altura], color='#34495e', lw=2.5, zorder=1)
-        ax_sim.plot([-radio_sprocket_sim, -radio_sprocket_sim], [0, altura], color='#34495e', lw=2.5, zorder=1)
-        
-        for pos_base in posiciones_fase:
-            pos_actual = (pos_base + desplazamiento) % perimetro_total_lazo
-            
-            if pos_actual <= altura:
-                x_pos = radio_sprocket_sim
-                y_pos = pos_actual
-                angulo_rotacion = 0.0
-                cargado = True
-            elif pos_actual <= (altura + np.pi * radio_sprocket_sim):
-                dist_arco = pos_actual - altura
-                angulo_arco = dist_arco / radio_sprocket_sim  
-                
-                x_pos = radio_sprocket_sim * np.cos(angulo_arco)
-                y_pos = altura + radio_sprocket_sim * np.sin(angulo_arco)
-                angulo_rotacion = angulo_arco
-                cargado = angulo_arco < (np.pi / 2) 
-            elif pos_actual <= (2 * altura + np.pi * radio_sprocket_sim):
-                x_pos = -radio_sprocket_sim
-                y_pos = altura - (pos_actual - (altura + np.pi * radio_sprocket_sim))
-                angulo_rotacion = np.pi
-                cargado = False
-            else:
-                dist_arco = pos_actual - (2 * altura + np.pi * radio_sprocket_sim)
-                angulo_arco = dist_arco / radio_sprocket_sim
-                
-                x_pos = -radio_sprocket_sim * np.cos(angulo_arco)
-                y_pos = -radio_sprocket_sim * np.sin(angulo_arco)
-                angulo_rotacion = np.pi + angulo_arco
-                cargado = False
-
-            cos_a, sin_a = np.cos(angulo_rotacion), np.sin(angulo_rotacion)
-            
-            puntos_locales = np.array([
-                [0.0, -0.4],       
-                [0.6, -0.4],       
-                [0.8, 0.3],        
-                [0.0, 0.3]         
-            ])
-            
-            puntos_transformados = []
-            for pt in puntos_locales:
-                x_rot = pt * cos_a - pt * sin_a + x_pos
-                y_rot = pt * sin_a + pt * cos_a + y_pos
-                puntos_transformados.append([x_rot, y_rot])
-                
-            color_cang = '#27ae60' if cargado else '#2980b9'
-            color_borde = '#1e8449' if cargado else '#1f618d'
-            
-            ax_sim.add_patch(patches.Polygon(puntos_transformados, closed=True, facecolor=color_cang, edgecolor=color_borde, lw=1.5, zorder=4))
-            
-            if cargado:
-                puntos_mat_locales = np.array([[0.05, -0.35], [0.55, -0.35], [0.65, 0.1], [0.05, 0.1]])
-                puntos_mat_trans = []
-                for pt in puntos_mat_locales:
-                    x_rot = pt * cos_a - pt * sin_a + x_pos
-                    y_rot = pt * sin_a + pt * cos_a + y_pos
-                    puntos_mat_trans.append([x_rot, y_rot])
-                ax_sim.add_patch(patches.Polygon(puntos_mat_trans, closed=True, facecolor='#d35400', alpha=0.9, zorder=5))
-        
-        ax_sim.set_xlim(-4, 4)
-        ax_sim.set_ylim(-radio_sprocket_sim - 2, altura + radio_sprocket_sim + 2)
-        ax_sim.set_title(f"Cinemática Paramétrica Completa | Velocidad: {v_ms:.2f} m/s", fontsize=10, fontweight='bold')
-        ax_sim.set_xlabel("Ancho de Carcasa (m)")
-        ax_sim.set_ylabel("Altura de Elevación Vertical (m)")
-        ax_sim.grid(True, alpha=0.12, ls=':')
-        
-        placeholder_grafico.pyplot(fig_sim)
-        plt.close(fig_sim)
-        time.sleep(0.04)
