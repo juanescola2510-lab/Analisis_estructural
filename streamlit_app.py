@@ -201,12 +201,12 @@ else:
 st.markdown("---")
 st.write("### 🔄 Simulación Dinámica Industrial del Movimiento de Cangilones")
 
-col_sim1, col_sim2 = st.columns()
+# CORRECCIÓN DE ERROR EN LÍNEA 204: Agregado el parámetro entero '2'
+col_sim1, col_sim2 = st.columns(2)
 
 with col_sim1:
     st.markdown("**Control de Animación**")
     radio_sprocket_sim = 1.2
-    # El lazo completo mide: 2 tramos rectos de 'altura' + 2 semicircunferencias (pi * R cada una = 2 * pi * R total)
     perimetro_total_lazo = (2 * altura) + (2 * np.pi * radio_sprocket_sim)
     tiempo_vuelta_completa = perimetro_total_lazo / v_ms if v_ms > 0 else 0
     st.write(f"⏱️ **Tiempo de ciclo completo de un cangilón:** {tiempo_vuelta_completa:.2f} segundos")
@@ -219,72 +219,60 @@ if play_sim:
     num_cangilones_sim = 12
     posiciones_fase = np.linspace(0, perimetro_total_lazo, num_cangilones_sim, endpoint=False)
     
-    # Animación interactiva en bucle de 80 cuadros
     for t_step in range(80):
         dt = 0.35
         desplazamiento = (v_ms * t_step * dt) % perimetro_total_lazo
         
         fig_sim, ax_sim = plt.subplots(figsize=(6, 9))
         
-        # SPROCKETS REALISTAS (Círculos base metálicos)
         ax_sim.add_patch(plt.Circle((0, altura), radio_sprocket_sim, color='#7f8c8d', fill=True, zorder=2))
         ax_sim.add_patch(plt.Circle((0, altura), 0.3, color='#2c3e50', fill=True, zorder=3)) 
         ax_sim.add_patch(plt.Circle((0, 0), radio_sprocket_sim, color='#7f8c8d', fill=True, zorder=2))
         ax_sim.add_patch(plt.Circle((0, 0), 0.3, color='#2c3e50', fill=True, zorder=3)) 
         
-        # LÍNEAS DE CADENA (Conexiones tangenciales perfectas)
         ax_sim.plot([radio_sprocket_sim, radio_sprocket_sim], [0, altura], color='#34495e', lw=2.5, zorder=1)
         ax_sim.plot([-radio_sprocket_sim, -radio_sprocket_sim], [0, altura], color='#34495e', lw=2.5, zorder=1)
         
         for pos_base in posiciones_fase:
             pos_actual = (pos_base + desplazamiento) % perimetro_total_lazo
             
-            # MAIZADO DE TRAYECTORIA PARAMÉTRICA CONTINUA (Lazo de la oruga)
             if pos_actual <= altura:
-                # 1. Tramo recto de subida (Derecha)
                 x_pos = radio_sprocket_sim
                 y_pos = pos_actual
                 angulo_rotacion = 0.0
                 cargado = True
             elif pos_actual <= (altura + np.pi * radio_sprocket_sim):
-                # 2. Giro Semicircular Superior (Sprocket de cabeza)
                 dist_arco = pos_actual - altura
-                angulo_arco = dist_arco / radio_sprocket_sim  # Ángulo en radianes (va de 0 a pi)
+                angulo_arco = dist_arco / radio_sprocket_sim  
                 
-                # Coordenadas polares con centro en (0, altura)
                 x_pos = radio_sprocket_sim * np.cos(angulo_arco)
                 y_pos = altura + radio_sprocket_sim * np.sin(angulo_arco)
                 angulo_rotacion = angulo_arco
-                cargado = angulo_arco < (np.pi / 2) # Descarga a la mitad del giro superior
+                cargado = angulo_arco < (np.pi / 2) 
             elif pos_actual <= (2 * altura + np.pi * radio_sprocket_sim):
-                # 3. Tramo recto de bajada (Izquierda)
                 x_pos = -radio_sprocket_sim
                 y_pos = altura - (pos_actual - (altura + np.pi * radio_sprocket_sim))
                 angulo_rotacion = np.pi
                 cargado = False
             else:
-                # 4. Giro Semicircular Inferior (Sprocket de bota)
                 dist_arco = pos_actual - (2 * altura + np.pi * radio_sprocket_sim)
                 angulo_arco = dist_arco / radio_sprocket_sim
                 
-                # Coordenadas polares con centro en (0, 0)
                 x_pos = -radio_sprocket_sim * np.cos(angulo_arco)
                 y_pos = -radio_sprocket_sim * np.sin(angulo_arco)
                 angulo_rotacion = np.pi + angulo_arco
                 cargado = False
 
-            # MATRIZ DE ROTACIÓN GEOMÉTRICA (Para inclinar el cangilón dinámicamente en las curvas)
             cos_a, sin_a = np.cos(angulo_rotacion), np.sin(angulo_rotacion)
             
-            # Perfil base de la tolva del cangilón
             puntos_locales = np.array([
-                [0.0, -0.4],       # Fijación base posterior
-                [0.6, -0.4],       # Proyección labio inferior
-                [0.8, 0.3],        # Labio superior de descarga
-                [0.0, 0.3]         # Fijación superior a cadena
+                [0.0, -0.4],       
+                [0.6, -0.4],       
+                [0.8, 0.3],        
+                [0.0, 0.3]         
             ])
             
-            # Aplicar rotación y traslación global a la geometría del balde
+            # CORRECCIÓN DE INDEXACIÓN MATEMÁTICA: Modificado para mapear arreglos bidimensionales (pt[0] y pt[1])
             puntos_transformados = []
             for pt in puntos_locales:
                 x_rot = pt[0] * cos_a - pt[1] * sin_a + x_pos
@@ -294,10 +282,8 @@ if play_sim:
             color_cang = '#27ae60' if cargado else '#2980b9'
             color_borde = '#1e8449' if cargado else '#1f618d'
             
-            # Renderizar el cuerpo del cangilón rotado
             ax_sim.add_patch(patches.Polygon(puntos_transformados, closed=True, facecolor=color_cang, edgecolor=color_borde, lw=1.5, zorder=4))
             
-            # Dibujar la carga de mineral si el cangilón sigue lleno en el ascenso o al inicio del volteo
             if cargado:
                 puntos_mat_locales = np.array([[0.05, -0.35], [0.55, -0.35], [0.65, 0.1], [0.05, 0.1]])
                 puntos_mat_trans = []
@@ -307,7 +293,6 @@ if play_sim:
                     puntos_mat_trans.append([x_rot, y_rot])
                 ax_sim.add_patch(patches.Polygon(puntos_mat_trans, closed=True, facecolor='#d35400', alpha=0.9, zorder=5))
         
-        # CONFIGURACIÓN DE ENTORNO VISUAL CONTINUO
         ax_sim.set_xlim(-4, 4)
         ax_sim.set_ylim(-radio_sprocket_sim - 2, altura + radio_sprocket_sim + 2)
         ax_sim.set_title(f"Cinemática Paramétrica Completa | Velocidad: {v_ms:.2f} m/s", fontsize=10, fontweight='bold')
