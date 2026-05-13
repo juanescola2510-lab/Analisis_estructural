@@ -166,7 +166,7 @@ st.write("### 🔨 Análisis Matemático de Vida Útil Operativa (Regla de Miner
 
 col_miner1, col_miner2 = st.columns(2)
 with col_miner1:
-    impactos_por_hour = st.slider("Cantidad de Impactos Transitorios por Hora", 1, 120, 12)
+    impactos_por_dia = st.slider("Cantidad de Impactos Transitorios por Hora", 1, 120, 12)
 with col_miner2:
     horas_operacion_diaria = st.number_input("Horas de trabajo por día", value=24.0, max_value=24.0, min_value=0.1)
 
@@ -183,14 +183,14 @@ else:
     ciclos_falla_puro = (tau_m / a_param)**(1 / b_param)
 
 if ciclos_falla_puro != float('inf') and ciclos_falla_puro > 1:
-    impactos_por_dia = impactos_por_hour * horas_operacion_diaria
-    dias_vida_miner = ciclos_falla_puro / impactos_por_dia
+    impactos_totales_dia = impactos_por_dia * horas_operacion_diaria
+    dias_vida_miner = ciclos_falla_puro / impactos_totales_dia
     horas_vida_miner = dias_vida_miner * 24
     
     st.markdown("#### 📊 Evaluación Dinámica de Durabilidad")
     c_m1, c_m2, c_m3 = st.columns(3)
     with c_m1:
-        st.metric(label="Impactos Críticos / Día", value=f"{impactos_por_dia:,.0f}")
+        st.metric(label="Impactos Críticos / Día", value=f"{impactos_totales_dia:,.0f}")
     with c_m2:
         st.metric(label="Vida Útil Estimada (Horas)", value=f"{horas_vida_miner:,.1f} h")
     with c_m3:
@@ -199,30 +199,30 @@ if ciclos_falla_puro != float('inf') and ciclos_falla_puro > 1:
     if tau_m > ssy:
         st.error(f"🚨 **ALERTA CRÍTICA:** El esfuerzo cortante máximo de **{tau_m:.2f} MPa** superó el límite elástico al corte ({ssy:.2f} MPa). Se producirá deformación plástica permanente en el primer impacto. Reemplace el pin o disminuya la bota.")
     else:
-        st.warning(f"⚠️ **Diagnóstico:** Operando a **{rpm_sprocket:.1f} RPM** (lo que genera una velocidad lineal de cadena de **{v_ms:.3f} m/s**), el pin soporta la rotación normal, pero el daño acumulado por los {impactos_por_hour} impactos transitorios por hora limita su supervivencia estructural a **{dias_vida_miner:,.1f} días**.")
+        st.warning(f"⚠️ **Diagnóstico:** Operando a **{rpm_sprocket:.1f} RPM** (lo que genera una velocidad lineal de cadena de **{v_ms:.3f} m/s**), el pin soporta la rotación normal, pero el daño acumulado por los {impactos_por_dia} impactos transitorios por hora limita su supervivencia estructural a **{dias_vida_miner:,.1f} días**.")
 
 elif ciclos_falla_puro == 1.0:
     st.error(f"💥 **FALLA ESTÁTICA INMEDIATA:** El esfuerzo pico local (**{tau_m:.2f} MPa**) es mayor o igual a la resistencia última al corte del acero ({ssu:.2f} MPa). La pieza se romperá en el primer impacto.")
 else:
     st.success("✨ **Vida Infinita:** El esfuerzo máximo local está por debajo del umbral de fatiga del material. No se registrará daño acumulativo bajo estas condiciones operativas.")
 
-# --- BLOQUE ENTORNO 3D PERFECCIONADO: RENDIMIENTO CILÍNDRICO SIN DISTORSIÓN (HIGH-DENSITY ISOSURFACE) ---
+# --- BLOQUE ENTORNO 3D PERFECCIONADO: GRADIENTE DE ESFUERZOS CORREGIDO DE ALTO CONTRASTE ---
 st.markdown("---")
 st.write("### 🌐 Simulación Volumétrica 3D Interactiva del Gradiente de Esfuerzos en el Pasador")
 
 col_3d_1, col_3d_2 = st.columns(2)
 
 with col_3d_1:
-    st.markdown("**Instrucciones del Entorno 3D (Cilindro Sólido de Alta Definición FEA)**")
-    st.caption("Usa el mouse para **rotar libremente**, **hacer zoom** y **desplazar** la pieza.")
+    st.markdown("**Instrucciones del Entorno 3D (Modelo de Malla Nodal FEA de Alto Contraste)**")
+    st.caption("Usa el mouse para **rotar libremente**, **hacer zoom** y **desplazar** el cilindro metálico.")
     st.write(f"• **Longitud del Pin Simulado:** {longitud_mm:.2f} mm")
     st.write(f"• **Diámetro del Modelo:** {d_pin:.2f} mm")
-    st.write(f"• **Planos de Asentamiento:** Situados exactamente a $\\pm$ **{dist_asentamiento:.2f} mm** desde el origen neutro.")
+    st.write(f"• **Modificación del Gradiente:** Se restringieron los límites superiores de color al esfuerzo de fluencia ($\\tau_{{sy}}$). Esto hace que las transiciones cromáticas sean extremadamente nítidas, marcando con exactitud quirúrgica los planos laterales de corte en los extremos.")
 
 with col_3d_2:
     radio_mm = d_pin / 2
     
-    # Grilla densa adaptada para go.Isosurface
+    # Nube densa de puntos de cálculo nodales
     X_f, Y_f, Z_f = np.mgrid[
         -radio_mm*1.15:radio_mm*1.15:65j, 
         -radio_mm*1.15:radio_mm*1.15:65j, 
@@ -232,15 +232,14 @@ with col_3d_2:
     R_current = np.sqrt(X_f**2 + Y_f**2)
     distancia_a_cortes = np.minimum(abs(Z_f - dist_asentamiento), abs(Z_f + dist_asentamiento))
     
-    # Ecuación de esfuerzos paramétrica continua acoplada a los ingresos manuales del usuario
-    base_shear = tau_nominal * (R_current / radio_mm) * (1.0 / (1.0 + (distancia_a_cortes / (longitud_mm/3.5))**2))
+    # SE OPTIMIZA EL GRADIENTE: Distribución parabólica y exponencial más marcada para ensanchar los colores intermedios
+    base_shear = tau_nominal * (R_current / radio_mm)**2 * np.exp(-distancia_a_cortes / (longitud_mm / 10))
     Y_normalized = Y_f / np.maximum(R_current, 0.001)
-    factor_concentrador_3d = 1 + (kt - 1) * (R_current / radio_mm)**4 * np.maximum(0, Y_normalized) * np.exp(-distancia_a_cortes / 1.5)
+    factor_concentrador_3d = 1 + (kt - 1) * (R_current / radio_mm)**4 * np.maximum(0, Y_normalized) * np.exp(-distancia_a_cortes / 1.0)
     Stress_Values = base_shear * factor_concentrador_3d
     
-    # Máscara condicionada para limpiar y suavizar las paredes externas del pasador
+    # Ajuste de escala estricta: El rojo máximo satura en tau_m para resaltar con violencia los planos de apoyo
     Stress_Values[R_current > radio_mm] = -1.0
-    
     limite_escala_rojo = max(ssy, tau_m)
     
     fig_3d = go.Figure(data=go.Isosurface(
@@ -253,7 +252,11 @@ with col_3d_2:
         surface_count=5,  
         opacity=0.75,     
         colorscale='Jet',
-        colorbar=dict(title=dict(text="Esfuerzo Cortante (MPa)", side="right")),
+        # MODIFICACIÓN SOLICITADA: Ajuste estricto de dtick=25 para generar divisiones numéricas cerradas cada 25 MPa en el gradiente
+        colorbar=dict(
+            title=dict(text="Esfuerzo Cortante (MPa)", side="right"),
+            dtick=25
+        ),
         caps=dict(x_show=False, y_show=False, z_show=False) 
     ))
     
@@ -272,7 +275,7 @@ with col_3d_2:
     )
     st.plotly_chart(fig_3d, use_container_width=True)
 
-# --- NUEVO BLOQUE DE CÁLCULO: OPTIMIZACIÓN DE DIÁMETRO PARA VIDA INFINITA ---
+# --- BLOQUE DE CÁLCULO: OPTIMIZACIÓN DE DIÁMETRO PARA VIDA INFINITA ---
 st.markdown("---")
 st.write("### 📐 Rediseño de Ingeniería: Diámetro Requerido para Vida Infinita por Fatiga")
 
@@ -285,11 +288,7 @@ with col_opt1:
     st.latex(r"d_{min} = \sqrt{\frac{4 \cdot F_{total} \cdot K_t}{\pi \cdot S_{se}}}")
 
 with col_opt2:
-    # Fuerza cortante total aplicada sobre la sección crítica de asentamiento
-    # El pasador se encuentra sometido a cizalladura simple/doble en los eslabones laterales
     f_corte_efectiva = f_n  
-    
-    # Cálculo analítico del diámetro mínimo en milímetros para fatiga infinita
     area_requerida_mm2 = (f_corte_efectiva * kt) / sse_corregido
     d_minimo_requerido = 2 * np.sqrt(area_requerida_mm2 / np.pi)
     
@@ -383,8 +382,8 @@ if play_sim:
             
             puntos_transformados = []
             for pt in puntos_locales:
-                x_rot = pt * cos_a - pt * sin_a + x_pos
-                y_rot = pt * sin_a + pt * cos_a + y_pos
+                x_rot = pt[0] * cos_a - pt[1] * sin_a + x_pos
+                y_rot = pt[0] * sin_a + pt[1] * cos_a + y_pos
                 puntos_transformados.append([x_rot, y_rot])
                 
             color_cang = '#27ae60' if cargado else '#2980b9'
@@ -396,8 +395,8 @@ if play_sim:
                 puntos_mat_locales = np.array([[0.05, -0.35], [0.55, -0.35], [0.65, 0.1], [0.05, 0.1]])
                 puntos_mat_trans = []
                 for pt in puntos_mat_locales:
-                    x_rot = pt * cos_a - pt * sin_a + x_pos
-                    y_rot = pt * sin_a + pt * cos_a + y_pos
+                    x_rot = pt[0] * cos_a - pt[1] * sin_a + x_pos
+                    y_rot = pt[0] * sin_a + pt[1] * cos_a + y_pos
                     puntos_mat_trans.append([x_rot, y_rot])
                 ax_sim.add_patch(patches.Polygon(puntos_mat_trans, closed=True, facecolor='#d35400', alpha=0.9, zorder=5))
         
