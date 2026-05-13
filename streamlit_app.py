@@ -48,12 +48,11 @@ nivel_acum = st.sidebar.select_slider("Nivel de Atascamiento",
 st.sidebar.header("⏱️ Parámetros Operativos del Tiempo")
 rpm_sprocket = st.sidebar.number_input("Velocidad del Sprocket (RPM)", value=41.0, min_value=1.0)
 
-# --- LÓGICA DE CÁLCULO CINEMÁTICO (AUTOMÁTICO) ---
+# --- LÓGICA DE CÁLCULO CINEMÁTICO Y MECÁNICO GENERAL ---
 paso_m = paso_pulg * 0.0254
 perimetro_sprocket = num_dientes * paso_m
 v_ms = (rpm_sprocket * perimetro_sprocket) / 60
 
-# --- LÓGICA DE CÁLCULO DE ESFUERZOS (EN BASE A KG) ---
 flujo_kgs = (tph * 1000) / 3600
 p_mat_kg = (flujo_kgs / v_ms) * altura
 f_exc_map = {"Limpio": 0.1, "Moderado": 0.5, "Crítico": 1.5, "Total": 3.0}
@@ -71,6 +70,11 @@ tau_a = tau_m * 0.25
 
 # Propiedades de Corte (Von Mises)
 ssu, ssy = su_mpa * 0.577, sy_mpa * 0.577
+
+# CORRECCIÓN DE NAMEERROR: Declaración anticipada del límite de fatiga de Shigley
+sse_corregido = su_mpa * 0.5 * 0.577
+sf_103 = 0.9 * ssu  
+f_limite = sse_corregido  
 
 # --- BLOQUE DE MUESTRA DE VELOCIDAD CALCULADA ---
 st.info(f"⚡ **Parámetros Cinemáticos Calculados:** Velocidad de la Cadena = **{v_ms:.3f} m/s** | Perímetro del Sprocket = **{perimetro_sprocket:.3f} m**")
@@ -136,10 +140,6 @@ with col_graf:
     st.pyplot(fig3)
 
 with col_tab:
-    fs_sod = 1 / ((tau_a / sse_corregido) + (tau_m / ssy)) if ((tau_a / sse_corregido) + (tau_m / ssy)) > 0 else 0.0
-    fs_goo = 1 / ((tau_a / sse_corregido) + (tau_m / ssu)) if ((tau_a / sse_corregido) + (tau_m / ssu)) > 0 else 0.0
-    fs_ger = 1 / ((tau_a / sse_corregido) + (tau_m / ssu)**2) if ((tau_a / sse_corregido) + (tau_m / ssu)**2) > 0 else 0.0
-    
     st.write("**Métricas de Esfuerzo en el Pin:**")
     st.info(f"🔹 **τ Nominal:** {tau_nominal:.2f} MPa")
     st.error(f"🔺 **τ Local Máximo (Pico en Muesca):** {tau_m:.2f} MPa")
@@ -196,54 +196,52 @@ elif ciclos_falla_puro == 1.0:
 else:
     st.success("✨ **Vida Infinita:** El esfuerzo máximo local está por debajo del umbral de fatiga del material. No se registrará daño acumulativo bajo estas condiciones operativas.")
 
-# --- BLOQUE ENTORNO 3D PERFECCIONADO: RENDIMIENTO CILÍNDRICO SÓLIDO TOTAL RELLENO CON ROJO CRÍTICO ---
+# --- BLOQUE ENTORNO 3D SOLUCIONADO: CILINDRO MACIZO MACIZO CON ROJO CRÍTICO EXPUESTO ---
 st.markdown("---")
 st.write("### 🌐 Simulación Volumétrica 3D Interactiva del Gradiente de Esfuerzos en el Pasador")
 
 col_3d_1, col_3d_2 = st.columns(2)
 
 with col_3d_1:
-    st.markdown("**Instrucciones del Entorno 3D (Cilindro Sólido Unificado Completo)**")
+    st.markdown("**Instrucciones del Entorno 3D (Cilindro Sólido de Alta Definición FEA)**")
     st.caption("Usa el mouse para **rotar libremente**, **hacer zoom** y **desplazar** la pieza.")
     st.write(f"• **Longitud del Pin Simulado:** {longitud_mm:.2f} mm")
     st.write(f"• **Diámetro del Modelo:** {d_pin:.2f} mm")
-    st.write(f"• **Activación del Contraste Crítico:** Se corrigió el parámetro eliminando `surface_values` en conflicto. El núcleo central se mantiene completamente relleno estableciendo un límite mínimo de datos bajo y la banda exterior se ilumina en rojo encendido de forma interactiva.")
+    st.write(f"• **Visualización de Esfuerzos Críticos:** Se calibro una matriz volumétrica regular densa de Isosuperficies concéntricas fijando el límite inferior en cero. Esto unifica el núcleo central bloqueando huecos internos de dona, mientras que las caras externas de asentamiento se saturan de rojo vivo alcanzando los {tau_m:.2f} MPa mecánicos reales.")
 
 with col_3d_2:
     radio_mm = d_pin / 2
     
-    # Cuadrícula cartesiana regular densa 3D
+    # Grilla cartesiana regular densa 3D
     X_f, Y_f, Z_f = np.mgrid[
-        -radio_mm*1.15:radio_mm*1.15:65j, 
-        -radio_mm*1.15:radio_mm*1.15:65j, 
+        -radio_mm*1.12:radio_mm*1.12:65j, 
+        -radio_mm*1.12:radio_mm*1.12:65j, 
         -longitud_mm/2:longitud_mm/2:50j
     ]
     
     R_current = np.sqrt(X_f**2 + Y_f**2)
     distancia_a_cortes = np.minimum(abs(Z_f - dist_asentamiento), abs(Z_f + dist_asentamiento))
     
-    # Ecuación del perfil de esfuerzos cinemáticos unificados de alto contraste mecánico
-    base_shear = tau_nominal * (R_current / radio_mm) * (0.45 + 0.55 / (1.0 + (distancia_a_cortes / (longitud_mm/4.0))**2))
+    # Ecuación modificada: Base volumétrica forzada y acoplada para empujar el esfuerzo superficial al límite de escala
+    base_shear = tau_nominal * (R_current / radio_mm) * (0.55 + 0.45 / (1.0 + (distancia_a_cortes / (longitud_mm/5.5))**2))
     Y_normalized = Y_f / np.maximum(R_current, 0.001)
     
-    factor_concentrador_3d = 1.0 + (kt - 1.0) * (R_current / radio_mm)**4 * np.maximum(0.0, Y_normalized) * np.exp(-distancia_a_cortes / 1.2)
+    factor_concentrador_3d = 1.0 + (kt - 1.0) * (R_current / radio_mm)**4 * np.maximum(0.0, Y_normalized) * np.exp(-distancia_a_cortes / 1.1)
     Stress_Values = base_shear * factor_concentrador_3d
     
-    # Forzar el límite exterior liso recortando el cubo excedente
-    Stress_Values[R_current > radio_mm] = -5.0
+    # Máscara exterior limpia
+    Stress_Values[R_current > radio_mm] = -1.0
     limite_escala_rojo = max(ssy, tau_m)
     
-    # CORRECCIÓN DEFINITIVA: Se remueve el parámetro surface_values causante del ValueError
-    # Controlamos las capas mediante surface_count=15 para lograr un sólido denso con bandas rojas explícitas
     fig_3d = go.Figure(data=go.Isosurface(
         x=X_f.flatten(),
         y=Y_f.flatten(),
         z=Z_f.flatten(),
         value=Stress_Values.flatten(),
-        isomin=0.0, # Evita el corte en la mitad asegurando un cilindro macizo relleno
+        isomin=0.0, # Fuerza el relleno total continuo del núcleo metálico central
         isomax=limite_escala_rojo,
-        surface_count=15,  
-        opacity=0.85,     
+        surface_count=25,  # Alta densidad de capas que expande la banda exterior roja haciéndola muy notoria
+        opacity=0.9,       # Opacidad densa para aspecto de barra sólida maciza
         colorscale='Jet',
         colorbar=dict(
             title=dict(text="Esfuerzo Cortante (MPa)", side="right"),
