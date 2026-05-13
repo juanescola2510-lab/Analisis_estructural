@@ -29,9 +29,9 @@ sy_mpa = st.sidebar.number_input("Límite Elástico Sy (MPa)", value=840)
 st.sidebar.header("🔍 Concentradores de Esfuerzo")
 condicion_superficie = st.sidebar.selectbox(
     "Estado Superficial del Pin", 
-    ["Nuevo (Pulido)", "Rayado por Clinker superficial", "Grieta Inicial Detectada"]
+    ["Nuevo (Pulido)", "Rayado superficial", "Grieta Inicial Detectada"]
 )
-mapeo_kt = {"Nuevo (Pulido)": 1.0, "Rayado superficial": 1.85, "Grieta Inicial Detectada": 2.75}
+mapeo_kt = {"Nuevo (Pulido)": 1.0, "Rayado superficial": 1.75, "Grieta Inicial Detectada": 2.75}
 kt = mapeo_kt.get(condicion_superficie, 2.5)
 
 st.sidebar.header("⚠️ Condición de la Bota")
