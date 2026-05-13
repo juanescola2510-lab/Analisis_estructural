@@ -201,7 +201,7 @@ elif ciclos_falla_puro == 1.0:
 else:
     st.success("✨ **Vida Infinita:** El esfuerzo máximo local está por debajo del umbral de fatiga del material. No se registrará daño acumulativo bajo estas condiciones operativas.")
 
-# --- BLOQUE ENTORNO 3D PERFECCIONADO: RENDIMIENTO CILÍNDRICO SÓLIDO TOTAL RELLENO CON ROJO CRÍTICO ---
+# --- BLOQUE ENTORNO 3D PERFECCIONADO: RENDIMIENTO CILÍNDRICO SÓLIDO CON LECTURA DE HOVER MOUSE REALISTA ---
 st.markdown("---")
 st.write("### 🌐 Simulación Volumétrica 3D Interactiva del Gradiente de Esfuerzos en el Pasador")
 
@@ -212,7 +212,7 @@ with col_3d_1:
     st.caption("Usa el mouse para **rotar libremente**, **hacer zoom** y **desplazar** la pieza.")
     st.write(f"• **Longitud del Pin Simulado:** {longitud_mm:.2f} mm")
     st.write(f"• **Diámetro del Modelo:** {d_pin:.2f} mm")
-    st.write(f"• **Activación del Contraste Crítico:** Se calibró el campo físico para que las capas externas del plano de asentamiento alcancen el color rojo puro de la escala. El núcleo central se mantiene completamente relleno y continuo.")
+    st.write(f"• **Lectura Puntual Activa:** Posicione el puntero del mouse sobre las bandas rojas o cualquier sección del pasador. La interfaz desplegará un cuadro flotante indicando el valor de esfuerzo real en ese nodo exacto.")
 
 with col_3d_2:
     radio_mm = d_pin / 2
@@ -227,33 +227,46 @@ with col_3d_2:
     R_current = np.sqrt(X_f**2 + Y_f**2)
     distancia_a_cortes = np.minimum(abs(Z_f - dist_asentamiento), abs(Z_f + dist_asentamiento))
     
-    # Ecuación modificada: Base sólida en todo el volumen con picos en los extremos
-    base_shear = tau_nominal * (R_current / radio_mm) * (0.5 + 0.5 / (1.0 + (distancia_a_cortes / (longitud_mm/5.0))**2))
+    # Ecuación de perfil de esfuerzos con amplificación local periférica
+    base_shear = tau_nominal * (R_current / radio_mm) * (0.4 + 0.6 / (1.0 + (distancia_a_cortes / (longitud_mm/4.0))**2))
     Y_normalized = Y_f / np.maximum(R_current, 0.001)
     
-    factor_concentrador_3d = 1.0 + (kt - 1.0) * (R_current / radio_mm)**4 * np.maximum(0.0, Y_normalized) * np.exp(-distancia_a_cortes / 1.0)
+    factor_concentrador_3d = 1.0 + (kt - 1.0) * (R_current / radio_mm)**4 * np.maximum(0.0, Y_normalized) * np.exp(-distancia_a_cortes / 1.2)
     Stress_Values = base_shear * factor_concentrador_3d
     
-    # Forzar el límite exterior liso
+    # Máscara externa elíptica
     Stress_Values[R_current > radio_mm] = -10.0
     limite_escala_rojo = max(ssy, tau_m)
     
-    # CORRECCIÓN DE ERROR VALUEERROR: Se remueve surface_values y se controla con conteo automático denso
+    # Niveles discretos automáticos de capas
+    surface_levels = list(np.linspace(0.02 * limite_escala_rojo, limite_escala_rojo * 0.9, 5)) + [limite_escala_rojo * 0.98]
+    
+    # SE MODIFICA: Configuración avanzada de hovertemplate para lectura interactiva al pasar el mouse
     fig_3d = go.Figure(data=go.Isosurface(
         x=X_f.flatten(),
         y=Y_f.flatten(),
         z=Z_f.flatten(),
         value=Stress_Values.flatten(),
-        isomin=0.0, # Mantiene el núcleo relleno continuo sin huecos de dona
+        isomin=0.0, 
         isomax=limite_escala_rojo,
-        surface_count=12,  # Alto número de superficies para forzar la visualización de la banda roja extrema
+        surface_values=surface_levels, 
         opacity=0.85,     
         colorscale='Jet',
         colorbar=dict(
             title=dict(text="Esfuerzo Cortante (MPa)", side="right"),
             dtick=25
         ),
-        caps=dict(x_show=False, y_show=False, z_show=False) 
+        caps=dict(x_show=False, y_show=False, z_show=False),
+        # PARÁMETROS DE LECTURA DE MOUSE ACTIVADOS
+        hoverinfo="all",
+        hovertemplate=(
+            "<b>Coordenadas del Nodo:</b><br>" +
+            "X (Radio): %{x:.2f} mm<br>" +
+            "Y (Ancho): %{y:.2f} mm<br>" +
+            "Z (Longitud): %{z:.2f} mm<br>" +
+            "<span style='color:yellow'><b>Esfuerzo Cortante: %{value:.2f} MPa</b></span>" +
+            "<extra></extra>" # Elimina la etiqueta secundaria de Plotly por estética
+        )
     ))
     
     fig_3d.update_layout(
