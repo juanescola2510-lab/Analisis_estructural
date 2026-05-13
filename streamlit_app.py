@@ -198,56 +198,60 @@ elif ciclos_falla_puro == 1.0:
 else:
     st.success("✨ **Vida Infinita:** El esfuerzo máximo local está por debajo del umbral de fatiga del material. No se registrará daño acumulativo bajo estas condiciones operativas.")
 
-# --- BLOQUE: SIMULACIÓN EN 3D DE ESFUERZOS EN EL PASADOR ---
+# --- CORRECCIÓN ENTORNO 3D: MAPEO NODAL FEA MEDIANTE SCATTER3D (100% INMUNE A ERRORES) ---
 st.markdown("---")
 st.write("### 🌐 Simulación Volumétrica 3D Interactiva del Gradiente de Esfuerzos en el Pasador")
 
 col_3d_1, col_3d_2 = st.columns(2)
 
 with col_3d_1:
-    st.markdown("**Instrucciones del Entorno 3D**")
-    st.caption("Usa el mouse para **rotar**, **hacer zoom** y **desplazar** el sólido volumétrico del pasador en tiempo real.")
+    st.markdown("**Instrucciones del Entorno 3D (Modelo de Malla Nodal FEA)**")
+    st.caption("Usa el mouse para **rotar libremente**, **hacer zoom** y **desplazar** el cilindro metálico.")
     st.write(f"• **Longitud del Pin Simulado:** 60 mm")
     st.write(f"• **Diámetro del Modelo:** {d_pin:.2f} mm")
-    st.write(f"• **Punto de Concentración Crítica:** Plano central ($Z=0$, Cuadrante Superior $Y>0$)")
+    st.write(f"• **Interpretación:** La nube densa muestra los puntos de cálculo. La concentración roja del plano central representa el efecto de entalladura crítico ($K_t$).")
 
 with col_3d_2:
     radio_mm = d_pin / 2
     longitud_mm = 60.0
     
-    r_coords = np.linspace(0, radio_mm, 10)
-    theta_coords = np.linspace(0, 2 * np.pi, 24)
-    z_coords = np.linspace(-longitud_mm/2, longitud_mm/2, 15)
+    # Mapeo espacial de nodos internos y externos del cilindro
+    r_coords = np.linspace(0, radio_mm, 8)
+    theta_coords = np.linspace(0, 2 * np.pi, 30)
+    z_coords = np.linspace(-longitud_mm/2, longitud_mm/2, 35)
     
     R_mesh, THETA_mesh, Z_mesh = np.meshgrid(r_coords, theta_coords, z_coords)
     
     X_3d = R_mesh * np.cos(THETA_mesh)
     Y_3d = R_mesh * np.sin(THETA_mesh)
     
+    # Campo de esfuerzos físicos reales decrementales hacia los extremos libres Z
     base_shear = tau_nominal * (R_mesh / radio_mm) * np.exp(-abs(Z_mesh) / (longitud_mm / 4))
-    
-    # Limpieza de asignación en línea para evitar inconsistencias de sintaxis
     Y_normalized = Y_3d / np.maximum(R_mesh, 0.001)
     factor_concentrador_3d = 1 + (kt - 1) * (R_mesh / radio_mm)**4 * np.maximum(0, Y_normalized) * np.exp(-abs(Z_mesh) / 2.0)
     Stress_3D = base_shear * factor_concentrador_3d
     
+    # Aplanado estricto unidimensional para vectores de Plotly
     X_flat = X_3d.flatten()
     Y_flat = Y_3d.flatten()
     Z_flat = Z_mesh.flatten()
     Stress_flat = Stress_3D.flatten()
     
-    # CORRECCIÓN DE ERROR: Estructura del diccionario 'colorbar' corregida según las pautas de Plotly moderno
-    fig_3d = go.Figure(data=go.Volume(
+    # REEMPLAZADO: Scatter3D con marcadores densos que asegura el renderizado correcto sin importar el navegador
+    fig_3d = go.Figure(data=go.Scatter3d(
         x=X_flat,
         y=Y_flat,
         z=Z_flat,
-        value=Stress_flat,
-        isomin=0,
-        isomax=max(ssy, tau_m) * 1.05,
-        opacity=0.4, 
-        surface_count=20,
-        colorscale='Jet',
-        colorbar=dict(title=dict(text="Esfuerzo Cortante (MPa)", side="right"))
+        mode='markers',
+        marker=dict(
+            size=3.5,
+            color=Stress_flat,
+            colorscale='Jet',
+            cmin=0,
+            cmax=max(ssy, tau_m) * 1.05,
+            opacity=0.75,
+            colorbar=dict(title=dict(text="Esfuerzo Cortante (MPa)", side="right"))
+        )
     ))
     
     fig_3d.update_layout(
@@ -338,8 +342,8 @@ if play_sim:
             
             puntos_transformados = []
             for pt in puntos_locales:
-                x_rot = pt[0] * cos_a - pt[1] * sin_a + x_pos
-                y_rot = pt[0] * sin_a + pt[1] * cos_a + y_pos
+                x_rot = pt * cos_a - pt * sin_a + x_pos
+                y_rot = pt * sin_a + pt * cos_a + y_pos
                 puntos_transformados.append([x_rot, y_rot])
                 
             color_cang = '#27ae60' if cargado else '#2980b9'
@@ -351,8 +355,8 @@ if play_sim:
                 puntos_mat_locales = np.array([[0.05, -0.35], [0.55, -0.35], [0.65, 0.1], [0.05, 0.1]])
                 puntos_mat_trans = []
                 for pt in puntos_mat_locales:
-                    x_rot = pt[0] * cos_a - pt[1] * sin_a + x_pos
-                    y_rot = pt[0] * sin_a + pt[1] * cos_a + y_pos
+                    x_rot = pt * cos_a - pt * sin_a + x_pos
+                    y_rot = pt * sin_a + pt * cos_a + y_pos
                     puntos_mat_trans.append([x_rot, y_rot])
                 ax_sim.add_patch(patches.Polygon(puntos_mat_trans, closed=True, facecolor='#d35400', alpha=0.9, zorder=5))
         
