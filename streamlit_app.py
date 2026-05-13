@@ -197,6 +197,67 @@ elif ciclos_falla_puro == 1.0:
 else:
     st.success("✨ **Vida Infinita:** El esfuerzo máximo local está por debajo del umbral de fatiga del material. No se registrará daño acumulativo bajo estas condiciones operativas.")
 
+# --- NUEVO BLOQUE: SIMULACIÓN DE DISTRIBUCIÓN DE ESFUERZOS EN EL PASADOR ---
+st.markdown("---")
+st.write("### 🧲 Simulación de Distribución de Esfuerzos Cortantes en el Pin (Sección Transversal)")
+
+col_stress1, col_stress2 = st.columns([1, 2])
+
+with col_stress1:
+    st.markdown("**Interpretación Estructural**")
+    st.write(f"• **Esfuerzo de Fluencia al Corte ($\\tau_{{sy}}$):** {ssy:.2f} MPa")
+    st.write(f"• **Esfuerzo Cortante Nominal Máximo (Cuerpo):** {tau_nominal:.2f} MPa")
+    st.write(f"• **Esfuerzo Cortante Pico Localizado (Muesca):** {tau_m:.2f} MPa")
+    
+    if tau_m >= ssy:
+        st.error("❌ **Zona Periférica Plastificada:** Los niveles rojos indican que el borde exterior ha superado el límite elástico. Se iniciará una microgrieta por fatiga en este contorno.")
+    else:
+        st.success("✔ **Rango Elástico:** La sección exterior trabaja con esfuerzos altos pero se mantiene dentro del comportamiento elástico seguro bajo condiciones estáticas.")
+
+with col_stress2:
+    # Generación de la sección transversal circular (Mapeo numérico)
+    radio_pin_mm = d_pin / 2
+    x_grid = np.linspace(-radio_pin_mm, radio_pin_mm, 200)
+    y_grid = np.linspace(-radio_pin_mm, radio_pin_mm, 200)
+    X_mat, Y_mat = np.meshgrid(x_grid, y_grid)
+    
+    # Calcular el radio radial para cada punto discretizado de la grilla
+    R_mat = np.sqrt(X_mat**2 + Y_mat**2)
+    
+    # Ecuación analítica del gradiente de corte mecánico + Efecto concentrador en la superficie exterior (muesca)
+    # El esfuerzo cortante por torsión/flexión pura crece linealmente hacia el radio exterior
+    Stress_Field = tau_nominal * (R_mat / radio_pin_mm)
+    
+    # Simular la muesca localizada en el cuadrante superior (Concentración por factor Kt en la superficie exterior)
+    concentracion_periferica = 1 + (kt - 1) * (R_mat / radio_pin_mm)**4 * (Y_mat / np.maximum(R_mat, 0.001))
+    Stress_Field = Stress_Field * np.maximum(1.0, concentracion_periferica)
+    
+    # Máscara para recortar los puntos fuera del diámetro cilíndrico real del pasador
+    Stress_Field[R_mat > radio_pin_mm] = np.nan
+    
+    fig_stress, ax_stress = plt.subplots(figsize=(7, 6))
+    # Contorno de colores dinámico basado en el mapa térmico Jet (Azul = Seguro, Rojo = Crítico)
+    cont_plot = ax_stress.contourf(X_mat, Y_mat, Stress_Field, levels=25, cmap='jet', vmin=0, vmax=max(ssy, tau_m)*1.1)
+    
+    # Dibujar la frontera del pin
+    ax_stress.add_patch(plt.Circle((0, 0), radio_pin_mm, color='black', fill=False, lw=2))
+    
+    # Marca de indicador en la muesca superior concentradora de esfuerzos
+    ax_stress.plot([0], [radio_pin_mm], marker='v', color='black', markersize=12, label='Zona de Concentración ($K_t$)')
+    
+    cbar = fig_stress.colorbar(cont_plot, ax=ax_stress)
+    cbar.set_label('Esfuerzo Cortante Equivalente $\\tau$ (MPa)', fontsize=10)
+    
+    ax_stress.set_xlim(-radio_pin_mm * 1.1, radio_pin_mm * 1.1)
+    ax_stress.set_ylim(-radio_pin_mm * 1.1, radio_pin_mm * 1.1)
+    ax_stress.set_xlabel("Eje X (mm)", fontsize=9)
+    ax_stress.set_ylabel("Eje Y (mm)", fontsize=9)
+    ax_stress.set_title(f"Gradiente Térmico de Esfuerzos Cortantes (Pin $\\phi$ = {d_pin:.2f} mm)", fontsize=11, fontweight='bold')
+    ax_stress.axis('equal')
+    ax_stress.grid(True, alpha=0.15)
+    st.pyplot(fig_stress)
+    plt.close(fig_stress)
+
 # --- BLOQUE DE SIMULACIÓN REALISTA CON TRAYECTORIA CURVA EN SPROCKETS ---
 st.markdown("---")
 st.write("### 🔄 Simulación Dinámica Industrial del Movimiento de Cangilones")
@@ -215,7 +276,7 @@ with col_sim2:
     placeholder_grafico = st.empty()
 
 if play_sim:
-    num_cangilones_sim = 50
+    num_cangilones_sim = 48
     posiciones_fase = np.linspace(0, perimetro_total_lazo, num_cangilones_sim, endpoint=False)
     
     for t_step in range(80):
@@ -271,11 +332,10 @@ if play_sim:
                 [0.0, 0.3]         
             ])
             
-            # CORRECCIÓN DE INDEXACIÓN MATEMÁTICA: Extracción explícita de componentes escalares pt[0] y pt[1]
             puntos_transformados = []
             for pt in puntos_locales:
-                x_rot = pt[0] * cos_a - pt[1] * sin_a + x_pos
-                y_rot = pt[0] * sin_a + pt[1] * cos_a + y_pos
+                x_rot = pt * cos_a - pt * sin_a + x_pos
+                y_rot = pt * sin_a + pt * cos_a + y_pos
                 puntos_transformados.append([x_rot, y_rot])
                 
             color_cang = '#27ae60' if cargado else '#2980b9'
@@ -287,8 +347,8 @@ if play_sim:
                 puntos_mat_locales = np.array([[0.05, -0.35], [0.55, -0.35], [0.65, 0.1], [0.05, 0.1]])
                 puntos_mat_trans = []
                 for pt in puntos_mat_locales:
-                    x_rot = pt[0] * cos_a - pt[1] * sin_a + x_pos
-                    y_rot = pt[0] * sin_a + pt[1] * cos_a + y_pos
+                    x_rot = pt * cos_a - pt * sin_a + x_pos
+                    y_rot = pt * sin_a + pt * cos_a + y_pos
                     puntos_mat_trans.append([x_rot, y_rot])
                 ax_sim.add_patch(patches.Polygon(puntos_mat_trans, closed=True, facecolor='#d35400', alpha=0.9, zorder=5))
         
