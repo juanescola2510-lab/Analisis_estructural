@@ -1,4 +1,4 @@
- ==============================================================================
+
 # COMPLETAR EN LA BARRA LATERAL (AGREGAR ESTO DEBAJO DE LA CONDICIÓN DE LA BOTA)
 # ==============================================================================
 st.sidebar.header("⏱️ Parámetros Operativos del Tiempo")
