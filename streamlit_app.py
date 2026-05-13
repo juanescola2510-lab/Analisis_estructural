@@ -23,7 +23,6 @@ p_cad_kg = st.sidebar.number_input("Peso Total de la Cadena (kg)", value=1089)
 p_cang_kg = st.sidebar.number_input("Peso Total de los Cangilones (kg)", value=5361)
 
 st.sidebar.header("⚙️ Geometría y Material del Pin")
-# CAMBIO CRÍTICO: Se reemplazan st.sidebar.slider por st.sidebar.number_input para ingreso libre por teclado
 d_pin = st.sidebar.number_input("Diámetro del Pin (mm)", value=34.74, min_value=1.0, step=0.1)
 longitud_mm = st.sidebar.number_input("Longitud Total del Pin (mm)", value=80.0, min_value=2.0, step=1.0)
 dist_asentamiento = st.sidebar.number_input("Distancia del Asentamiento desde el Centro (mm)", value=24.0, min_value=0.0, step=1.0)
@@ -272,6 +271,41 @@ with col_3d_2:
         height=550
     )
     st.plotly_chart(fig_3d, use_container_width=True)
+
+# --- NUEVO BLOQUE DE CÁLCULO: OPTIMIZACIÓN DE DIÁMETRO PARA VIDA INFINITA ---
+st.markdown("---")
+st.write("### 📐 Rediseño de Ingeniería: Diámetro Requerido para Vida Infinita por Fatiga")
+
+col_opt1, col_opt2 = st.columns(2)
+
+with col_opt1:
+    st.markdown("**Metodología de Dimensionamiento (Criterio de Fatiga de Shigley)**")
+    st.write("Para erradicar la falla por fatiga provocada por el impacto, el esfuerzo local pico en el punto de asentamiento no debe superar el **límite de fatiga modificado del material ($S_{se} \\approx 274.1$ MPa)**.")
+    st.write("Despejando la ecuación del esfuerzo cortante transversal para una sección circular sólida con concentrador de esfuerzos:")
+    st.latex(r"d_{min} = \sqrt{\frac{4 \cdot F_{total} \cdot K_t}{\pi \cdot S_{se}}}")
+
+with col_opt2:
+    # Fuerza cortante total aplicada sobre la sección crítica de asentamiento
+    # El pasador se encuentra sometido a cizalladura simple/doble en los eslabones laterales
+    f_corte_efectiva = f_n  
+    
+    # Cálculo analítico del diámetro mínimo en milímetros para fatiga infinita
+    area_requerida_mm2 = (f_corte_efectiva * kt) / sse_corregido
+    d_minimo_requerido = 2 * np.sqrt(area_requerida_mm2 / np.pi)
+    
+    st.markdown("#### 🎯 Dimensiones Sugeridas de Reemplazo")
+    
+    col_metric1, col_metric2 = st.columns(2)
+    with col_metric1:
+        st.metric(label="Diámetro Actual del Pin", value=f"{d_pin:.2f} mm")
+    with col_metric2:
+        st.metric(label="Diámetro Mínimo Necesario", value=f"{d_minimo_requerido:.2f} mm", 
+                  delta=f"+{(d_minimo_requerido - d_pin):.2f} mm" if d_minimo_requerido > d_pin else "¡Cumple!")
+        
+    if d_pin < d_minimo_requerido:
+        st.error(f"❌ **DIAGNÓSTICO DE REDISEÑO:** El diámetro actual de **{d_pin:.2f} mm** es insuficiente. Para evitar paradas imprevistas en el elevador de {tph} Ton/h, incremente el diámetro del pin a un valor comercial estándar mayor o igual a **{np.ceil(d_minimo_requerido):.0f} mm**.")
+    else:
+        st.success("🟢 **DIAGNÓSTICO DE REDISEÑO:** Su diámetro actual es seguro y se encuentra sobredimensionado correctamente para resistir los impactos cíclicos de forma infinita.")
 
 # --- BLOQUE DE SIMULACIÓN REALISTA CON TRAYECTORIA CURVA EN SPROCKETS ---
 st.markdown("---")
