@@ -74,7 +74,8 @@ with col1:
     ax1.annotate('', xy=(0.8, 0.1), xytext=(0.8, 0.6), arrowprops=dict(facecolor='red', width=4))
     ax1.text(0.82, 0.45, f"T_Total: {t_total_lb:,.0f} lb", color='red', fontweight='bold', fontsize=12)
     ax1.text(0.82, 0.15, f"• Mat: {p_mat_lb:,.0f} lb\n• Bota: {f_exc_lb:,.0f} lb\n• Cang: {p_cang_lb:,.0f} lb\n• Cad: {p_cad_lb:,.0f} lb", color='gray', fontsize=9)
-    ax1.axis('off'); st.pyplot(fig1)
+    ax1.axis('off')
+    st.pyplot(fig1)
 
 with col2:
     st.write("### DCL: Pin con Reacciones y Concentrador")
@@ -93,7 +94,8 @@ with col2:
     if kt > 1:
         ax2.scatter(0.27, 0.5, color='yellow', s=100, edgecolors='black', zorder=10, label='Fisura/Raya')
         ax2.text(0.27, 0.4, f"Kt={kt}", color='black', fontsize=8, ha='center', fontweight='bold')
-    ax2.axis('off'); st.pyplot(fig2)
+    ax2.axis('off')
+    st.pyplot(fig2)
 
 # --- BLOQUE 2: COMPARATIVA DE FATIGA Y VIDA ÚTIL ---
 st.markdown("---")
@@ -150,9 +152,9 @@ with col_graf:
 
 # --- RENDERIZADO DE MÉTRICAS Y TABLAS ---
 with col_tab:
-    fs_sod = 1 / ((tau_a / sse_corregido) + (tau_m / ssy))
-    fs_goo = 1 / ((tau_a / sse_corregido) + (tau_m / ssu))
-    fs_ger = 1 / ((tau_a / sse_corregido) + (tau_m / ssu)**2)
+    fs_sod = 1 / ((tau_a / sse_corregido) + (tau_m / ssy)) if ((tau_a / sse_corregido) + (tau_m / ssy)) > 0 else float('inf')
+    fs_goo = 1 / ((tau_a / sse_corregido) + (tau_m / ssu)) if ((tau_a / sse_corregido) + (tau_m / ssu)) > 0 else float('inf')
+    fs_ger = 1 / ((tau_a / sse_corregido) + (tau_m / ssu)**2) if ((tau_a / sse_corregido) + (tau_m / ssu)**2) > 0 else float('inf')
     
     st.write("**Métricas de Esfuerzo en el Pin:**")
     st.info(f"🔹 **τ Nominal:** {tau_nominal:.2f} MPa")
@@ -170,14 +172,44 @@ with col_tab:
     }
     st.table(data_tabla)
     
-    st.write("**⌛ Estimación de Durabilidad de la Pieza:**")
+    st.write("**⌛ Estimación de Durabilidad Continua Basada en Carga Constante:**")
     col_c1, col_c2 = st.columns(2)
     with col_c1:
         st.metric(label="Ciclos hasta el inicio de falla", value=f"{ciclos_estimados:,.0f}" if ciclos_estimados != float('inf') else "Infinitos")
     with col_c2:
         st.metric(label="Tiempo estimado de servicio", value=f"{vida_horas:,.1f} h" if vida_horas != float('inf') else "Infinito")
+
+# --- BLOQUE DE INTEGRACIÓN REGLA DE MINER (IMPACTOS TRANSITORIOS) ---
+st.markdown("---")
+st.write("### 🔨 Análisis de Daño Acumulado por Impactos Transitorios (Regla de Miner)")
+
+col_miner1, col_miner2 = st.columns(2)
+
+with col_miner1:
+    frecuencia_impacto = st.slider("Frecuencia del Impacto Transitorio (Cada 'X' minutos)", 1, 60, 5)
+
+with col_miner2:
+    horas_operacion_diaria = st.number_input("Horas de operación por día", value=24.0, max_value=24.0, min_value=0.1)
+
+if ciclos_estimados != float('inf') and ciclos_estimados > 1000:
+    # Se calcula la cantidad de impactos basándose en la frecuencia configurada
+    impactos_por_hora = 60 / frecuencia_impacto
+    impactos_por_dia = impactos_por_hora * horas_operacion_diaria
+    
+    # Aplicación lineal de la regla de Palmgren-Miner: 
+    # El giro continuo seguro a esfuerzo nominal aporta daño despreciable frente al impacto.
+    dias_vida_util_miner = ciclos_estimados / impactos_por_dia
+    años_vida_util = dias_vida_util_miner / 365
+    
+    st.markdown("#### 📊 Durabilidad Estimada bajo Miner")
+    col_m1, col_m2, col_m3 = st.columns(3)
+    with col_m1:
+        st.metric(label="Impactos Transitorios / Día", value=f"{impactos_por_dia:,.0f}")
+    with col_m2:
+        st.metric(label="Vida Útil Real (Días)", value=f"{dias_vida_util_miner:,.1f} días")
+    with col_m3:
+        st.metric(label="Vida Útil Real (Años)", value=f"{años_vida_util:,.2f} años")
         
-    if ciclos_estimados != float('inf'):
-        st.warning(f"📉 **Pronóstico:** Basado en la curva S-N, el pin acumulará daño por fatiga y alcanzará su vida útil en aproximadamente **{txt_horas}**.")
-    else:
-        st.success("✨ **Pronóstico:** Las cargas mecánicas se encuentran por debajo del límite de fatiga corregido. No se prevé inicio de grietas bajo condiciones normales.")
+    st.warning(f"⚠️ **Nota operativa:** Aunque las cargas rotacionales básicas son seguras, la aparición del impacto transitorio limita severamente el ciclo de reemplazo del pin a **{dias_vida_util_miner:,.1f} días**.")
+else:
+    st.success("✨ **Condición Óptima:** El esfuerzo equivalente calculado se encuentra por debajo del límite de fatiga modificado o el pin posee dimensiones suficientes. El material operará en la zona de **Vida Infinita** sin daño acumulativo por impactos.")
