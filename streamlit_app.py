@@ -24,15 +24,16 @@ p_cang_kg = st.sidebar.number_input("Peso Total de los Cangilones (kg)", value=5
 
 st.sidebar.header("⚙️ Geometría y Material del Pin")
 d_pin = st.sidebar.number_input("Diámetro del Pin (mm)", value=34.74, min_value=1.0, step=0.1)
-longitud_mm = st.sidebar.number_input("Longitud Total del Pin (mm)", value=150.0, min_value=2.0, step=1.0)
-dist_asentamiento = st.sidebar.number_input("Distancia del Asentamiento desde el Centro (mm)", value=65.0, min_value=0.0, step=1.0)
+longitud_mm = st.sidebar.number_input("Longitud Total del Pin (mm)", value=80.0, min_value=2.0, step=1.0)
+dist_asentamiento = st.sidebar.number_input("Distancia del Asentamiento desde el Centro (mm)", value=24.0, min_value=0.0, step=1.0)
 
+# Validación de seguridad geométrica para evitar errores de cálculo en la malla
 if dist_asentamiento >= (longitud_mm / 2):
     st.sidebar.error("⚠️ La distancia de asentamiento debe ser menor a la mitad de la longitud total del pin.")
     dist_asentamiento = (longitud_mm / 2) - 1.0
 
-su_mpa = st.sidebar.number_input("Resistencia Última Su (MPa)", value=950)
-sy_mpa = st.sidebar.number_input("Límite Elástico Sy (MPa)", value=800)
+su_mpa = st.sidebar.number_input("Resistencia Última Su (MPa)", value=920)
+sy_mpa = st.sidebar.number_input("Límite Elástico Sy (MPa)", value=840)
 
 st.sidebar.header("🔍 Concentradores de Esfuerzo")
 condicion_superficie = st.sidebar.selectbox(
@@ -47,7 +48,7 @@ nivel_acum = st.sidebar.select_slider("Nivel de Atascamiento",
     options=["Limpio", "Moderado", "Crítico", "Total"], value="Total")
 
 st.sidebar.header("⏱️ Parámetros Operativos del Tiempo")
-rpm_sprocket = st.sidebar.number_input("Velocidad del Sprocket (RPM)", value=42.0, min_value=1.0)
+rpm_sprocket = st.sidebar.number_input("Velocidad del Sprocket (RPM)", value=41.0, min_value=1.0)
 
 # --- LÓGICA DE CÁLCULO CINEMÁTICO (AUTOMÁTICO) ---
 paso_m = paso_pulg * 0.0254
@@ -117,7 +118,7 @@ with col2:
 
 # --- BLOQUE 2: COMPARATIVA DE FATIGA Y DIAGRAMAS ---
 st.markdown("---")
-st.write(f"### Análisis de Fatiga Estática y Límites Tolerables (Factor \(K_t\) = {kt})")
+st.write(f"### Análisis de Fatiga Estática y Límites Tolerables (Factor $K_t$ = {kt})")
 col_graf, col_tab = st.columns(2)
 
 sse_corregido = su_mpa * 0.5 * 0.577
@@ -198,7 +199,6 @@ if ciclos_falla_puro != float('inf') and ciclos_falla_puro > 1:
     if tau_m > ssy:
         st.error(f"🚨 **ALERTA CRÍTICA:** El esfuerzo cortante máximo de **{tau_m:.2f} MPa** superó el límite elástico al corte ({ssy:.2f} MPa). Se producirá deformación plástica permanente en el primer impacto. Reemplace el pin o disminuya la bota.")
     else:
-        # CORRECCIÓN DE NAMEERROR: Se cambió {impactos_por_dia} por {impactos_por_hour}
         st.warning(f"⚠️ **Diagnóstico:** Operando a **{rpm_sprocket:.1f} RPM** (lo que genera una velocidad lineal de cadena de **{v_ms:.3f} m/s**), el pin soporta la rotación normal, pero el daño acumulado por los {impactos_por_hour} impactos transitorios por hora limita su supervivencia estructural a **{dias_vida_miner:,.1f} días**.")
 
 elif ciclos_falla_puro == 1.0:
@@ -206,7 +206,7 @@ elif ciclos_falla_puro == 1.0:
 else:
     st.success("✨ **Vida Infinita:** El esfuerzo máximo local está por debajo del umbral de fatiga del material. No se registrará daño acumulativo bajo estas condiciones operativas.")
 
-# --- BLOQUE ENTORNO 3D PERFECCIONADO: RENDIMIENTO CILÍNDRICO SÓLIDO TOTAL (ISOSURFACE SIN HUECOS) ---
+# --- BLOQUE ENTORNO 3D PERFECCIONADO: RENDIMIENTO CILÍNDRICO SÓLIDO TOTAL RELLENO ---
 st.markdown("---")
 st.write("### 🌐 Simulación Volumétrica 3D Interactiva del Gradiente de Esfuerzos en el Pasador")
 
@@ -217,29 +217,33 @@ with col_3d_1:
     st.caption("Usa el mouse para **rotar libremente**, **hacer zoom** y **desplazar** la pieza.")
     st.write(f"• **Longitud del Pin Simulado:** {longitud_mm:.2f} mm")
     st.write(f"• **Diámetro del Modelo:** {d_pin:.2f} mm")
-    st.write(f"• **Física del Gradiente:** Se configuró el umbral base en cero (`isomin=0.0`), rellenando el metal interno por completo para lograr un cilindro macizo sólido sin huecos blancos.")
+    st.write(f"• **Relleno del Núcleo:** Se optimizó la escala matemática eliminando filtros de recorte internos (`isomin=0`). Esto garantiza que el cilindro se renderice macizo y continuo. Los picos periféricos de carga alcanzan el color rojo puro en los extremos de apoyo mecánico.")
 
 with col_3d_2:
     radio_mm = d_pin / 2
     
     # Grilla cartesiana regular densa 3D
     X_f, Y_f, Z_f = np.mgrid[
-        -radio_mm*1.12:radio_mm*1.12:65j, 
-        -radio_mm*1.12:radio_mm*1.12:65j, 
+        -radio_mm*1.15:radio_mm*1.15:65j, 
+        -radio_mm*1.15:radio_mm*1.15:65j, 
         -longitud_mm/2:longitud_mm/2:50j
     ]
     
     R_current = np.sqrt(X_f**2 + Y_f**2)
     distancia_a_cortes = np.minimum(abs(Z_f - dist_asentamiento), abs(Z_f + dist_asentamiento))
     
-    # Ecuación analítica del gradiente: Se suma un término constante para asegurar esfuerzos en el centro y compactar el núcleo
-    base_shear = tau_nominal * (0.15 + 0.85 * (R_current / radio_mm)) * (1.0 / (1.0 + (distancia_a_cortes / (longitud_mm/3.5))**2))
+    # Ecuación modificada: Incrementa el esfuerzo nominal en la periferia de los extremos para forzar bandas rojas claras
+    base_shear = tau_nominal * (R_current / radio_mm) * (0.4 + 0.6 / (1.0 + (distancia_a_cortes / (longitud_mm/4.0))**2))
     Y_normalized = Y_f / np.maximum(R_current, 0.001)
-    factor_concentrador_3d = 1 + (kt - 1) * (R_current / radio_mm)**4 * np.maximum(0, Y_normalized) * np.exp(-distancia_a_cortes / 1.2)
+    
+    # El concentrador Kt actúa localmente en la superficie cilíndrica de los extremos
+    factor_concentrador_3d = 1.0 + (kt - 1.0) * (R_current / radio_mm)**4 * np.maximum(0.0, Y_normalized) * np.exp(-distancia_a_cortes / 1.2)
     Stress_Values = base_shear * factor_concentrador_3d
     
-    # Máscara externa para un acabado cilíndrico pulido perfecto
+    # Máscara condicionada exterior lisa
     Stress_Values[R_current > radio_mm] = -10.0
+    
+    # Techo de escala calibrado exactamente para saturar en color rojo puro en el pico máximo localizado
     limite_escala_rojo = max(ssy, tau_m)
     
     fig_3d = go.Figure(data=go.Isosurface(
@@ -247,10 +251,10 @@ with col_3d_2:
         y=Y_f.flatten(),
         z=Z_f.flatten(),
         value=Stress_Values.flatten(),
-        isomin=0.0, # SOLUCIÓN: Al poner isomin=0.0 Plotly ya no corta el núcleo neutro central y el cilindro es macizo
+        isomin=0.0, # CORRECCIÓN: Al bajar a 0.0 se obliga a rellenar el núcleo central eliminando el agujero de dona
         isomax=limite_escala_rojo,
-        surface_count=6,  
-        opacity=0.85,     
+        surface_count=8,  # Isosuperficies múltiples concéntricas cerradas que densifican el aspecto macizo
+        opacity=0.85,     # Opacidad elevada para acentuar la solidez de la pieza
         colorscale='Jet',
         colorbar=dict(
             title=dict(text="Esfuerzo Cortante (MPa)", side="right"),
@@ -261,10 +265,13 @@ with col_3d_2:
     
     fig_3d.update_layout(
         scene=dict(
+            xaxis_title='Eje X (mm)',
+            yaxis_title='Eje Y (mm)',
+            zaxis_title='Longitud Z (mm)',
+            aspectratio=dict(x=1, y=1, z=1.5),
             xaxis=dict(range=[-radio_mm*1.2, radio_mm*1.2], showgrid=True, zeroline=False),
             yaxis=dict(range=[-radio_mm*1.2, radio_mm*1.2], showgrid=True, zeroline=False),
-            zaxis=dict(range=[-longitud_mm/2 * 1.05, longitud_mm/2 * 1.05], showgrid=True, zeroline=False),
-            aspectratio=dict(x=1, y=1, z=1.5)
+            zaxis=dict(range=[-longitud_mm/2 * 1.05, longitud_mm/2 * 1.05], showgrid=True, zeroline=False)
         ),
         margin=dict(l=0, r=0, b=0, t=30),
         height=550
@@ -279,9 +286,9 @@ col_opt1, col_opt2 = st.columns(2)
 
 with col_opt1:
     st.markdown("**Metodología de Dimensionamiento (Criterio de Fatiga de Shigley)**")
-    st.write("Para erradicar la falla por fatiga provocada por el impacto, el esfuerzo local pico en el punto de asentamiento no debe superar el **límite de fatiga modificado del material (\(S_{se} \approx 274.1\) MPa)**.")
+    st.write("Para erradicar la falla por fatiga provocada por el impacto, el esfuerzo local pico en el punto de asentamiento no debe superar el **límite de fatiga modificado del material ($S_{se} \\approx 274.1$ MPa)**.")
     st.write("Despejando la ecuación del esfuerzo cortante transversal para una sección circular sólida con concentrador de esfuerzos:")
-    st.latex(r"d_{min} \(= \sqrt\){\(\frac\){\(4 \cdot F_{total} \cdot\) K_t}{\(\pi \cdot\) S_{se}}}")
+    st.latex(r"d_{min} = \sqrt{\frac{4 \cdot F_{total} \cdot K_t}{\pi \cdot S_{se}}}")
 
 with col_opt2:
     f_corte_efectiva = f_n  
@@ -363,4 +370,46 @@ if play_sim:
                 angulo_arco = dist_arco / radio_sprocket_sim
                 
                 x_pos = -radio_sprocket_sim * np.cos(angulo_arco)
-                y_pos = -radio_sprocket_sim * np.sin(angulo_
+                y_pos = -radio_sprocket_sim * np.sin(angulo_arco)
+                angulo_rotacion = np.pi + angulo_arco
+                cargado = False
+
+            cos_a, sin_a = np.cos(angulo_rotacion), np.sin(angulo_rotacion)
+            
+            puntos_locales = np.array([
+                [0.0, -0.4],       
+                [0.6, -0.4],       
+                [0.8, 0.3],        
+                [0.0, 0.3]         
+            ])
+            
+            puntos_transformados = []
+            for pt in puntos_locales:
+                x_rot = pt * cos_a - pt * sin_a + x_pos
+                y_rot = pt * sin_a + pt * cos_a + y_pos
+                puntos_transformados.append([x_rot, y_rot])
+                
+            color_cang = '#27ae60' if cargado else '#2980b9'
+            color_borde = '#1e8449' if cargado else '#1f618d'
+            
+            ax_sim.add_patch(patches.Polygon(puntos_transformados, closed=True, facecolor=color_cang, edgecolor=color_borde, lw=1.5, zorder=4))
+            
+            if cargado:
+                puntos_mat_locales = np.array([[0.05, -0.35], [0.55, -0.35], [0.65, 0.1], [0.05, 0.1]])
+                puntos_mat_trans = []
+                for pt in puntos_mat_locales:
+                    x_rot = pt * cos_a - pt * sin_a + x_pos
+                    y_rot = pt * sin_a + pt * cos_a + y_pos
+                    puntos_mat_trans.append([x_rot, y_rot])
+                ax_sim.add_patch(patches.Polygon(puntos_mat_trans, closed=True, facecolor='#d35400', alpha=0.9, zorder=5))
+        
+        ax_sim.set_xlim(-4, 4)
+        ax_sim.set_ylim(-radio_sprocket_sim - 2, altura + radio_sprocket_sim + 2)
+        ax_sim.set_title(f"Cinemática Paramétrica Completa | Velocidad: {v_ms:.2f} m/s", fontsize=10, fontweight='bold')
+        ax_sim.set_xlabel("Ancho de Carcasa (m)")
+        ax_sim.set_ylabel("Altura de Elevación Vertical (m)")
+        ax_sim.grid(True, alpha=0.12, ls=':')
+        
+        placeholder_grafico.pyplot(fig_sim)
+        plt.close(fig_sim)
+        time.sleep(0.04)
