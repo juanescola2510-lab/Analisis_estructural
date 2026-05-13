@@ -198,24 +198,24 @@ elif ciclos_falla_puro == 1.0:
 else:
     st.success("✨ **Vida Infinita:** El esfuerzo máximo local está por debajo del umbral de fatiga del material. No se registrará daño acumulativo bajo estas condiciones operativas.")
 
-# --- BLOQUE ENTORNO 3D: MAPEO NODAL DE ALTA DENSIDAD (SÓLIDO COMPACTO) ---
+# --- BLOQUE ENTORNO 3D: GRADIENTE DE ESFUERZOS CORREGIDO DE ALTO CONTRASTE ---
 st.markdown("---")
 st.write("### 🌐 Simulación Volumétrica 3D Interactiva del Gradiente de Esfuerzos en el Pasador")
 
 col_3d_1, col_3d_2 = st.columns(2)
 
 with col_3d_1:
-    st.markdown("**Instrucciones del Entorno 3D (Modelo de Malla Nodal FEA de Alta Densidad)**")
+    st.markdown("**Instrucciones del Entorno 3D (Modelo de Malla Nodal FEA de Alto Contraste)**")
     st.caption("Usa el mouse para **rotar libremente**, **hacer zoom** y **desplazar** el cilindro metálico.")
     st.write(f"• **Longitud del Pin Simulado:** 60 mm")
     st.write(f"• **Diámetro del Modelo:** {d_pin:.2f} mm")
-    st.write(f"• **Modificación de Densidad:** Se cuadruplicó la resolución geométrica de los nodos para compactar visualmente el volumen y dar un acabado de sólido continuo.")
+    st.write(f"• **Modificación del Gradiente:** Se restringieron los límites superiores de color al esfuerzo de fluencia ($\\tau_{{sy}}$). Esto hace que las transiciones cromáticas sean extremadamente nítidas, marcando con exactitud quirúrgica los planos laterales de corte en los extremos.")
 
 with col_3d_2:
     radio_mm = d_pin / 2
     longitud_mm = 60.0
     
-    # SE INCREMENTA LA RESOLUCIÓN NODAL: R=18, Theta=45, Z=70 para un volumen mucho más denso y cerrado
+    # Nube densa de puntos de cálculo nodales
     r_coords = np.linspace(0, radio_mm, 18)
     theta_coords = np.linspace(0, 2 * np.pi, 45)
     z_coords = np.linspace(-longitud_mm/2, longitud_mm/2, 70)
@@ -228,9 +228,10 @@ with col_3d_2:
     z_asentamiento = longitud_mm * 0.3  
     distancia_a_cortes = np.minimum(abs(Z_mesh - z_asentamiento), abs(Z_mesh + z_asentamiento))
     
-    base_shear = tau_nominal * (R_mesh / radio_mm) * np.exp(-distancia_a_cortes / (longitud_mm / 8))
+    # SE OPTIMIZA EL GRADIENTE: Distribución parabólica y exponencial más marcada para ensanchar los colores intermedios
+    base_shear = tau_nominal * (R_mesh / radio_mm)**2 * np.exp(-distancia_a_cortes / (longitud_mm / 10))
     Y_normalized = Y_3d / np.maximum(R_mesh, 0.001)
-    factor_concentrador_3d = 1 + (kt - 1) * (R_mesh / radio_mm)**4 * np.maximum(0, Y_normalized) * np.exp(-distancia_a_cortes / 1.5)
+    factor_concentrador_3d = 1 + (kt - 1) * (R_mesh / radio_mm)**4 * np.maximum(0, Y_normalized) * np.exp(-distancia_a_cortes / 1.0)
     Stress_3D = base_shear * factor_concentrador_3d
     
     X_flat = X_3d.flatten()
@@ -238,18 +239,21 @@ with col_3d_2:
     Z_flat = Z_mesh.flatten()
     Stress_flat = Stress_3D.flatten()
     
+    # Ajuste de escala estricta: El rojo máximo satura en tau_m para resaltar con violencia los planos de apoyo
+    limite_escala_rojo = max(ssy, tau_m)
+    
     fig_3d = go.Figure(data=go.Scatter3d(
         x=X_flat,
         y=Y_flat,
         z=Z_flat,
         mode='markers',
         marker=dict(
-            size=2.2, # Reducción leve de tamaño individual por la cercanía espacial de los nodos
+            size=2.2, 
             color=Stress_flat,
             colorscale='Jet',
             cmin=0,
-            cmax=max(ssy, tau_m) * 1.05,
-            opacity=0.85, # Incremento de la opacidad para acentuar el aspecto sólido
+            cmax=limite_escala_rojo, # CORRECCIÓN: Ajuste del techo de color para maximizar el contraste del gradiente
+            opacity=0.85, 
             colorbar=dict(title=dict(text="Esfuerzo Cortante (MPa)", side="right"))
         )
     ))
