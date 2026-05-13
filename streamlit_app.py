@@ -10,14 +10,18 @@ st.title("🛡️ Diagnóstico de Ingeniería: Análisis de Falla con Concentrad
 # --- SIDEBAR: DATOS DE ENTRADA ---
 st.sidebar.header("📊 Operación y Cargas")
 tph = st.sidebar.number_input("Capacidad Real (Ton/h)", value=150)
-v_ms = st.sidebar.slider("Velocidad de Cadena (m/s)", 0.5, 2.0, 1.2)
 altura = st.sidebar.number_input("Altura entre centros (m)", value=33.5)
+
+st.sidebar.header("⚙️ Geometría del Sprocket y Cadena")
+# NUEVOS PARÁMETROS SOLICITADOS DE FORMA DIRECTA
+paso_pulg = st.sidebar.number_input("Paso de la Cadena (pulgadas)", value=6.0, min_value=0.1)
+num_dientes = st.sidebar.number_input("Número de Dientes del Sprocket", value=12, min_value=1)
 
 st.sidebar.header("⚖️ Pesos del Sistema (lb)")
 p_cad_lb = st.sidebar.number_input("Peso Total de la Cadena (lb)", value=2400)
 p_cang_lb = st.sidebar.number_input("Peso Total de los Cangilones (lb)", value=11820)
 
-st.sidebar.header("⚙️ Geometría y Material")
+st.sidebar.header("⚙️ Geometría y Material del Pin")
 d_pin = st.sidebar.slider("Diámetro del Pin (mm)", 20.0, 60.0, 34.74)
 su_mpa = st.sidebar.number_input("Resistencia Última Su (MPa)", value=920)
 sy_mpa = st.sidebar.number_input("Límite Elástico Sy (MPa)", value=840)
@@ -27,7 +31,7 @@ condicion_superficie = st.sidebar.selectbox(
     "Estado Superficial del Pin", 
     ["Nuevo (Pulido)", "Rayado por Clinker (Pitting)", "Grieta Inicial Detectada"]
 )
-mapeo_kt = {"Nuevo (Pulido)": 1.0, "Rayado por Clinker (Pitting)": 1.7, "Grieta Inicial Detectada": 2.7}
+mapeo_kt = {"Nuevo (Pulido)": 1.0, "Rayado por Clinker (Pitting)": 1.7, "Grieta Inicial Detectada": 2.5}
 kt = mapeo_kt.get(condicion_superficie, 2.5)
 
 st.sidebar.header("⚠️ Condición de la Bota")
@@ -37,7 +41,15 @@ nivel_acum = st.sidebar.select_slider("Nivel de Atascamiento",
 st.sidebar.header("⏱️ Parámetros Operativos del Tiempo")
 rpm_sprocket = st.sidebar.number_input("Velocidad del Sprocket (RPM)", value=41.0, min_value=1.0)
 
-# --- LÓGICA DE CÁLCULO ---
+# --- LÓGICA DE CÁLCULO CINEMÁTICO (AUTOMÁTICO) ---
+# Conversión del paso de pulgadas a metros
+paso_m = paso_pulg * 0.0254
+# Perímetro lineal por revolución del sprocket
+perimetro_sprocket = num_dientes * paso_m
+# Cálculo automático de la velocidad de la cadena (m/s)
+v_ms = (rpm_sprocket * perimetro_sprocket) / 60
+
+# --- LÓGICA DE CÁLCULO DE ESFUERZOS ---
 flujo_kgs = (tph * 1000) / 3600
 p_mat_lb = ((flujo_kgs / v_ms) * altura) * 2.20462
 f_exc_map = {"Limpio": 0.1, "Moderado": 0.5, "Crítico": 1.5, "Total": 3.0}
@@ -56,6 +68,9 @@ tau_a = tau_m * 0.25
 
 # Propiedades de Corte (Von Mises)
 ssu, ssy = su_mpa * 0.577, sy_mpa * 0.577
+
+# --- BLOQUE DE MUESTRA DE VELOCIDAD CALCULADA ---
+st.info(f"⚡ **Parámetros Cinemáticos Calculados:** Velocidad de la Cadena = **{v_ms:.3f} m/s** | Perímetro del Sprocket = **{perimetro_sprocket:.3f} m**")
 
 # --- BLOQUE 1: DIAGRAMAS REALISTAS (DCL) ---
 col1, col2 = st.columns(2)
@@ -146,7 +161,6 @@ st.write("### 🔨 Análisis Matemático de Vida Útil Operativa (Regla de Miner
 
 col_miner1, col_miner2 = st.columns(2)
 with col_miner1:
-    # CONFIGURADO: Selección directa de impactos por hora mediante el control deslizante
     impactos_por_hora = st.slider("Cantidad de Impactos Transitorios por Hora", 1, 120, 12)
 with col_miner2:
     horas_operacion_diaria = st.number_input("Horas de trabajo por día", value=24.0, max_value=24.0, min_value=0.1)
@@ -156,22 +170,17 @@ sf_103 = 0.9 * ssu  # Límite superior a 10^3 ciclos
 f_limite = sse_corregido  # Límite inferior de fatiga
 
 if tau_m >= ssu:
-    # Si el esfuerzo máximo supera la resistencia última cortante, la falla es inmediata (estática)
     ciclos_falla_puro = 1.0
 elif tau_m <= f_limite:
     ciclos_falla_puro = float('inf')
 else:
-    # Ecuación de potencia de Wöhler/Shigley continua sin truncamientos fijos
     b_param = (1/3) * np.log10(f_limite / sf_103)
     a_param = (sf_103**2) / f_limite
     ciclos_falla_puro = (tau_m / a_param)**(1 / b_param)
 
 # Renderizado del análisis de durabilidad real por impactos y RPM
 if ciclos_falla_puro != float('inf') and ciclos_falla_puro > 1:
-    # Cálculo directo de los impactos diarios usando la nueva variable de la barra
     impactos_por_dia = impactos_por_hora * horas_operacion_diaria
-    
-    # Cálculo de Vida Útil mediante la acumulación lineal de daño de Miner
     dias_vida_miner = ciclos_falla_puro / impactos_por_dia
     horas_vida_miner = dias_vida_miner * 24
     
@@ -187,7 +196,7 @@ if ciclos_falla_puro != float('inf') and ciclos_falla_puro > 1:
     if tau_m > ssy:
         st.error(f"🚨 **ALERTA CRÍTICA:** El esfuerzo cortante máximo de **{tau_m:.2f} MPa** superó el límite elástico al corte ({ssy:.2f} MPa). Se producirá deformación plástica permanente en el primer impacto. Reemplace el pin o disminuya la bota.")
     else:
-        st.warning(f"⚠️ **Diagnóstico:** Operando a **{rpm_sprocket:.1f} RPM**, el pin soporta la rotación normal, pero el daño acumulado por los {impactos_por_hora} impactos transitorios por hora limita su supervivencia estructural a **{dias_vida_miner:,.1f} días**.")
+        st.warning(f"⚠️ **Diagnóstico:** Operando a **{rpm_sprocket:.1f} RPM** (lo que genera una velocidad lineal de cadena de **{v_ms:.3f} m/s**), el pin soporta la rotación normal, pero el daño acumulado por los {impactos_por_hora} impactos transitorios por hora limita su supervivencia estructural a **{dias_vida_miner:,.1f} días**.")
 
 elif ciclos_falla_puro == 1.0:
     st.error(f"💥 **FALLA ESTÁTICA INMEDIATA:** El esfuerzo pico local (**{tau_m:.2f} MPa**) es mayor o igual a la resistencia última al corte del acero ({ssu:.2f} MPa). La pieza se romperá en el primer impacto.")
