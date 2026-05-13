@@ -215,7 +215,7 @@ with col_sim2:
     placeholder_grafico = st.empty()
 
 if play_sim:
-    num_cangilones_sim = 48
+    num_cangilones_sim = 50
     posiciones_fase = np.linspace(0, perimetro_total_lazo, num_cangilones_sim, endpoint=False)
     
     for t_step in range(80):
