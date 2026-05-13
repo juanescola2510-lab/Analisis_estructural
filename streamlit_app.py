@@ -198,11 +198,11 @@ elif ciclos_falla_puro == 1.0:
 else:
     st.success("✨ **Vida Infinita:** El esfuerzo máximo local está por debajo del umbral de fatiga del material. No se registrará daño acumulativo bajo estas condiciones operativas.")
 
-# --- NUEVO BLOQUE: SIMULACIÓN EN 3D DE ESFUERZOS EN EL PASADOR ---
+# --- BLOQUE: SIMULACIÓN EN 3D DE ESFUERZOS EN EL PASADOR ---
 st.markdown("---")
 st.write("### 🌐 Simulación Volumétrica 3D Interactiva del Gradiente de Esfuerzos en el Pasador")
 
-col_3d_1, col_3d_2 = st.columns([1, 2])
+col_3d_1, col_3d_2 = st.columns(2)
 
 with col_3d_1:
     st.markdown("**Instrucciones del Entorno 3D**")
@@ -212,11 +212,9 @@ with col_3d_1:
     st.write(f"• **Punto de Concentración Crítica:** Plano central ($Z=0$, Cuadrante Superior $Y>0$)")
 
 with col_3d_2:
-    # Generación paramétrica del volumen cilíndrico del pasador
     radio_mm = d_pin / 2
     longitud_mm = 60.0
     
-    # Crear la malla interna cilíndrica (Coordenadas cilíndricas a cartesianas)
     r_coords = np.linspace(0, radio_mm, 10)
     theta_coords = np.linspace(0, 2 * np.pi, 24)
     z_coords = np.linspace(-longitud_mm/2, longitud_mm/2, 15)
@@ -226,21 +224,19 @@ with col_3d_2:
     X_3d = R_mesh * np.cos(THETA_mesh)
     Y_3d = R_mesh * np.sin(THETA_mesh)
     
-    # Ecuación analítica tridimensional del campo de esfuerzo
-    # El esfuerzo decae exponencialmente al alejarse del plano central de corte Z = 0
     base_shear = tau_nominal * (R_mesh / radio_mm) * np.exp(-abs(Z_mesh) / (longitud_mm / 4))
     
-    # Inyección matemática del concentrador superficial Kt localizado en la fibra superior (Y > 0)
-    factor_concentrador_3d = 1 + (kt - 1) * (R_mesh / radio_mm)**4 * np.maximum(0, Y_mesh := Y_3d / np.maximum(R_mesh, 0.001)) * np.exp(-abs(Z_mesh) / 2.0)
+    # Limpieza de asignación en línea para evitar inconsistencias de sintaxis
+    Y_normalized = Y_3d / np.maximum(R_mesh, 0.001)
+    factor_concentrador_3d = 1 + (kt - 1) * (R_mesh / radio_mm)**4 * np.maximum(0, Y_normalized) * np.exp(-abs(Z_mesh) / 2.0)
     Stress_3D = base_shear * factor_concentrador_3d
     
-    # Aplanar las matrices densas para Plotly Volume
     X_flat = X_3d.flatten()
     Y_flat = Y_3d.flatten()
     Z_flat = Z_mesh.flatten()
     Stress_flat = Stress_3D.flatten()
     
-    # Crear la figura volumétrica 3D interactiva
+    # CORRECCIÓN DE ERROR: Estructura del diccionario 'colorbar' corregida según las pautas de Plotly moderno
     fig_3d = go.Figure(data=go.Volume(
         x=X_flat,
         y=Y_flat,
@@ -248,10 +244,10 @@ with col_3d_2:
         value=Stress_flat,
         isomin=0,
         isomax=max(ssy, tau_m) * 1.05,
-        opacity=0.4, # Transparencia para ver el gradiente en las capas internas
+        opacity=0.4, 
         surface_count=20,
         colorscale='Jet',
-        colorbar=dict(title="Esfuerzo Cortante (MPa)", titleside="right")
+        colorbar=dict(title=dict(text="Esfuerzo Cortante (MPa)", side="right"))
     ))
     
     fig_3d.update_layout(
