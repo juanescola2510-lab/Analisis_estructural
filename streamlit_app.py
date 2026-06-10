@@ -5,71 +5,72 @@ import pandas as pd
 # Configuración inicial
 st.set_page_config(page_title="Simulador Pro Copa del Mundo 2026", page_icon="🏆", layout="wide")
 
-st.title("🏆 Simulador Masivo e Hiperrealista - Copa del Mundo 2026")
-st.write("Simulación avanzada considerando plantilla, economía, técnico, localía, estadios, fatiga y lesiones.")
+st.title("🏆 Simulador Hiperrealista - Copa del Mundo 2026")
+st.write("Simulación avanzada con Ratings Reequilibrados, Factor Sorpresa y Estado de Forma Dinámico.")
 
-# 1. Base de datos con los nuevos factores estructurales por país
+# 1. Base de datos REEQUILIBRADA (Ningún equipo supera los 90 puntos)
+# Se subió la mentalidad y motivación a selecciones emergentes o con gran presente de jugadores
 TEAM_FACTORS = {
     # Grupo A
-    "México":          {"plantilla": 81, "economia": 85, "tecnico": 78, "mentalidad": 80},
-    "Sudáfrica":       {"plantilla": 72, "economia": 75, "tecnico": 72, "mentalidad": 74},
-    "Corea del Sur":   {"plantilla": 77, "economia": 88, "tecnico": 76, "mentalidad": 85},
-    "República Checa": {"plantilla": 76, "economia": 82, "tecnico": 75, "mentalidad": 78},
+    "México":          {"plantilla": 81, "economia": 85, "tecnico": 78, "mentalidad": 84}, # +Mentalidad por localía
+    "Sudáfrica":       {"plantilla": 74, "economia": 75, "tecnico": 73, "mentalidad": 78},
+    "Corea del Sur":   {"plantilla": 78, "economia": 88, "tecnico": 77, "mentalidad": 86},
+    "República Checa": {"plantilla": 77, "economia": 82, "tecnico": 76, "mentalidad": 80},
     # Grupo B
-    "Suiza":           {"plantilla": 79, "economia": 92, "tecnico": 80, "mentalidad": 82},
-    "Canadá":          {"plantilla": 77, "economia": 89, "tecnico": 75, "mentalidad": 79},
-    "Catar":           {"plantilla": 68, "economia": 95, "tecnico": 74, "mentalidad": 72},
-    "Bosnia y Herz.":  {"plantilla": 73, "economia": 70, "tecnico": 71, "mentalidad": 73},
+    "Suiza":           {"plantilla": 80, "economia": 90, "tecnico": 81, "mentalidad": 83},
+    "Canadá":          {"plantilla": 79, "economia": 89, "tecnico": 77, "mentalidad": 85}, # Generación motivada
+    "Catar":           {"plantilla": 69, "economia": 92, "tecnico": 74, "mentalidad": 74},
+    "Bosnia y Herz.":  {"plantilla": 74, "economia": 72, "tecnico": 72, "mentalidad": 75},
     # Grupo C
-    "Brasil":          {"plantilla": 92, "economia": 84, "tecnico": 88, "mentalidad": 89},
-    "Marruecos":       {"plantilla": 83, "economia": 80, "tecnico": 84, "mentalidad": 87},
-    "Escocia":         {"plantilla": 75, "economia": 83, "tecnico": 74, "mentalidad": 76},
-    "Haití":           {"plantilla": 64, "economia": 55, "tecnico": 65, "mentalidad": 70},
+    "Brasil":          {"plantilla": 89, "economia": 84, "tecnico": 85, "mentalidad": 83}, # Bajado de los 90s
+    "Marruecos":       {"plantilla": 84, "economia": 81, "tecnico": 84, "mentalidad": 88}, # Gran cohesión y motivación
+    "Escocia":         {"plantilla": 76, "economia": 83, "tecnico": 75, "mentalidad": 79},
+    "Haití":           {"plantilla": 65, "economia": 55, "tecnico": 66, "mentalidad": 72},
     # Grupo D
-    "Estados Unidos":  {"plantilla": 82, "economia": 96, "tecnico": 80, "mentalidad": 83},
-    "Turquía":         {"plantilla": 78, "economia": 79, "tecnico": 77, "mentalidad": 81},
-    "Australia":       {"plantilla": 75, "economia": 86, "tecnico": 74, "mentalidad": 78},
-    "Paraguay":        {"plantilla": 74, "economia": 72, "tecnico": 73, "mentalidad": 76},
+    "Estados Unidos":  {"plantilla": 83, "economia": 94, "tecnico": 81, "mentalidad": 87}, # Impulso generación dorada/local
+    "Turquía":         {"plantilla": 80, "economia": 79, "tecnico": 79, "mentalidad": 84}, # Jugadores jóvenes motivados
+    "Australia":       {"plantilla": 76, "economia": 86, "tecnico": 75, "mentalidad": 80},
+    "Paraguay":        {"plantilla": 75, "economia": 74, "tecnico": 74, "mentalidad": 79},
     # Grupo E
-    "Alemania":        {"plantilla": 89, "economia": 93, "tecnico": 87, "mentalidad": 88},
-    "Ecuador":         {"plantilla": 80, "economia": 73, "tecnico": 78, "mentalidad": 79},
-    "Costa de Marfil": {"plantilla": 78, "economia": 71, "tecnico": 76, "mentalidad": 80},
-    "Curazao":         {"plantilla": 65, "economia": 68, "tecnico": 63, "mentalidad": 66},
+    "Alemania":        {"plantilla": 87, "economia": 91, "tecnico": 86, "mentalidad": 85}, # Renovada
+    "Ecuador":         {"plantilla": 81, "economia": 75, "tecnico": 79, "mentalidad": 83}, # Excelente camada de jóvenes
+    "Costa de Marfil": {"plantilla": 79, "economia": 73, "tecnico": 77, "mentalidad": 82},
+    "Curazao":         {"plantilla": 66, "economia": 68, "tecnico": 64, "mentalidad": 68},
     # Grupo F
-    "Países Bajos":    {"plantilla": 86, "economia": 91, "tecnico": 85, "mentalidad": 84},
-    "Japón":           {"plantilla": 82, "economia": 92, "tecnico": 81, "mentalidad": 88},
-    "Suecia":          {"plantilla": 78, "economia": 89, "tecnico": 76, "mentalidad": 79},
-    "Túnez":           {"plantilla": 72, "economia": 70, "tecnico": 71, "mentalidad": 74},
+    "Países Bajos":    {"plantilla": 85, "economia": 90, "tecnico": 83, "mentalidad": 82},
+    "Japón":           {"plantilla": 83, "economia": 91, "tecnico": 82, "mentalidad": 89}, # Disciplina y gran estado de forma
+    "Suecia":          {"plantilla": 79, "economia": 88, "tecnico": 77, "mentalidad": 80},
+    "Túnez":           {"plantilla": 73, "economia": 71, "tecnico": 72, "mentalidad": 76},
     # Grupo G
-    "Bélgica":         {"plantilla": 85, "economia": 90, "tecnico": 82, "mentalidad": 80},
-    "Irán":            {"plantilla": 74, "economia": 72, "tecnico": 73, "mentalidad": 77},
-    "Egipto":          {"plantilla": 76, "economia": 74, "tecnico": 75, "mentalidad": 79},
-    "Nueva Zelanda":   {"plantilla": 67, "economia": 82, "tecnico": 66, "mentalidad": 72},
+    "Bélgica":         {"plantilla": 83, "economia": 89, "tecnico": 81, "mentalidad": 79}, # Transición generacional
+    "Irán":            {"plantilla": 75, "economia": 73, "tecnico": 74, "mentalidad": 79},
+    "Egipto":          {"plantilla": 77, "economia": 75, "tecnico": 76, "mentalidad": 81},
+    "Nueva Zelanda":   {"plantilla": 68, "economia": 82, "tecnico": 67, "mentalidad": 74},
     # Grupo H
-    "España":          {"plantilla": 91, "economia": 90, "tecnico": 90, "mentalidad": 89},
-    "Uruguay":         {"plantilla": 85, "economia": 75, "tecnico": 86, "mentalidad": 92},
-    "Arabia Saudita":  {"plantilla": 72, "economia": 96, "tecnico": 78, "mentalidad": 75},
-    "Cabo Verde":      {"plantilla": 70, "economia": 62, "tecnico": 68, "mentalidad": 73},
+    "España":          {"plantilla": 88, "economia": 89, "tecnico": 88, "mentalidad": 86}, # Nivelado a la baja
+    "Uruguay":         {"plantilla": 85, "economia": 76, "tecnico": 85, "mentalidad": 90}, # Garra charrúa e ilusión alta
+    "Arabia Saudita":  {"plantilla": 73, "economia": 94, "tecnico": 77, "mentalidad": 77},
+    "Cabo Verde":      {"plantilla": 71, "economia": 64, "tecnico": 69, "mentalidad": 76},
     # Grupo I
-    "Francia":         {"plantilla": 93, "economia": 92, "tecnico": 91, "mentalidad": 90},
-    "Senegal":         {"plantilla": 79, "economia": 70, "tecnico": 78, "mentalidad": 82},
-    "Noruega":         {"plantilla": 78, "economia": 94, "tecnico": 75, "mentalidad": 77},
-    "Irak":            {"plantilla": 68, "economia": 67, "tecnico": 69, "mentalidad": 74},
+    "Francia":         {"plantilla": 89, "economia": 91, "tecnico": 88, "mentalidad": 85}, # Bajado de los 90s
+    "Senegal":         {"plantilla": 80, "economia": 72, "tecnico": 78, "mentalidad": 84}, # Fuerte motivación africana
+    "Noruega":         {"plantilla": 80, "economia": 93, "tecnico": 76, "mentalidad": 80}, # Haaland / Ødegaard motivados
+    "Irak":            {"plantilla": 69, "economia": 68, "tecnico": 70, "mentalidad": 76},
     # Grupo J
-    "Argentina":       {"plantilla": 93, "economia": 76, "tecnico": 92, "mentalidad": 95},
-    "Argelia":         {"plantilla": 76, "economia": 75, "tecnico": 74, "mentalidad": 78},
-    "Austria":         {"plantilla": 78, "economia": 88, "tecnico": 78, "mentalidad": 79},
-    "Jordania":        {"plantilla": 66, "economia": 72, "tecnico": 65, "mentalidad": 71},
+    "Argentina":       {"plantilla": 89, "economia": 77, "tecnico": 89, "mentalidad": 90}, # Ajustado para evitar monopolio
+    "Argelia":         {"plantilla": 77, "economia": 76, "tecnico": 75, "mentalidad": 80},
+    "Austria":         {"plantilla": 79, "economia": 87, "tecnico": 78, "mentalidad": 81},
+    "Jordania":        {"plantilla": 67, "economia": 73, "tecnico": 66, "mentalidad": 73},
     # Grupo K
-    "Portugal":        {"plantilla": 89, "economia": 88, "tecnico": 84, "mentalidad": 85},
-    "Colombia":        {"plantilla": 84, "economia": 74, "tecnico": 82, "mentalidad": 83},
-    "Congo":           {"plantilla": 70, "economia": 60, "tecnico": 66, "mentalidad": 72},
-    "Uzbekistán":      {"plantilla": 71, "economia": 73, "tecnico": 70, "mentalidad": 74},
+    "Portugal":        {"plantilla": 87, "economia": 87, "tecnico": 82, "mentalidad": 83},
+    "Colombia":        {"plantilla": 84, "economia": 75, "tecnico": 83, "mentalidad": 86}, # Gran momento de forma invicto
+    "Congo":           {"plantilla": 71, "economia": 61, "tecnico": 67, "mentalidad": 74},
+    "Uzbekistán":      {"plantilla": 72, "economia": 74, "tecnico": 71, "mentalidad": 76},
     # Grupo L
-    "Inglaterra":      {"plantilla": 91, "economia": 94, "tecnico": 86, "mentalidad": 84},
-    "Croacia":         {"plantilla": 82, "economia": 80, "tecnico": 83, "mentalidad": 88},
-    "Panamá":          {"plantilla": 71, "economia": 76, "tecnico": 72, "mentalidad": 75},
-    "Ghana":           {"plantilla": 73, "economia": 68, "tecnico": 73, "mentalidad": 76}
+    "Inglaterra":      {"plantilla": 88, "economia": 92, "tecnico": 84, "mentalidad": 82},
+    "Croacia":         {"plantilla": 81, "economia": 80, "tecnico": 82, "mentalidad": 87},
+    "Panamá":          {"plantilla": 73, "economia": 77, "tecnico": 74, "mentalidad": 78},
+    "Ghana":           {"plantilla": 75, "economia": 69, "tecnico": 74, "mentalidad": 78}
 }
 
 GRUPS_2026 = {
@@ -87,7 +88,6 @@ GRUPS_2026 = {
     "Grupo L": ["Inglaterra", "Croacia", "Panamá", "Ghana"]
 }
 
-# Inicializadores de estados globales para almacenar fatigas y bajas temporales por partido
 if "desgaste" not in st.session_state:
     st.session_state.desgaste = {pais: 0.0 for pais in TEAM_FACTORS}
 if "lesionados" not in st.session_state:
@@ -96,12 +96,18 @@ if "lesionados" not in st.session_state:
 def calcular_rating_partido(team, es_eliminatoria):
     base = TEAM_FACTORS[team]
     rating_estructural = (base["plantilla"] * 0.50) + (base["tecnico"] * 0.20) + (base["economia"] * 0.15) + (base["mentalidad"] * 0.15)
+    
     bono_localia = 4.5 if team in ["México", "Estados Unidos", "Canadá"] else 0.0
     penalizacion_desgaste = st.session_state.desgaste[team] * 5.0  
     penalizacion_lesiones = st.session_state.lesionados[team] * 2.5  
     bono_mentalidad_extra = (base["mentalidad"] - 80) * 0.1 if es_eliminatoria else 0.0
     
-    return max(50.0, rating_estructural + bono_localia - penalizacion_desgaste - penalizacion_lesiones + bono_mentalidad_extra)
+    # --- FACTOR SORPRESA: Estado de forma e inspiración del día ---
+    # Un número aleatorio entre -4.0 y +4.0. Simula si el equipo salió inspirado o desconectado.
+    factor_inspiracion = random.uniform(-4.0, 4.0)
+    
+    rating_final = rating_estructural + bono_localia - penalizacion_desgaste - penalizacion_lesiones + bono_mentalidad_extra + factor_inspiracion
+    return max(50.0, rating_final)
 
 def actualizar_salud_y_fatiga(team):
     st.session_state.desgaste[team] = min(1.0, st.session_state.desgaste[team] + random.uniform(0.08, 0.15))
@@ -122,19 +128,14 @@ def simulate_match(team1, team2, knockout=False):
     actualizar_salud_y_fatiga(team1)
     actualizar_salud_y_fatiga(team2)
     
-    ganador = None
-    perdedor = None
-    
+    ganador, perdedor = None, None
     if goles1 > goles2:
         ganador, perdedor = team1, team2
     elif goles2 > goles1:
         ganador, perdedor = team2, team1
     else:
         if knockout:
-            # Desempate rápido por penales si requiere ganador directo
             ganador, perdedor = (team1, team2) if random.random() > 0.5 else (team2, team1)
-        else:
-            ganador, perdedor = None, None # Empate en fase de grupos
             
     return goles1, goles2, ganador, perdedor
 
