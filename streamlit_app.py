@@ -2,44 +2,80 @@ import streamlit as st
 import random
 import pandas as pd
 
-# Configuración inicial de la página de Streamlit
-st.set_page_config(page_title="Simulador Copa del Mundo 2026", page_icon="⚽", layout="wide")
+# Configuración inicial
+st.set_page_config(page_title="Simulador Pro Copa del Mundo 2026", page_icon="🏆", layout="wide")
 
-st.title("⚽ Simulador Completo - Copa del Mundo 2026")
-st.write("Simula la fase de grupos (48 equipos) y las rondas eliminatorias según el formato oficial.")
+st.title("🏆 Simulador Hiperrealista - Copa del Mundo 2026")
+st.write("Simulación avanzada considerando plantilla, economía, técnico, localía, estadios, fatiga y lesiones.")
 
-# 1. Definición de los 48 equipos con un "Rating de Fuerza" ficticio (del 1 al 99) para dar lógica
-TEAMS_RATING = {
+# 1. Base de datos con los nuevos factores estructurales por país
+# Estructura: (Rating Plantilla, Factor Económico/Infraestructura, Trayectoria Técnico, Mentalidad Base)
+TEAM_FACTORS = {
     # Grupo A
-    "México": 82, "Sudáfrica": 74, "Corea del Sur": 78, "República Checa": 77,
+    "México":          {"plantilla": 81, "economia": 85, "tecnico": 78, "mentalidad": 80},
+    "Sudáfrica":       {"plantilla": 72, "economia": 75, "tecnico": 72, "mentalidad": 74},
+    "Corea del Sur":   {"plantilla": 77, "economia": 88, "tecnico": 76, "mentalidad": 85},
+    "República Checa": {"plantilla": 76, "economia": 82, "tecnico": 75, "mentalidad": 78},
     # Grupo B
-    "Suiza": 79, "Canadá": 77, "Catar": 71, "Bosnia y Herzegovina": 74,
+    "Suiza":           {"plantilla": 79, "economia": 92, "tecnico": 80, "mentalidad": 82},
+    "Canadá":          {"plantilla": 77, "economia": 89, "tecnico": 75, "mentalidad": 79},
+    "Catar":           {"plantilla": 68, "economia": 95, "tecnico": 74, "mentalidad": 72},
+    "Bosnia y Herz.":  {"plantilla": 73, "economia": 70, "tecnico": 71, "mentalidad": 73},
     # Grupo C
-    "Brasil": 91, "Marruecos": 84, "Escocia": 75, "Haití": 66,
+    "Brasil":          {"plantilla": 92, "economia": 84, "tecnico": 88, "mentalidad": 89},
+    "Marruecos":       {"plantilla": 83, "economia": 80, "tecnico": 84, "mentalidad": 87},
+    "Escocia":         {"plantilla": 75, "economia": 83, "tecnico": 74, "mentalidad": 76},
+    "Haití":           {"plantilla": 64, "economia": 55, "tecnico": 65, "mentalidad": 70},
     # Grupo D
-    "Estados Unidos": 81, "Turquía": 78, "Australia": 76, "Paraguay": 75,
+    "Estados Unidos":  {"plantilla": 82, "economia": 96, "tecnico": 80, "mentalidad": 83},
+    "Turquía":         {"plantilla": 78, "economia": 79, "tecnico": 77, "mentalidad": 81},
+    "Australia":       {"plantilla": 75, "economia": 86, "tecnico": 74, "mentalidad": 78},
+    "Paraguay":        {"plantilla": 74, "economia": 72, "tecnico": 73, "mentalidad": 76},
     # Grupo E
-    "Alemania": 89, "Ecuador": 80, "Costa de Marfil": 78, "Curazao": 65,
+    "Alemania":        {"plantilla": 89, "economia": 93, "tecnico": 87, "mentalidad": 88},
+    "Ecuador":         {"plantilla": 80, "economia": 73, "tecnico": 78, "mentalidad": 79},
+    "Costa de Marfil": {"plantilla": 78, "economia": 71, "tecnico": 76, "mentalidad": 80},
+    "Curazao":         {"plantilla": 65, "economia": 68, "tecnico": 63, "mentalidad": 66},
     # Grupo F
-    "Países Bajos": 87, "Japón": 81, "Suecia": 79, "Túnez": 73,
+    "Países Bajos":    {"plantilla": 86, "economia": 91, "tecnico": 85, "mentalidad": 84},
+    "Japón":           {"plantilla": 82, "economia": 92, "tecnico": 81, "mentalidad": 88},
+    "Suecia":          {"plantilla": 78, "economia": 89, "tecnico": 76, "mentalidad": 79},
+    "Túnez":           {"plantilla": 72, "economia": 70, "tecnico": 71, "mentalidad": 74},
     # Grupo G
-    "Bélgica": 86, "Irán": 75, "Egipto": 76, "Nueva Zelanda": 68,
+    "Bélgica":         {"plantilla": 85, "economia": 90, "tecnico": 82, "mentalidad": 80},
+    "Irán":            {"plantilla": 74, "economia": 72, "tecnico": 73, "mentalidad": 77},
+    "Egipto":          {"plantilla": 76, "economia": 74, "tecnico": 75, "mentalidad": 79},
+    "Nueva Zelanda":   {"plantilla": 67, "economia": 82, "tecnico": 66, "mentalidad": 72},
     # Grupo H
-    "España": 92, "Uruguay": 86, "Arabia Saudita": 72, "Cabo Verde": 71,
+    "España":          {"plantilla": 91, "economia": 90, "tecnico": 90, "mentalidad": 89},
+    "Uruguay":         {"plantilla": 85, "economia": 75, "tecnico": 86, "mentalidad": 92},
+    "Arabia Saudita":  {"plantilla": 72, "economia": 96, "tecnico": 78, "mentalidad": 75},
+    "Cabo Verde":      {"plantilla": 70, "economia": 62, "tecnico": 68, "mentalidad": 73},
     # Grupo I
-    "Francia": 93, "Senegal": 80, "Noruega": 79, "Irak": 70,
+    "Francia":         {"plantilla": 93, "economia": 92, "tecnico": 91, "mentalidad": 90},
+    "Senegal":         {"plantilla": 79, "economia": 70, "tecnico": 78, "mentalidad": 82},
+    "Noruega":         {"plantilla": 78, "economia": 94, "tecnico": 75, "mentalidad": 77},
+    "Irak":            {"plantilla": 68, "economia": 67, "tecnico": 69, "mentalidad": 74},
     # Grupo J
-    "Argentina": 94, "Argelia": 77, "Austria": 79, "Jordania": 68,
+    "Argentina":       {"plantilla": 93, "economia": 76, "tecnico": 92, "mentalidad": 95},
+    "Argelia":         {"plantilla": 76, "economia": 75, "tecnico": 74, "mentalidad": 78},
+    "Austria":         {"plantilla": 78, "economia": 88, "tecnico": 78, "mentalidad": 79},
+    "Jordania":        {"plantilla": 66, "economia": 72, "tecnico": 65, "mentalidad": 71},
     # Grupo K
-    "Portugal": 90, "Colombia": 84, "Congo": 71, "Uzbekistán": 72,
+    "Portugal":        {"plantilla": 89, "economia": 88, "tecnico": 84, "mentalidad": 85},
+    "Colombia":        {"plantilla": 84, "economia": 74, "tecnico": 82, "mentalidad": 83},
+    "Congo":           {"plantilla": 70, "economia": 60, "tecnico": 66, "mentalidad": 72},
+    "Uzbekistán":      {"plantilla": 71, "economia": 73, "tecnico": 70, "mentalidad": 74},
     # Grupo L
-    "Inglaterra": 91, "Croacia": 83, "Panamá": 72, "Ghana": 74
+    "Inglaterra":      {"plantilla": 91, "economia": 94, "tecnico": 86, "mentalidad": 84},
+    "Croacia":         {"plantilla": 82, "economia": 80, "tecnico": 83, "mentalidad": 88},
+    "Panamá":          {"plantilla": 71, "economia": 76, "tecnico": 72, "mentalidad": 75},
+    "Ghana":           {"plantilla": 73, "economia": 68, "tecnico": 73, "mentalidad": 76}
 }
 
-# Grupos oficiales establecidos para el Mundial
 GRUPS_2026 = {
     "Grupo A": ["México", "Sudáfrica", "Corea del Sur", "República Checa"],
-    "Grupo B": ["Suiza", "Canadá", "Catar", "Bosnia y Herzegovina"],
+    "Grupo B": ["Suiza", "Canadá", "Catar", "Bosnia y Herz."],
     "Grupo C": ["Brasil", "Marruecos", "Escocia", "Haití"],
     "Grupo D": ["Estados Unidos", "Turquía", "Australia", "Paraguay"],
     "Grupo E": ["Alemania", "Ecuador", "Costa de Marfil", "Curazao"],
@@ -52,32 +88,78 @@ GRUPS_2026 = {
     "Grupo L": ["Inglaterra", "Croacia", "Panamá", "Ghana"]
 }
 
-# 2. Motor de simulación de partidos (CORREGIDO PARA ELIMINACIÓN DIRECTA)
+# Lista de estadios oficiales asignados aleatoriamente a los partidos
+ESTADIOS = [
+    "Azteca (CDMX, México) 🏟️", "MetLife Stadium (New York, EE.UU.) 🏟️", 
+    "SoFi Stadium (Los Angeles, EE.UU.) 🏟️", "BC Place (Vancouver, Canadá) 🏟️",
+    "Mercedes-Benz Stadium (Atlanta, EE.UU.) 🏟️", "Hard Rock Stadium (Miami, EE.UU.) 🏟️",
+    "Estadio BBVA (Monterrey, México) 🏟️", "BMO Field (Toronto, Canadá) 🏟️"
+]
+
+# Inicializadores de estado interno para registrar fatiga y estado físico
+if "desgaste" not in st.session_state:
+    st.session_state.desgaste = {pais: 0.0 for pais in TEAM_FACTORS}
+if "lesionados" not in st.session_state:
+    st.session_state.lesionados = {pais: 0 for pais in TEAM_FACTORS}
+
+def calcular_rating_partido(team, es_eliminatoria):
+    base = TEAM_FACTORS[team]
+    
+    # 1. Poder estructural inicial (50% Plantilla, 20% Técnico, 15% Economía, 15% Mentalidad)
+    rating_estructural = (base["plantilla"] * 0.50) + (base["tecnico"] * 0.20) + (base["economia"] * 0.15) + (base["mentalidad"] * 0.15)
+    
+    # 2. Factor Localía (Bono a México, Estados Unidos y Canadá)
+    bono_localia = 4.5 if team in ["México", "Estados Unidos", "Canadá"] else 0.0
+    
+    # 3. Penalizadores dinámicos por Desgaste Físico y Lesiones activas
+    penalizacion_desgaste = st.session_state.desgaste[team] * 5.0  # Hasta -5 puntos si la fatiga es máxima (1.0)
+    penalizacion_lesiones = st.session_state.lesionados[team] * 2.5  # -2.5 puntos por cada jugador clave lesionado
+    
+    # En rondas eliminatorias la mentalidad influye el doble bajo presión
+    bono_mentalidad_extra = (base["mentalidad"] - 80) * 0.1 if es_eliminatoria else 0.0
+    
+    rating_final = rating_estructural + bono_localia - penalizacion_desgaste - penalizacion_lesiones + bono_mentalidad_extra
+    return max(50.0, rating_final)
+
+def actualizar_salud_y_fatiga(team):
+    # Aumentar la fatiga acumulada tras correr un partido intenso
+    st.session_state.desgaste[team] = min(1.0, st.session_state.desgaste[team] + random.uniform(0.08, 0.15))
+    
+    # Probabilidad del 12% de que ocurra una nueva lesión grave en el plantel
+    if random.random() < 0.12:
+        st.session_state.lesionados[team] += 1
+
 def simulate_match(team1, team2, knockout=False):
-    r1 = TEAMS_RATING[team1]
-    r2 = TEAMS_RATING[team2]
+    r1 = calcular_rating_partido(team1, knockout)
+    r2 = calcular_rating_partido(team2, knockout)
     
     diff = (r1 - r2) / 10.0
     
-    g1 = max(0, int(random.normalvariate(1.3 + diff/2, 1.1)))
-    g2 = max(0, int(random.normalvariate(1.3 - diff/2, 1.1)))
+    # Goles calculados estadísticamente
+    g1 = max(0, int(random.normalvariate(1.2 + diff/2, 1.05)))
+    g2 = max(0, int(random.normalvariate(1.2 - diff/2, 1.05)))
+    
+    # Aplicar desgaste post-partido
+    actualizar_salud_y_fatiga(team1)
+    actualizar_salud_y_fatiga(team2)
     
     if knockout:
-        if g1 > g2:
-            return g1, g2, team1
-        elif g2 > g1:
-            return g1, g2, team2
+        if g1 > g2: return g1, g2, team1
+        elif g2 > g1: return g1, g2, team2
         else:
-            # Desempate inmediato si quedan igualados en fase eliminatoria
-            return g1, g2, random.choice([team1, team2])
+            # Reporte de penales automático en caso de empate
+            ganador_penales = random.choice([team1, team2])
+            return g1, g2, ganador_penales
             
     return g1, g2, None
 
-# 3. Interfaz de usuario para iniciar la simulación
-if st.button("🚀 Comenzar Simulación del Mundial", type="primary"):
+# 3. Interfaz de usuario
+if st.button("🚀 Iniciar Torneo con Variables Avanzadas", type="primary"):
+    # Reiniciar la simulación física médica al presionar el botón
+    st.session_state.desgaste = {pais: 0.0 for pais in TEAM_FACTORS}
+    st.session_state.lesionados = {pais: 0 for pais in TEAM_FACTORS}
     
-    st.header("📋 Fase de Grupos - Posiciones Finales")
-    
+    st.header("📋 Fase de Grupos")
     all_classified = []
     third_places = []
     
@@ -90,16 +172,16 @@ if st.button("🚀 Comenzar Simulación del Mundial", type="primary"):
         for i in range(len(teams)):
             for j in range(i + 1, len(teams)):
                 t1, t2 = teams[i], teams[j]
-                g1, g2, _ = simulate_match(t1, t2)
+                g1, g2, _ = simulate_match(t1, t2, knockout=False)
                 
                 table[t1]["GF"] += g1
                 table[t1]["GC"] += g2
                 table[t2]["GF"] += g2
                 table[t2]["GC"] += g1
                 
-                if g1 > g2:
+                if g1 > g2: 
                     table[t1]["Pts"] += 3
-                elif g2 > g1:
+                elif g2 > g1: 
                     table[t2]["Pts"] += 3
                 else:
                     table[t1]["Pts"] += 1
@@ -110,37 +192,38 @@ if st.button("🚀 Comenzar Simulación del Mundial", type="primary"):
             
         sorted_table = sorted(table.items(), key=lambda x: (x[1]["Pts"], x[1]["DG"], x[1]["GF"]), reverse=True)
         
-        # Guardar strings limpios de los clasificados (1º y 2º lugar)
         all_classified.append(sorted_table[0][0])
         all_classified.append(sorted_table[1][0])
         
-        # Guardar datos del 3º lugar para evaluar mejores terceros
         third_places.append({
-            "Team": sorted_table[2][0],
+            "Team": sorted_table[2][0], 
             "Pts": sorted_table[2][1]["Pts"],
-            "DG": sorted_table[2][1]["DG"],
+            "DG": sorted_table[2][1]["DG"], 
             "GF": sorted_table[2][1]["GF"]
         })
         
         with cols[idx_col]:
             st.subheader(group_name)
             df_display = pd.DataFrame([
-                {"Equipo": item[0], "Pts": item[1]["Pts"], "DG": item[1]["DG"], "GF": item[1]["GF"]}
+                {
+                    "Equipo": item[0], "Pts": item[1]["Pts"], "DG": item[1]["DG"],
+                    "Fatiga 🏃‍♂️": f"{int(st.session_state.desgaste[item[0]]*100)}%",
+                    "Lesionados 🩹": st.session_state.lesionados[item[0]]
+                }
                 for item in sorted_table
             ])
             st.dataframe(df_display, hide_index=True)
             
         idx_col = (idx_col + 1) % 3
 
-    # Filtrar mejores terceros
+    # Filtrado y estructuración de rondas finales
     best_thirds = sorted(third_places, key=lambda x: (x["Pts"], x["DG"], x["GF"]), reverse=True)[:8]
     best_thirds_names = [x["Team"] for x in best_thirds]
     
-    # Lista de los 32 clasificados finales
     r32_teams = all_classified + best_thirds_names
-    random.shuffle(r32_teams)  
-    
-    # 4. Fase Final de Eliminación Directa
+    random.shuffle(r32_teams)
+
+    # 4. Fase Final
     st.divider()
     st.header("🏆 Rondas de Eliminación Directa")
     
@@ -152,9 +235,12 @@ if st.button("🚀 Comenzar Simulación del Mundial", type="primary"):
         for i in range(0, len(teams), 2):
             t1 = teams[i]
             t2 = teams[i+1]
+            estadio = random.choice(ESTADIOS)
             g1, g2, winner = simulate_match(t1, t2, knockout=True)
             winners.append(winner)
-            match_summaries.append(f"**{t1}** {g1} - {g2} **{t2}** ➔ Clasifica: **{winner}**")
+            
+            detalles = f"🏟️ En {estadio} | 🩹 Lesionados: {t1} ({st.session_state.lesionados[t1]}) vs {t2} ({st.session_state.lesionados[t2]})"
+            match_summaries.append(f"**{t1}** {g1} - {g2} **{t2}** ➔ **{winner}** avanza\n\n`{detalles}`")
             
         col_s1, col_s2 = st.columns(2)
         half = len(match_summaries) // 2
@@ -163,24 +249,26 @@ if st.button("🚀 Comenzar Simulación del Mundial", type="primary"):
             with st.container():
                 for text in match_summaries[:half]: 
                     st.write(text)
+                    st.write("")
         with col_s2:
             with st.container():
                 for text in match_summaries[half:]: 
                     st.write(text)
-            
+                    st.write("")
+                    
         return winners
 
-    # Flujo ordenado del torneo
-    r16_teams = simulate_knockout_stage(r32_teams, "Dieciseisavos de Final (Ronda de 32)")
+    r16_teams = simulate_knockout_stage(r32_teams, "Dieciseisavos de Final")
     r8_teams = simulate_knockout_stage(r16_teams, "Octavos de Final")
     r4_teams = simulate_knockout_stage(r8_teams, "Cuartos de Final")
     finalists = simulate_knockout_stage(r4_teams, "Semifinales")
-    
+
     # 5. La Gran Final
     st.divider()
-    st.subheader("🌟 LA GRAN FINAL (MetLife Stadium) 🌟")
+    st.subheader("🌟 LA GRAN FINAL 🌟")
     f1, f2 = finalists[0], finalists[1]
     gf1, gf2, champion = simulate_match(f1, f2, knockout=True)
     
-    st.markdown(f"<h3 style='text-align: center;'>{f1} {gf1} vs {gf2} {f2}</h3>", unsafe_allow_html=True)
+    st.markdown(f"<h3 style='text-align: center;'>🏟️ Sede: MetLife Stadium (New York)</h3>", unsafe_allow_html=True)
+    st.markdown(f"<h2 style='text-align: center;'>{f1} {gf1} vs {gf2} {f2}</h2>", unsafe_allow_html=True)
     st.markdown(f"<h1 style='text-align: center; color: #FFD700;'>🏆 ¡CAMPEÓN DEL MUNDO 2026: {champion.upper()}! 🏆</h1>", unsafe_allow_html=True)
