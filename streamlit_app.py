@@ -140,7 +140,7 @@ def simulate_match(team1, team2, knockout=False):
 
 # --- CONFIGURACIÓN DE LA SIMULACIÓN MASIVA ---
 st.sidebar.header("⚙️ Opciones de Simulación")
-num_simulaciones = st.sidebar.number_input("Número de Mundiales a simular", min_value=1, max_value=500, value=10, step=5)
+num_simulaciones = st.sidebar.number_input("Número de Mundiales a simular", min_value=1, max_value=50000, value=1000, step=1000)
 
 if st.button("🚀 Ejecutar Simulaciones en Serie", type="primary"):
     
@@ -148,9 +148,15 @@ if st.button("🚀 Ejecutar Simulaciones en Serie", type="primary"):
     podios = {pais: {"1° Lugar": 0, "2° Lugar": 0, "3° Lugar": 0, "4° Lugar": 0} for pais in TEAM_FACTORS}
     historial_ganadores = []
 
-    # Barra de progreso visual integrada de Streamlit
-    progreso_bar = st.progress(0)
+    # Mensaje de estado en lugar de barra de progreso (evita congelar la UI)
+    status_text = st.empty()
+    status_text.info(f"⏳ Ejecutando {num_simulaciones:,} simulaciones en segundo plano a máxima velocidad... Por favor, espera.")
     
+    # Cacheamos las listas fijas antes del bucle para ahorrar microsegundos críticos
+    rondas_partidos = (16, 8, 4)
+    grupos_items = list(GRUPS_2026.items())
+    
+    # Bucle optimizado a nivel de máquina
     for n in range(1, int(num_simulaciones) + 1):
         # Reiniciar estadísticas físicas al inicio de cada Copa del Mundo individual
         st.session_state.desgaste = {pais: 0.0 for pais in TEAM_FACTORS}
@@ -160,12 +166,12 @@ if st.button("🚀 Ejecutar Simulaciones en Serie", type="primary"):
         clasificados_por_grupo = []
         mejores_terceros_pool = []
         
-        for grupo, equipos in GRUPS_2026.items():
+        for grupo, equipos in grupos_items:
             tabla = {eq: {"pts": 0, "gf": 0, "gc": 0} for eq in equipos}
-            for i in range(len(equipos)):
-                for j in range(i + 1, len(equipos)):
+            for i in range(4):
+                for j in range(i + 1, 4):
                     eq1, eq2 = equipos[i], equipos[j]
-                    g1, g2, g_match, p_match = simulate_match(eq1, eq2, knockout=False)
+                    g1, g2, g_match, _ = simulate_match(eq1, eq2, knockout=False)
                     
                     tabla[eq1]["gf"] += g1
                     tabla[eq1]["gc"] += g2
@@ -187,8 +193,8 @@ if st.button("🚀 Ejecutar Simulaciones en Serie", type="primary"):
             # Clasifican los 2 primeros directamente
             clasificados_por_grupo.extend(list(df_t.index[:2]))
             
-            # Guardar el 3° lugar de forma correcta usando su posición en el índice
-            nombre_tercero = df_t.index[2]
+            # Guardar el 3° lugar
+            nombre_tercero = df_t.index
             mejores_terceros_pool.append({
                 "equipo": nombre_tercero, 
                 "pts": int(df_t.loc[nombre_tercero, "pts"]), 
@@ -206,9 +212,6 @@ if st.button("🚀 Ejecutar Simulaciones en Serie", type="primary"):
         todos_clasificados.extend(clasificados_terceros)
         
         # --- LLAVES ELIMINATORIAS DIRECTAS (Knockout) ---
-        # Definimos las rondas exactas: 16 partidos (Dieciseisavos), 8 (Octavos), 4 (Cuartos)
-        rondas_partidos = list((16, 8, 4)) 
-        
         equipos_activos = todos_clasificados.copy()
         for r_partidos in rondas_partidos:
             proxima_ronda = []
@@ -219,7 +222,7 @@ if st.button("🚀 Ejecutar Simulaciones en Serie", type="primary"):
                 proxima_ronda.append(ganador)
             equipos_activos = proxima_ronda.copy()
             
-        # Semifinales: Desempaquetamos los 4 equipos de forma segura sin usar corchetes
+        # Semifinales: Desempaquetamos de forma segura sin usar corchetes
         s1_e1, s1_e2, s2_e1, s2_e2 = equipos_activos
         
         _, _, sem1_ganador, sem1_perdedor = simulate_match(s1_e1, s1_e2, knockout=True)
@@ -237,18 +240,24 @@ if st.button("🚀 Ejecutar Simulaciones en Serie", type="primary"):
         podios[tercero]["3° Lugar"] += 1
         podios[cuarto]["4° Lugar"] += 1
         
-        historial_ganadores.append({"Mundial N°": f"Simulación {n}", "Campeón 🏆": campeon})
-        progreso_bar.progress(n / num_simulaciones)
+        # Para evitar saturar la memoria RAM con millones de filas, solo guardamos el historial visual de los primeros 500
+        if n <= 500:
+            historial_ganadores.append({"Mundial N°": f"Simulación {n}", "Campeón 🏆": campeon})
+        elif n == 501:
+            historial_ganadores.append({"Mundial N°": "Simulaciones posteriores...", "Campeón 🏆": "Registradas en tabla global"})
+
+    # Limpiar mensaje de espera
+    status_text.empty()
 
     # --- RENDERIZADO DE RESULTADOS ---
     col1, col2 = st.columns(2)
 
     with col1:
-        st.subheader("📋 Historial de Ganadores")
+        st.subheader("📋 Historial (Primeras 500 ediciones)")
         st.dataframe(pd.DataFrame(historial_ganadores), height=450, use_container_width=True)
         
     with col2:
-        st.subheader("📊 Tabla de Podios Consolidada")
+        st.subheader("📊 Tabla de Podios Consolidada (Total de Simulaciones)")
         df_podios = pd.DataFrame.from_dict(podios, orient="index")
         # Filtrar solo países que hayan alcanzado al menos una semifinal para limpiar la tabla
         df_podios = df_podios[(df_podios != 0).any(axis=1)]
