@@ -178,13 +178,14 @@ if st.button("🚀 Ejecutar Simulaciones en Serie", type="primary"):
             df_t = df_t.sort_values(by=["pts", "dg", "gf"], ascending=False)
             
             clasificados_por_grupo.extend(list(df_t.index[:2]))
-        # El 3° entra en la lista para pelear los 8 cupos de mejores terceros
-        tercero = df_t.index[2]
+        
+        # Guardar el tercer lugar del grupo de forma correcta
+        nombre_tercero = df_t.index[2]
         mejores_terceros_pool.append({
-            "equipo": tercero, 
-            "pts": df_t.loc[tercero, "pts"], 
-            "dg": df_t.loc[tercero, "dg"], 
-            "gf": df_t.loc[tercero, "gf"]
+            "equipo": nombre_tercero, 
+            "pts": df_t.loc[nombre_tercero, "pts"], 
+            "dg": df_t.loc[nombre_tercero, "dg"], 
+            "gf": df_t.loc[nombre_tercero, "gf"]
         })
         
     # Filtrar los 8 mejores terceros de los 12 grupos
@@ -197,7 +198,7 @@ if st.button("🚀 Ejecutar Simulaciones en Serie", type="primary"):
     todos_clasificados.extend(clasificados_terceros)
     
     # --- LLAVES ELIMINATORIAS DIRECTAS (Knockout) ---
-    # Dieciseisavos (16 partidos) -> Octavos (8 partidos) -> Cuartos (4 partidos)
+    # Iteramos por número de partidos: 16 (Dieciseisavos), 8 (Octavos), 4 (Cuartos)
     equipos_activos = todos_clasificados.copy()
     for r_partidos in:
         proxima_ronda = []
