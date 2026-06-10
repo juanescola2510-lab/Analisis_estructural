@@ -52,7 +52,7 @@ GRUPS_2026 = {
     "Grupo L": ["Inglaterra", "Croacia", "Panamá", "Ghana"]
 }
 
-# 2. Motor de simulación de partidos
+# 2. Motor de simulación de partidos (CORREGIDO PARA ELIMINACIÓN DIRECTA)
 def simulate_match(team1, team2, knockout=False):
     r1 = TEAMS_RATING[team1]
     r2 = TEAMS_RATING[team2]
@@ -62,11 +62,15 @@ def simulate_match(team1, team2, knockout=False):
     g1 = max(0, int(random.normalvariate(1.3 + diff/2, 1.1)))
     g2 = max(0, int(random.normalvariate(1.3 - diff/2, 1.1)))
     
-    if knockout and g1 == g2:
-        if random.choice([True, False]):
+    if knockout:
+        if g1 > g2:
             return g1, g2, team1
-        else:
+        elif g2 > g1:
             return g1, g2, team2
+        else:
+            # Desempate inmediato si quedan igualados en fase eliminatoria
+            return g1, g2, random.choice([team1, team2])
+            
     return g1, g2, None
 
 # 3. Interfaz de usuario para iniciar la simulación
@@ -106,11 +110,11 @@ if st.button("🚀 Comenzar Simulación del Mundial", type="primary"):
             
         sorted_table = sorted(table.items(), key=lambda x: (x[1]["Pts"], x[1]["DG"], x[1]["GF"]), reverse=True)
         
-        # EXTRACCIÓN CORREGIDA: Guardar strings con nombres de países (1º y 2º lugar)
+        # Guardar strings limpios de los clasificados (1º y 2º lugar)
         all_classified.append(sorted_table[0][0])
         all_classified.append(sorted_table[1][0])
         
-        # EXTRACCIÓN CORREGIDA: Guardar datos del 3º lugar
+        # Guardar datos del 3º lugar para evaluar mejores terceros
         third_places.append({
             "Team": sorted_table[2][0],
             "Pts": sorted_table[2][1]["Pts"],
@@ -132,7 +136,7 @@ if st.button("🚀 Comenzar Simulación del Mundial", type="primary"):
     best_thirds = sorted(third_places, key=lambda x: (x["Pts"], x["DG"], x["GF"]), reverse=True)[:8]
     best_thirds_names = [x["Team"] for x in best_thirds]
     
-    # Lista de los 32 clasificados finales en formato limpio de texto
+    # Lista de los 32 clasificados finales
     r32_teams = all_classified + best_thirds_names
     random.shuffle(r32_teams)  
     
@@ -166,7 +170,7 @@ if st.button("🚀 Comenzar Simulación del Mundial", type="primary"):
             
         return winners
 
-    # Secuencia del torneo cronológica
+    # Flujo ordenado del torneo
     r16_teams = simulate_knockout_stage(r32_teams, "Dieciseisavos de Final (Ronda de 32)")
     r8_teams = simulate_knockout_stage(r16_teams, "Octavos de Final")
     r4_teams = simulate_knockout_stage(r8_teams, "Cuartos de Final")
