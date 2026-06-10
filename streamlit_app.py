@@ -106,11 +106,11 @@ if st.button("🚀 Comenzar Simulación del Mundial", type="primary"):
             
         sorted_table = sorted(table.items(), key=lambda x: (x[1]["Pts"], x[1]["DG"], x[1]["GF"]), reverse=True)
         
-        # Guardar 1º y 2º lugar de cada grupo
+        # EXTRACCIÓN CORREGIDA: Guardar strings con nombres de países (1º y 2º lugar)
         all_classified.append(sorted_table[0][0])
         all_classified.append(sorted_table[1][0])
         
-        # Guardar datos del 3º lugar para evaluar mejores terceros
+        # EXTRACCIÓN CORREGIDA: Guardar datos del 3º lugar
         third_places.append({
             "Team": sorted_table[2][0],
             "Pts": sorted_table[2][1]["Pts"],
@@ -132,15 +132,14 @@ if st.button("🚀 Comenzar Simulación del Mundial", type="primary"):
     best_thirds = sorted(third_places, key=lambda x: (x["Pts"], x["DG"], x["GF"]), reverse=True)[:8]
     best_thirds_names = [x["Team"] for x in best_thirds]
     
-    # Lista de los 32 clasificados finales
+    # Lista de los 32 clasificados finales en formato limpio de texto
     r32_teams = all_classified + best_thirds_names
-    random.shuffle(r32_teams)  # Mezclado simple para emparejamientos automáticos
+    random.shuffle(r32_teams)  
     
     # 4. Fase Final de Eliminación Directa
     st.divider()
     st.header("🏆 Rondas de Eliminación Directa")
     
-    # Función corregida para evitar errores de renderizado en React / DOM
     def simulate_knockout_stage(teams, stage_name):
         st.subheader(f"➔ {stage_name}")
         winners = []
@@ -167,11 +166,11 @@ if st.button("🚀 Comenzar Simulación del Mundial", type="primary"):
             
         return winners
 
-    # Secuencia del torneo corregida cronológicamente
-    r16_teams = simulate_knockout_stage(r32_teams, "Dieciseisavos de Final (Ronda de 32)")  # Devuelve 16 equipos
-    r8_teams = simulate_knockout_stage(r16_teams, "Octavos de Final")                     # Devuelve 8 equipos
-    r4_teams = simulate_knockout_stage(r8_teams, "Cuartos de Final")                      # Devuelve 4 equipos
-    finalists = simulate_knockout_stage(r4_teams, "Semifinales")                           # Devuelve 2 equipos
+    # Secuencia del torneo cronológica
+    r16_teams = simulate_knockout_stage(r32_teams, "Dieciseisavos de Final (Ronda de 32)")
+    r8_teams = simulate_knockout_stage(r16_teams, "Octavos de Final")
+    r4_teams = simulate_knockout_stage(r8_teams, "Cuartos de Final")
+    finalists = simulate_knockout_stage(r4_teams, "Semifinales")
     
     # 5. La Gran Final
     st.divider()
