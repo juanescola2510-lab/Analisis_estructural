@@ -1,6 +1,2 @@
-streamlit
-numpy
-matplotlib
-pandas
-plotly
-random
+streamlit>=1.30.0
+pandas>=2.0.0
