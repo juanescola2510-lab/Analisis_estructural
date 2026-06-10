@@ -52,20 +52,17 @@ GRUPS_2026 = {
     "Grupo L": ["Inglaterra", "Croacia", "Panamá", "Ghana"]
 }
 
-# 2. Motor lógico para simular un partido usando los ratings de fuerza
+# 2. Motor de simulación de partidos
 def simulate_match(team1, team2, knockout=False):
     r1 = TEAMS_RATING[team1]
     r2 = TEAMS_RATING[team2]
     
-    # Probabilidad base dictada por la diferencia de rating
     diff = (r1 - r2) / 10.0
     
-    # Goles calculados de forma pseudo-aleatoria (Distribución orientada)
     g1 = max(0, int(random.normalvariate(1.3 + diff/2, 1.1)))
     g2 = max(0, int(random.normalvariate(1.3 - diff/2, 1.1)))
     
     if knockout and g1 == g2:
-        # Desempate simple en caso de eliminación directa
         if random.choice([True, False]):
             return g1, g2, team1
         else:
@@ -83,12 +80,9 @@ if st.button("🚀 Comenzar Simulación del Mundial", type="primary"):
     cols = st.columns(3)
     idx_col = 0
     
-    # Procesamiento de cada grupo por separado
     for group_name, teams in GRUPS_2026.items():
-        # Tabla interna del grupo: Puntos, Goles a Favor, Goles en Contra
         table = {t: {"Pts": 0, "GF": 0, "GC": 0, "DG": 0} for t in teams}
         
-        # Simular partidos de "todos contra todos" dentro del grupo
         for i in range(len(teams)):
             for j in range(i + 1, len(teams)):
                 t1, t2 = teams[i], teams[j]
@@ -110,14 +104,13 @@ if st.button("🚀 Comenzar Simulación del Mundial", type="primary"):
         for t in teams:
             table[t]["DG"] = table[t]["GF"] - table[t]["GC"]
             
-        # Ordenar tabla según criterios de la FIFA: Puntos, luego Diferencia de Goles, luego Goles a Favor
         sorted_table = sorted(table.items(), key=lambda x: (x[1]["Pts"], x[1]["DG"], x[1]["GF"]), reverse=True)
         
-        # Clasificados directos (Top 2)
+        # Guardar 1º y 2º lugar de cada grupo
         all_classified.append(sorted_table[0][0])
         all_classified.append(sorted_table[1][0])
         
-        # Candidato a mejor tercero
+        # Guardar datos del 3º lugar para evaluar mejores terceros
         third_places.append({
             "Team": sorted_table[2][0],
             "Pts": sorted_table[2][1]["Pts"],
@@ -125,7 +118,6 @@ if st.button("🚀 Comenzar Simulación del Mundial", type="primary"):
             "GF": sorted_table[2][1]["GF"]
         })
         
-        # Mostrar las tablas visualmente en columnas estructuradas de Streamlit
         with cols[idx_col]:
             st.subheader(group_name)
             df_display = pd.DataFrame([
@@ -136,19 +128,19 @@ if st.button("🚀 Comenzar Simulación del Mundial", type="primary"):
             
         idx_col = (idx_col + 1) % 3
 
-    # Filtrar y elegir a los 8 mejores terceros de entre los 12 grupos
+    # Filtrar mejores terceros
     best_thirds = sorted(third_places, key=lambda x: (x["Pts"], x["DG"], x["GF"]), reverse=True)[:8]
     best_thirds_names = [x["Team"] for x in best_thirds]
     
-    # El gran total de la Ronda de 32 (24 directos + 8 mejores terceros)
+    # Lista de los 32 clasificados finales
     r32_teams = all_classified + best_thirds_names
-    random.shuffle(r32_teams)  # Emparejamiento simplificado mediante barajado directo
+    random.shuffle(r32_teams)  # Mezclado simple para emparejamientos automáticos
     
     # 4. Fase Final de Eliminación Directa
     st.divider()
     st.header("🏆 Rondas de Eliminación Directa")
     
-    # Función modular para simular llaves completas
+    # Función corregida para evitar errores de renderizado en React / DOM
     def simulate_knockout_stage(teams, stage_name):
         st.subheader(f"➔ {stage_name}")
         winners = []
@@ -161,21 +153,25 @@ if st.button("🚀 Comenzar Simulación del Mundial", type="primary"):
             winners.append(winner)
             match_summaries.append(f"**{t1}** {g1} - {g2} **{t2}** ➔ Clasifica: **{winner}**")
             
-        # Mostrar los resultados organizados de dos en dos
         col_s1, col_s2 = st.columns(2)
         half = len(match_summaries) // 2
+        
         with col_s1:
-            for text in match_summaries[:half]: st.write(text)
+            with st.container():
+                for text in match_summaries[:half]: 
+                    st.write(text)
         with col_s2:
-            for text in match_summaries[half:]: st.write(text)
+            with st.container():
+                for text in match_summaries[half:]: 
+                    st.write(text)
             
         return winners
 
-    # Ejecución cronológica del bracket mundialista
-    r16_teams = simulate_knockout_stage(r32_teams, "Dieciseisavos de Final (Ronda de 32)")
-    r8_teams = simulate_knockout_stage(r16_teams, "Octavos de Final")
-    r4_teams = simulate_knockout_stage(r8_teams, "Cuartos de Final")
-    finalists = simulate_knockout_stage(r4_teams, "Semifinales")
+    # Secuencia del torneo corregida cronológicamente
+    r16_teams = simulate_knockout_stage(r32_teams, "Dieciseisavos de Final (Ronda de 32)")  # Devuelve 16 equipos
+    r8_teams = simulate_knockout_stage(r16_teams, "Octavos de Final")                     # Devuelve 8 equipos
+    r4_teams = simulate_knockout_stage(r8_teams, "Cuartos de Final")                      # Devuelve 4 equipos
+    finalists = simulate_knockout_stage(r4_teams, "Semifinales")                           # Devuelve 2 equipos
     
     # 5. La Gran Final
     st.divider()
