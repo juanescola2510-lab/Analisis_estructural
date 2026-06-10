@@ -101,7 +101,7 @@ def calcular_rating_partido(team, es_eliminatoria):
     penalizacion_lesiones = st.session_state.lesionados[team] * 2.5  
     bono_mentalidad_extra = (base["mentalidad"] - 80) * 0.1 if es_eliminatoria else 0.0
     
-    return max(50.0, rating_structural + bono_localia - penalizacion_desgaste - penalizacion_lesiones + bono_mentalidad_extra)
+    return max(50.0, rating_estructural + bono_localia - penalizacion_desgaste - penalizacion_lesiones + bono_mentalidad_extra)
 
 def actualizar_salud_y_fatiga(team):
     st.session_state.desgaste[team] = min(1.0, st.session_state.desgaste[team] + random.uniform(0.08, 0.15))
