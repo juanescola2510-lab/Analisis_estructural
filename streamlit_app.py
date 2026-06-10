@@ -190,25 +190,25 @@ if st.button("🚀 Iniciar Torneo con Variables Avanzadas", type="primary"):
         for t in teams:
             table[t]["DG"] = table[t]["GF"] - table[t]["GC"]
             
-        sorted_table = sorted(table.items(), key=lambda x: (x[1]["Pts"], x[1]["DG"], x[1]["GF"]), reverse=True)
+        sorted_table = sorted(table.items(), key=lambda x: (x["Pts"], x["DG"], x["GF"]), reverse=True)
         
-        all_classified.append(sorted_table[0][0])
-        all_classified.append(sorted_table[1][0])
+        all_classified.append(sorted_table)
+        all_classified.append(sorted_table)
         
         third_places.append({
-            "Team": sorted_table[2][0], 
-            "Pts": sorted_table[2][1]["Pts"],
-            "DG": sorted_table[2][1]["DG"], 
-            "GF": sorted_table[2][1]["GF"]
+            "Team": sorted_table, 
+            "Pts": sorted_table["Pts"],
+            "DG": sorted_table["DG"], 
+            "GF": sorted_table["GF"]
         })
         
         with cols[idx_col]:
             st.subheader(group_name)
             df_display = pd.DataFrame([
                 {
-                    "Equipo": item[0], "Pts": item[1]["Pts"], "DG": item[1]["DG"],
-                    "Fatiga 🏃‍♂️": f"{int(st.session_state.desgaste[item[0]]*100)}%",
-                    "Lesionados 🩹": st.session_state.lesionados[item[0]]
+                    "Equipo": item, "Pts": item["Pts"], "DG": item["DG"],
+                    "Fatiga 🏃‍♂️": f"{int(st.session_state.desgaste[item]*100)}%",
+                    "Lesionados 🩹": st.session_state.lesionados[item]
                 }
                 for item in sorted_table
             ])
@@ -266,9 +266,42 @@ if st.button("🚀 Iniciar Torneo con Variables Avanzadas", type="primary"):
     # 5. La Gran Final
     st.divider()
     st.subheader("🌟 LA GRAN FINAL 🌟")
-    f1, f2 = finalists[0], finalists[1]
+    f1, f2 = finalists, finalists
     gf1, gf2, champion = simulate_match(f1, f2, knockout=True)
     
     st.markdown(f"<h3 style='text-align: center;'>🏟️ Sede: MetLife Stadium (New York)</h3>", unsafe_allow_html=True)
     st.markdown(f"<h2 style='text-align: center;'>{f1} {gf1} vs {gf2} {f2}</h2>", unsafe_allow_html=True)
     st.markdown(f"<h1 style='text-align: center; color: #FFD700;'>🏆 ¡CAMPEÓN DEL MUNDO 2026: {champion.upper()}! 🏆</h1>", unsafe_allow_html=True)
+
+    # -------------------------------------------------------------
+    # NUEVA LÓGICA: HISTORIAL ACUMULATIVO Y PORCENTAJES DE CAMPEONES
+    # -------------------------------------------------------------
+    if "historial_campeones" not in st.session_state:
+        st.session_state.historial_campeones = []
+        
+    # Guardamos el campeón actual en la lista histórica
+    st.session_state.historial_campeones.append(champion)
+
+# Mostrar las estadísticas globales fuera del bloque del botón para que no desaparezcan
+if "historial_campeones" in st.session_state and len(st.session_state.historial_campeones) > 0:
+    st.divider()
+    st.header("📊 Estadísticas Históricas de Simulación")
+    
+    total_simulaciones = len(st.session_state.historial_campeones)
+    st.write(f"**Total de Mundiales simulados en esta sesión:** {total_simulaciones}")
+    
+    # Contar cuántas veces ha ganado cada equipo
+    conteo_campeones = pd.Series(st.session_state.historial_campeones).value_counts().reset_index()
+    conteo_campeones.columns = ["Equipo", "Títulos"]
+    
+    # Calcular el porcentaje matemático de efectividad
+    conteo_campeones["Porcentaje de Éxito"] = (conteo_campeones["Títulos"] / total_simulaciones * 100).round(1)
+    conteo_campeones["Porcentaje de Éxito"] = conteo_campeones["Porcentaje de Éxito"].astype(str) + "%"
+    
+    # Mostrar el top en una tabla interactiva
+    st.dataframe(conteo_campeones, hide_index=True, use_container_width=True)
+    
+    # Añadir un botón para reiniciar el historial si el usuario quiere volver a empezar desde cero
+    if st.button("🗑️ Reiniciar Historial Estadístico"):
+        st.session_state.historial_campeones = []
+        st.rerun()
