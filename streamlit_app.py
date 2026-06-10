@@ -197,50 +197,5 @@ if st.button("🚀 Ejecutar Simulaciones en Serie", type="primary"):
     todos_clasificados.extend(clasificados_por_grupo)
     todos_clasificados.extend(clasificados_terceros)
     
-    # --- LLAVES ELIMINATORIAS DIRECTAS (Knockout) ---
-    # Iteramos por número de partidos: 16 (Dieciseisavos), 8 (Octavos), 4 (Cuartos)
-    equipos_activos = todos_clasificados.copy()
-    for r_partidos in:
-        proxima_ronda = []
-        for p in range(r_partidos):
-            eq1 = equipos_activos[p * 2]
-            eq2 = equipos_activos[p * 2 + 1]
-            _, _, ganador, _ = simulate_match(eq1, eq2, knockout=True)
-            proxima_ronda.append(ganador)
-        equipos_activos = proxima_ronda.copy()
-        
-    # Semifinales (2 partidos con los 4 equipos restantes)
-    _, _, sem1_ganador, sem1_perdedor = simulate_match(equipos_activos[0], equipos_activos[1], knockout=True)
-    _, _, sem2_ganador, sem2_perdedor = simulate_match(equipos_activos[2], equipos_activos[3], knockout=True)
     
-    # Partido por el Tercer Puesto (3° y 4°)
-    _, _, tercero, cuarto = simulate_match(sem1_perdedor, sem2_perdedor, knockout=True)
     
-    # Gran Final (1° y 2°)
-    _, _, campeon, subcampeon = simulate_match(sem1_ganador, sem2_ganador, knockout=True)
-    
-    # Sumar los resultados al registro global estructurado
-    podios[campeon]["1° Lugar"] += 1
-    podios[subcampeon]["2° Lugar"] += 1
-    podios[tercero]["3° Lugar"] += 1
-    podios[cuarto]["4° Lugar"] += 1
-    
-    historial_ganadores.append({"Mundial N°": f"Simulación {n}", "Campeón 🏆": campeon})
-    progreso_bar.progress(n / num_simulaciones)
-
-# --- RENDERIZADO DE RESULTADOS ---
-col1, col2 = st.columns(2)
-
-with col1:
-    st.subheader("📋 Historial de Ganadores")
-    st.dataframe(pd.DataFrame(historial_ganadores), height=450, use_container_width=True)
-    
-with col2:
-    st.subheader("📊 Tabla de Podios Consolidada")
-    df_podios = pd.DataFrame.from_dict(podios, orient="index")
-    # Filtrar solo países que hayan alcanzado al menos una semifinal para limpiar la tabla
-    df_podios = df_podios[(df_podios != 0).any(axis=1)]
-    df_podios = df_podios.sort_values(by=["1° Lugar", "2° Lugar", "3° Lugar", "4° Lugar"], ascending=False)
-    st.dataframe(df_podios, height=450, use_container_width=True)
-
-st.balloons()
