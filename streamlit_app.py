@@ -156,7 +156,7 @@ if st.button("🚀 Ejecutar Simulaciones en Serie", type="primary"):
     rondas_partidos = (16, 8, 4)
     grupos_items = list(GRUPS_2026.items())
     
-    # Bucle optimizado a nivel de máquina
+    # Bucle optimizado a alta velocidad
     for n in range(1, int(num_simulaciones) + 1):
         # Reiniciar estadísticas físicas al inicio de cada Copa del Mundo individual
         st.session_state.desgaste = {pais: 0.0 for pais in TEAM_FACTORS}
@@ -193,13 +193,13 @@ if st.button("🚀 Ejecutar Simulaciones en Serie", type="primary"):
             # Clasifican los 2 primeros directamente
             clasificados_por_grupo.extend(list(df_t.index[:2]))
             
-            # Guardar el 3° lugar
-            nombre_tercero = df_t.index
+            # SOLUCIÓN AQUÍ: Extraemos el nombre del país y sus valores de forma segura mediante posiciones (.iloc)
+            nombre_tercero = df_t.index[2]  # El tercer elemento de la tabla de posiciones ordenadada
             mejores_terceros_pool.append({
                 "equipo": nombre_tercero, 
-                "pts": int(df_t.loc[nombre_tercero, "pts"]), 
-                "dg": int(df_t.loc[nombre_tercero, "dg"]), 
-                "gf": int(df_t.loc[nombre_tercero, "gf"])
+                "pts": int(df_t.iloc[2]["pts"]), 
+                "dg": int(df_t.iloc[2]["dg"]), 
+                "gf": int(df_t.iloc[2]["gf"])
             })
             
         # Filtrar los 8 mejores terceros de los 12 grupos
@@ -240,7 +240,7 @@ if st.button("🚀 Ejecutar Simulaciones en Serie", type="primary"):
         podios[tercero]["3° Lugar"] += 1
         podios[cuarto]["4° Lugar"] += 1
         
-        # Para evitar saturar la memoria RAM con millones de filas, solo guardamos el historial visual de los primeros 500
+        # Protección de memoria RAM para simulaciones masivas
         if n <= 500:
             historial_ganadores.append({"Mundial N°": f"Simulación {n}", "Campeón 🏆": campeon})
         elif n == 501:
