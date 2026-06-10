@@ -206,8 +206,8 @@ if st.button("🚀 Ejecutar Simulaciones en Serie", type="primary"):
         todos_clasificados.extend(clasificados_terceros)
         
         # --- LLAVES ELIMINATORIAS DIRECTAS (Knockout) ---
-        # Se genera la lista de rondas mediante una función matemática para evitar pérdidas de texto
-        rondas_partidos = list(range(16, 2, -4)) # Esto crea la lista de manera segura y blindada
+        # Definimos las rondas exactas: 16 partidos (Dieciseisavos), 8 (Octavos), 4 (Cuartos)
+        rondas_partidos = list((16, 8, 4)) 
         
         equipos_activos = todos_clasificados.copy()
         for r_partidos in rondas_partidos:
@@ -219,11 +219,8 @@ if st.button("🚀 Ejecutar Simulaciones en Serie", type="primary"):
                 proxima_ronda.append(ganador)
             equipos_activos = proxima_ronda.copy()
             
-        # Semifinales (Accediendo de forma exacta a los 4 equipos indexados usando variables individuales)
-        s1_e1 = equipos_activos[0]
-        s1_e2 = equipos_activos[1]
-        s2_e1 = equipos_activos[2]
-        s2_e2 = equipos_activos[3]
+        # Semifinales: Desempaquetamos los 4 equipos de forma segura sin usar corchetes
+        s1_e1, s1_e2, s2_e1, s2_e2 = equipos_activos
         
         _, _, sem1_ganador, sem1_perdedor = simulate_match(s1_e1, s1_e2, knockout=True)
         _, _, sem2_ganador, sem2_perdedor = simulate_match(s2_e1, s2_e2, knockout=True)
