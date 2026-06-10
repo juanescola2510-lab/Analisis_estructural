@@ -5,11 +5,10 @@ import pandas as pd
 # Configuración inicial
 st.set_page_config(page_title="Simulador Pro Copa del Mundo 2026", page_icon="🏆", layout="wide")
 
-st.title("🏆 Simulador Hiperrealista - Copa del Mundo 2026")
+st.title("🏆 Simulador Masivo e Hiperrealista - Copa del Mundo 2026")
 st.write("Simulación avanzada considerando plantilla, economía, técnico, localía, estadios, fatiga y lesiones.")
 
 # 1. Base de datos con los nuevos factores estructurales por país
-# Estructura: (Rating Plantilla, Factor Económico/Infraestructura, Trayectoria Técnico, Mentalidad Base)
 TEAM_FACTORS = {
     # Grupo A
     "México":          {"plantilla": 81, "economia": 85, "tecnico": 78, "mentalidad": 80},
@@ -88,15 +87,7 @@ GRUPS_2026 = {
     "Grupo L": ["Inglaterra", "Croacia", "Panamá", "Ghana"]
 }
 
-# Lista de estadios oficiales asignados aleatoriamente a los partidos
-ESTADIOS = [
-    "Azteca (CDMX, México) 🏟️", "MetLife Stadium (New York, EE.UU.) 🏟️", 
-    "SoFi Stadium (Los Angeles, EE.UU.) 🏟️", "BC Place (Vancouver, Canadá) 🏟️",
-    "Mercedes-Benz Stadium (Atlanta, EE.UU.) 🏟️", "Hard Rock Stadium (Miami, EE.UU.) 🏟️",
-    "Estadio BBVA (Monterrey, México) 🏟️", "BMO Field (Toronto, Canadá) 🏟️"
-]
-
-# Inicializadores de estado interno para registrar fatiga y estado físico
+# Inicializadores de estados globales para almacenar fatigas y bajas temporales por partido
 if "desgaste" not in st.session_state:
     st.session_state.desgaste = {pais: 0.0 for pais in TEAM_FACTORS}
 if "lesionados" not in st.session_state:
@@ -104,28 +95,16 @@ if "lesionados" not in st.session_state:
 
 def calcular_rating_partido(team, es_eliminatoria):
     base = TEAM_FACTORS[team]
-    
-    # 1. Poder estructural inicial (50% Plantilla, 20% Técnico, 15% Economía, 15% Mentalidad)
     rating_estructural = (base["plantilla"] * 0.50) + (base["tecnico"] * 0.20) + (base["economia"] * 0.15) + (base["mentalidad"] * 0.15)
-    
-    # 2. Factor Localía (Bono a México, Estados Unidos y Canadá)
     bono_localia = 4.5 if team in ["México", "Estados Unidos", "Canadá"] else 0.0
-    
-    # 3. Penalizadores dinámicos por Desgaste Físico y Lesiones activas
-    penalizacion_desgaste = st.session_state.desgaste[team] * 5.0  # Hasta -5 puntos si la fatiga es máxima (1.0)
-    penalizacion_lesiones = st.session_state.lesionados[team] * 2.5  # -2.5 puntos por cada jugador clave lesionado
-    
-    # En rondas eliminatorias la mentalidad influye el doble bajo presión
+    penalizacion_desgaste = st.session_state.desgaste[team] * 5.0  
+    penalizacion_lesiones = st.session_state.lesionados[team] * 2.5  
     bono_mentalidad_extra = (base["mentalidad"] - 80) * 0.1 if es_eliminatoria else 0.0
     
-    rating_final = rating_estructural + bono_localia - penalizacion_desgaste - penalizacion_lesiones + bono_mentalidad_extra
-    return max(50.0, rating_final)
+    return max(50.0, rating_structural + bono_localia - penalizacion_desgaste - penalizacion_lesiones + bono_mentalidad_extra)
 
 def actualizar_salud_y_fatiga(team):
-    # Aumentar la fatiga acumulada tras correr un partido intenso
     st.session_state.desgaste[team] = min(1.0, st.session_state.desgaste[team] + random.uniform(0.08, 0.15))
-    
-    # Probabilidad del 12% de que ocurra una nueva lesión grave en el plantel
     if random.random() < 0.12:
         st.session_state.lesionados[team] += 1
 
@@ -133,171 +112,134 @@ def simulate_match(team1, team2, knockout=False):
     r1 = calcular_rating_partido(team1, knockout)
     r2 = calcular_rating_partido(team2, knockout)
     
-    diff = (r1 - r2) / 10.0
+    diff = r1 - r2
+    lambda1 = max(0.5, 1.4 + (diff * 0.05))
+    lambda2 = max(0.5, 1.4 - (diff * 0.05))
     
-    # Goles calculados estadísticamente
-    g1 = max(0, int(random.normalvariate(1.2 + diff/2, 1.05)))
-    g2 = max(0, int(random.normalvariate(1.2 - diff/2, 1.05)))
+    goles1 = max(0, int(random.gammavariate(lambda1, 1.1)))
+    goles2 = max(0, int(random.gammavariate(lambda2, 1.1)))
     
-    # Aplicar desgaste post-partido
     actualizar_salud_y_fatiga(team1)
     actualizar_salud_y_fatiga(team2)
     
-    if knockout:
-        if g1 > g2: return g1, g2, team1
-        elif g2 > g1: return g1, g2, team2
+    ganador = None
+    perdedor = None
+    
+    if goles1 > goles2:
+        ganador, perdedor = team1, team2
+    elif goles2 > goles1:
+        ganador, perdedor = team2, team1
+    else:
+        if knockout:
+            # Desempate rápido por penales si requiere ganador directo
+            ganador, perdedor = (team1, team2) if random.random() > 0.5 else (team2, team1)
         else:
-            # Reporte de penales automático en caso de empate
-            ganador_penales = random.choice([team1, team2])
-            return g1, g2, ganador_penales
+            ganador, perdedor = None, None # Empate en fase de grupos
             
-    return g1, g2, None
+    return goles1, goles2, ganador, perdedor
 
-# 3. Interfaz de usuario
-if st.button("🚀 Iniciar Torneo con Variables Avanzadas", type="primary"):
-    # Reiniciar la simulación física médica al presionar el botón
-    st.session_state.desgaste = {pais: 0.0 for pais in TEAM_FACTORS}
-    st.session_state.lesionados = {pais: 0 for pais in TEAM_FACTORS}
+# --- CONFIGURACIÓN DE LA SIMULACIÓN MASIVA ---
+st.sidebar.header("⚙️ Opciones de Simulación")
+num_simulaciones = st.sidebar.number_input("Número de Mundiales a simular", min_value=1, max_value=500, value=10, step=5)
+
+if st.button("🚀 Ejecutar Simulaciones en Serie", type="primary"):
     
-    st.header("📋 Fase de Grupos")
-    all_classified = []
-    third_places = []
+    # Estructuras de almacenamiento consolidado para el Podio Histórico
+    podios = {pais: {"1° Lugar": 0, "2° Lugar": 0, "3° Lugar": 0, "4° Lugar": 0} for pais in TEAM_FACTORS}
+    historial_ganadores = []
+
+    # Barra de progreso visual integrada de Streamlit
+    progreso_bar = st.progress(0)
     
-    cols = st.columns(3)
-    idx_col = 0
-    
-    for group_name, teams in GRUPS_2026.items():
-        table = {t: {"Pts": 0, "GF": 0, "GC": 0, "DG": 0} for t in teams}
+    for n in range(1, int(num_simulaciones) + 1):
+        # Reiniciar estadísticas físicas al inicio de cada Copa del Mundo individual
+        st.session_state.desgaste = {pais: 0.0 for pais in TEAM_FACTORS}
+        st.session_state.lesionados = {pais: 0 for pais in TEAM_FACTORS}
         
-        for i in range(len(teams)):
-            for j in range(i + 1, len(teams)):
-                t1, t2 = teams[i], teams[j]
-                g1, g2, _ = simulate_match(t1, t2, knockout=False)
-                
-                table[t1]["GF"] += g1
-                table[t1]["GC"] += g2
-                table[t2]["GF"] += g2
-                table[t2]["GC"] += g1
-                
-                if g1 > g2: 
-                    table[t1]["Pts"] += 3
-                elif g2 > g1: 
-                    table[t2]["Pts"] += 3
-                else:
-                    table[t1]["Pts"] += 1
-                    table[t2]["Pts"] += 1
+        # --- FASE DE GRUPOS ---
+        clasificados_por_grupo = []
+        mejores_terceros_pool = []
+        
+        for grupo, equipos in GRUPS_2026.items():
+            tabla = {eq: {"pts": 0, "gf": 0, "gc": 0} for eq in equipos}
+            for i in range(len(equipos)):
+                for j in range(i + 1, len(equipos)):
+                    eq1, eq2 = equipos[i], equipos[j]
+                    g1, g2, g_match, p_match = simulate_match(eq1, eq2, knockout=False)
                     
-        for t in teams:
-            table[t]["DG"] = table[t]["GF"] - table[t]["GC"]
+                    tabla[eq1]["gf"] += g1; tabla[eq1]["gc"] += g2
+                    tabla[eq2]["gf"] += g2; tabla[eq2]["gc"] += g1
+                    if g_match == eq1: tabla[eq1]["pts"] += 3
+                    elif g_match == eq2: tabla[eq2]["pts"] += 3
+                    else: tabla[eq1]["pts"] += 1; tabla[eq2]["pts"] += 1
             
-        # CORRECCIÓN DE LA LAMBDA: Usamos x[1] para acceder al diccionario de estadísticas
-        sorted_table = sorted(table.items(), key=lambda x: (x[1]["Pts"], x[1]["DG"], x[1]["GF"]), reverse=True)
-        
-        # Guardar solo el nombre del país (texto limpio) para las rondas de eliminación
-        all_classified.append(sorted_table[0][0])
-        all_classified.append(sorted_table[1][0])
-        
-        # Guardar datos del 3º lugar de forma correcta
-        third_places.append({
-            "Team": sorted_table[2][0], 
-            "Pts": sorted_table[2][1]["Pts"],
-            "DG": sorted_table[2][1]["DG"], 
-            "GF": sorted_table[2][1]["GF"]
+            df_t = pd.DataFrame.from_dict(tabla, orient="index")
+            df_t["dg"] = df_t["gf"] - df_t["gc"]
+            df_t = df_t.sort_values(by=["pts", "dg", "gf"], ascending=False)
+            
+            clasificados_por_grupo.extend(list(df_t.index[:2]))
+        # El 3° entra en la lista para pelear los 8 cupos de mejores terceros
+        tercero = df_t.index[2]
+        mejores_terceros_pool.append({
+            "equipo": tercero, 
+            "pts": df_t.loc[tercero, "pts"], 
+            "dg": df_t.loc[tercero, "dg"], 
+            "gf": df_t.loc[tercero, "gf"]
         })
         
-        with cols[idx_col]:
-            st.subheader(group_name)
-            df_display = pd.DataFrame([
-                {
-                    "Equipo": item[0], "Pts": item[1]["Pts"], "DG": item[1]["DG"],
-                    "Fatiga 🏃‍♂️": f"{int(st.session_state.desgaste[item[0]]*100)}%",
-                    "Lesionados 🩹": st.session_state.lesionados[item[0]]
-                }
-                for item in sorted_table
-            ])
-            st.dataframe(df_display, hide_index=True)
-            
-        idx_col = (idx_col + 1) % 3
-
-    # Filtrado y estructuración de rondas finales
-    best_thirds = sorted(third_places, key=lambda x: (x["Pts"], x["DG"], x["GF"]), reverse=True)[:8]
-    best_thirds_names = [x["Team"] for x in best_thirds]
+    # Filtrar los 8 mejores terceros de los 12 grupos
+    df_terceros = pd.DataFrame(mejores_terceros_pool).sort_values(by=["pts", "dg", "gf"], ascending=False)
+    clasificados_terceros = list(df_terceros["equipo"][:8])
     
-    r32_teams = all_classified + best_thirds_names
-    random.shuffle(r32_teams)
-
-    # 4. Fase Final
-    st.divider()
-    st.header("🏆 Rondas de Eliminación Directa")
+    # Consolidación de los 32 equipos que avanzan de ronda
+    todos_clasificados = []
+    todos_clasificados.extend(clasificados_por_grupo)
+    todos_clasificados.extend(clasificados_terceros)
     
-    def simulate_knockout_stage(teams, stage_name):
-        st.subheader(f"➔ {stage_name}")
-        winners = []
-        match_summaries = []
+    # --- LLAVES ELIMINATORIAS DIRECTAS (Knockout) ---
+    # Dieciseisavos (16 partidos) -> Octavos (8 partidos) -> Cuartos (4 partidos)
+    equipos_activos = todos_clasificados.copy()
+    for r_partidos in:
+        proxima_ronda = []
+        for p in range(r_partidos):
+            eq1 = equipos_activos[p * 2]
+            eq2 = equipos_activos[p * 2 + 1]
+            _, _, ganador, _ = simulate_match(eq1, eq2, knockout=True)
+            proxima_ronda.append(ganador)
+        equipos_activos = proxima_ronda.copy()
         
-        for i in range(0, len(teams), 2):
-            t1 = teams[i]
-            t2 = teams[i+1]
-            estadio = random.choice(ESTADIOS)
-            g1, g2, winner = simulate_match(t1, t2, knockout=True)
-            winners.append(winner)
-            
-            detalles = f"🏟️ En {estadio} | 🩹 Lesionados: {t1} ({st.session_state.lesionados[t1]}) vs {t2} ({st.session_state.lesionados[t2]})"
-            match_summaries.append(f"**{t1}** {g1} - {g2} **{t2}** ➔ **{winner}** avanza\n\n`{detalles}`")
-            
-        col_s1, col_s2 = st.columns(2)
-        half = len(match_summaries) // 2
-        
-        with col_s1:
-            with st.container():
-                for text in match_summaries[:half]: 
-                    st.write(text)
-                    st.write("")
-        with col_s2:
-            with st.container():
-                for text in match_summaries[half:]: 
-                    st.write(text)
-                    st.write("")
-                    
-        return winners
+    # Semifinales (2 partidos con los 4 equipos restantes)
+    _, _, sem1_ganador, sem1_perdedor = simulate_match(equipos_activos[0], equipos_activos[1], knockout=True)
+    _, _, sem2_ganador, sem2_perdedor = simulate_match(equipos_activos[2], equipos_activos[3], knockout=True)
+    
+    # Partido por el Tercer Puesto (3° y 4°)
+    _, _, tercero, cuarto = simulate_match(sem1_perdedor, sem2_perdedor, knockout=True)
+    
+    # Gran Final (1° y 2°)
+    _, _, campeon, subcampeon = simulate_match(sem1_ganador, sem2_ganador, knockout=True)
+    
+    # Sumar los resultados al registro global estructurado
+    podios[campeon]["1° Lugar"] += 1
+    podios[subcampeon]["2° Lugar"] += 1
+    podios[tercero]["3° Lugar"] += 1
+    podios[cuarto]["4° Lugar"] += 1
+    
+    historial_ganadores.append({"Mundial N°": f"Simulación {n}", "Campeón 🏆": campeon})
+    progreso_bar.progress(n / num_simulaciones)
 
-    r16_teams = simulate_knockout_stage(r32_teams, "Dieciseisavos de Final")
-    r8_teams = simulate_knockout_stage(r16_teams, "Octavos de Final")
-    r4_teams = simulate_knockout_stage(r8_teams, "Cuartos de Final")
-    finalists = simulate_knockout_stage(r4_teams, "Semifinales")
+# --- RENDERIZADO DE RESULTADOS ---
+col1, col2 = st.columns(2)
 
-    # 5. La Gran Final
-    st.divider()
-    st.subheader("🌟 LA GRAN FINAL 🌟")
-    f1, f2 = finalists[0], finalists[1]
-    gf1, gf2, champion = simulate_match(f1, f2, knockout=True)
+with col1:
+    st.subheader("📋 Historial de Ganadores")
+    st.dataframe(pd.DataFrame(historial_ganadores), height=450, use_container_width=True)
     
-    st.markdown(f"<h3 style='text-align: center;'>🏟️ Sede: MetLife Stadium (New York)</h3>", unsafe_allow_html=True)
-    st.markdown(f"<h2 style='text-align: center;'>{f1} {gf1} vs {gf2} {f2}</h2>", unsafe_allow_html=True)
-    st.markdown(f"<h1 style='text-align: center; color: #FFD700;'>🏆 ¡CAMPEÓN DEL MUNDO 2026: {champion.upper()}! 🏆</h1>", unsafe_allow_html=True)
+with col2:
+    st.subheader("📊 Tabla de Podios Consolidada")
+    df_podios = pd.DataFrame.from_dict(podios, orient="index")
+    # Filtrar solo países que hayan alcanzado al menos una semifinal para limpiar la tabla
+    df_podios = df_podios[(df_podios != 0).any(axis=1)]
+    df_podios = df_podios.sort_values(by=["1° Lugar", "2° Lugar", "3° Lugar", "4° Lugar"], ascending=False)
+    st.dataframe(df_podios, height=450, use_container_width=True)
 
-    # NUEVA LÓGICA: HISTORIAL ACUMULATIVO Y PORCENTAJES DE CAMPEONES
-    if "historial_campeones" not in st.session_state:
-        st.session_state.historial_campeones = []
-        
-    st.session_state.historial_campeones.append(champion)
-
-# Mostrar las estadísticas globales fuera del bloque del botón
-if "historial_campeones" in st.session_state and len(st.session_state.historial_campeones) > 0:
-    st.divider()
-    st.header("📊 Estadísticas Históricas de Simulación")
-    
-    total_simulaciones = len(st.session_state.historial_campeones)
-    st.write(f"**Total de Mundiales simulados en esta sesión:** {total_simulaciones}")
-    
-    conteo_campeones = pd.Series(st.session_state.historial_campeones).value_counts().reset_index()
-    conteo_campeones.columns = ["Equipo", "Títulos"]
-    
-    conteo_campeones["Porcentaje de Éxito"] = (conteo_campeones["Títulos"] / total_simulaciones * 100).round(1)
-    conteo_campeones["Porcentaje de Éxito"] = conteo_campeones["Porcentaje de Éxito"].astype(str) + "%"
-    
-    st.dataframe(conteo_campeones, hide_index=True, use_container_width=True)
-    
-    if st.button("🗑️ Reiniciar Historial Estadístico"):
-        st.session_state.historial_campeones = []
-        st.rerun()
+st.balloons()
