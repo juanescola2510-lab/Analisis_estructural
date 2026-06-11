@@ -120,17 +120,29 @@ strm = ax.streamplot(
     arrowsize=0.9
 )
 
-# --- DIBUJO DE UNA SOLA LÍNEA DE CHAPA CONTINUA CORREGIDA ---
+# --- NUEVO ALGORITMO GEOMÉTRICO: RECONSTRUCCIÓN CON TANGENTES REALES ---
 if radio_mm == 0:
-    # Una sola línea quebrada continua en color naranja/amarillo técnico si el radio es cero
+    # Caso Base: Esquina viva pura sin radio (Muestra la escuadra)
     ax.plot([x_entrada, x_entrada, x_fin], [5.0, y_quiebre, y_fin], color='#ffaa00', linewidth=5)
     ax.plot(x_entrada, y_quiebre, 'ro', markersize=8)
 else:
-    # Calcular el arco de transición suave adaptado dinámicamente al ángulo
-    r_diseno = 0.05 + 0.6 * factor_radio
-    alfa = angulo_rad - np.pi/2
-    theta_curva = np.linspace(np.pi, np.pi + alfa, 40)
+    # Cálculo geométrico del radio de acuerdo al ángulo de la chapa
+    r_diseno = 0.05 + 0.7 * factor_radio
     
+    # Ángulo de barrido del arco cóncavo interno
+    alfa = angulo_rad - np.pi/2
+    
+    # 1. Puntos de inicio y fin del arco donde corta exactamente a las chapas rectas (Puntos de Tangencia)
+    y_tangencia_vertical = y_quiebre + r_diseno
+    x_tangencia_inclinada = x_entrada + r_diseno + r_diseno * np.cos(np.pi + alfa)
+    y_tangencia_inclinada = y_quiebre + r_diseno + r_diseno * np.sin(np.pi + alfa)
+    
+    if angulo_deg == 180:
+        y_tangencia_inclinada = y_quiebre
+        x_tangencia_inclinada = x_entrada + r_diseno * 2.0
+    
+    # 2. Generar los puntos del arco limpio
+    theta_curva = np.linspace(np.pi, np.pi + alfa, 40)
     x_centro_r = x_entrada + r_diseno
     y_centro_r = y_quiebre + r_diseno
     
@@ -140,14 +152,24 @@ else:
     if angulo_deg == 180:
         y_c = np.ones_like(x_c) * y_quiebre
     
-    # PUNTOS DE ACOPLE EXÁCTOS: Une el inicio vertical, el arco central y el ala de salida en un solo trazo
-    # Esto evita que aparezcan dos líneas o espacios en blanco
-    x_linea_unica = np.hstack(([x_entrada, x_entrada], x_c, [x_fin]))
-    y_linea_unica = np.hstack(([5.0, y_c[0]], y_c, [y_fin]))
+    # 3. CONSTRUCCIÓN DE LA LÍNEA ÚNICA CONTINUA SIN ESQUINAS DE FONDO
+    # Tramo 1: Línea vertical desde el techo hasta el inicio del radio
+    x_tramo1 = [x_entrada, x_entrada]
+    y_tramo1 = [5.0, y_tangencia_vertical]
     
-    # Cambiar de color automáticamente (Verde si el radio es óptimo, Naranja si es bajo)
+    # Tramo 2: El arco del radio (x_c, y_c)
+    
+    # Tramo 3: Línea inclinada desde el fin del radio hasta el borde exterior del rodete
+    x_tramo3 = [x_tangencia_inclinada, x_fin]
+    y_tramo3 = [y_tangencia_inclinada, y_fin]
+    
+    # Empalme definitivo y limpio de los tres tramos en un solo vector continuo
+    x_curva_real = np.concatenate((x_tramo1, x_c, x_tramo3))
+    y_curva_real = np.concatenate((y_tramo1, y_c, y_tramo3))
+    
+    # Cambiar de color automáticamente (Verde si el radio es óptimo y disipa la turbulencia)
     color_linea = '#00ffcc' if radio_mm >= 150 else '#ffaa00'
-    ax.plot(x_linea_unica, y_linea_unica, color=color_linea, linewidth=5)
+    ax.plot(x_curva_real, y_curva_real, color=color_linea, linewidth=5)
 
 # Indicadores fijos en el lienzo
 ax.text(4.6, 4.6, f"Reynolds (Re): {reynolds:.2e}", 
@@ -172,8 +194,8 @@ ax.set_ylim(0.2, 4.8)
 ax.axis('off')
 fig.colorbar(strm.lines, ax=ax, label='Velocidad del Fluido (m/s)', pad=0.02)
 
-# Despliegue centrado seguro en Streamlit (con lista de proporciones corregida)
-col_izq, col_centro, col_der = st.columns([1, 4, 1])
+# Despliegue centrado seguro en Streamlit
+col_izq, col_centro, col_der = st.columns()
 with col_centro:
     st.pyplot(fig)
 
