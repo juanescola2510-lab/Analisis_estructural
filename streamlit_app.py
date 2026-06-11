@@ -76,7 +76,7 @@ ancho_boca_visual = 3.4 * (d_entrada / diametro)
 
 x_izq_entrada = x_centro - ancho_boca_visual / 2  
 x_der_entrada = x_centro + ancho_boca_visual / 2  
-y_quiebre = 2.8 - (1.3 * factor_angulo)  # Altura dinámica de la esquina
+y_quiebre = 2.8 - (1.3 * factor_angulo)  
 
 angulo_rad = np.radians(angulo_deg)
 alpha_giro = np.pi - angulo_rad  
@@ -100,16 +100,16 @@ core_dinamico = 0.15 * factor_rpm
 radio_dispersion = 0.6 * factor_rpm 
 
 intensidad_vortex = 8.5 * (1.0 - factor_radio) * (float(rpm) / 1040.0)
-if intensidad_vortex < 0: intensidad_vortex = 0
+if intensidad_vortex < 0: 
+    intensidad_vortex = 0.0
 
 eps = 1e-5
 
-# --- CORRECCIÓN CRÍTICA: LOS VÓRTICES PERSIGUEN AL PUNTO DE QUIEBRE Y_QUIEBRE ---
-# LADO IZQUIERDO TRASLADABLE
+# LADO IZQUIERDO TRASLADABLE (Vórtices internos)
 v_izq_centros = [
-    (x_izq_entrada + 0.42, y_quiebre - 0.60, 1.0),      # Principal Izquierdo
-    (x_izq_entrada + 0.22, y_quiebre - 0.95, 0.45),     # Satélite Inferior
-    (x_izq_entrada + 0.65, y_quiebre - 0.40, 0.35)      # Satélite Superior
+    (x_izq_entrada + 0.42, y_quiebre - 0.60, 1.0),      
+    (x_izq_entrada + 0.22, y_quiebre - 0.95, 0.45),     
+    (x_izq_entrada + 0.65, y_quiebre - 0.40, 0.35)      
 ]
 
 for vx, vy, peso in v_izq_centros:
@@ -121,11 +121,11 @@ for vx, vy, peso in v_izq_centros:
     U_final = U_final * (1.0 - 0.95 * zona_turb * (1.0 - factor_radio)) + U_v * zona_turb
     V_final = V_final * (1.0 - 0.95 * zona_turb * (1.0 - factor_radio)) + V_v * zona_turb
 
-# LADO DERECHO TRASLADABLE
+# LADO DERECHO TRASLADABLE (Vórtices internos en espejo)
 v_der_centros = [
-    (x_der_entrada - 0.42, y_quiebre - 0.60, 1.0),      # Principal Derecho
-    (x_der_entrada - 0.22, y_quiebre - 0.95, 0.45),     # Satélite Inferior
-    (x_der_entrada - 0.65, y_quiebre - 0.40, 0.35)      # Satélite Superior
+    (x_der_entrada - 0.42, y_quiebre - 0.60, 1.0),      
+    (x_der_entrada - 0.22, y_quiebre - 0.95, 0.45),     
+    (x_der_entrada - 0.65, y_quiebre - 0.40, 0.35)      
 ]
 
 for vx, vy, peso in v_der_centros:
@@ -143,7 +143,7 @@ Vel_magnitud = np.sqrt(U_final**2 + V_final**2)
 # DESPLIEGUE GRÁFICO FRONTAL COMPACTO OPTIMIZADO
 # ==============================================================================
 plt.style.use('dark_background')
-fig, ax = plt.subplots(figsize=(11, 5.5), dpi=100)  
+fig, ax = plt.subplots(figsize=(9, 4.8), dpi=100)  
 
 strm = ax.streamplot(
     X, Y, U_final, V_final, 
@@ -154,7 +154,7 @@ strm = ax.streamplot(
     arrowsize=0.9
 )
 
-# --- DIBUJO GEOMÉTRICO ADAPTATIVO ---
+# --- DIBUJO GEOMÉTRICO ADAPTATIVO CON TRAZO HORIZONTAL UNIFICADO ---
 if radio_mm == 0:
     ax.plot([x_izq_entrada, x_izq_entrada, x_fin_izq], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=5)
     ax.plot(x_izq_entrada, y_quiebre, 'ro', markersize=6)
@@ -170,7 +170,8 @@ else:
     y_centro_izq = y_quiebre + r_diseno
     x_c_izq = x_centro_izq + r_diseno * np.cos(theta_izq)
     y_c_izq = y_centro_izq + r_diseno * np.sin(theta_izq) - (r_diseno * factor_angulo)
-    if angulo_deg == 180: y_c_izq = np.ones_like(x_c_izq) * y_quiebre
+    if angulo_deg == 180: 
+        y_c_izq = np.ones_like(x_c_izq) * y_quiebre
     
     x_pared_izq = np.hstack(([x_izq_entrada, x_izq_entrada], x_c_izq, [x_fin_izq]))
     y_pared_izq = np.hstack(([5.0, y_quiebre], y_c_izq, [y_fin]))
@@ -182,7 +183,8 @@ else:
     y_centro_der = y_quiebre + r_diseno
     x_c_der = x_centro_der + r_diseno * np.cos(theta_der)
     y_c_der = y_centro_der + r_diseno * np.sin(theta_der) - (r_diseno * factor_angulo)
-    if angulo_deg == 180: y_c_der = np.ones_like(x_c_der) * y_quiebre
+    if angulo_deg == 180: 
+        y_c_der = np.ones_like(x_c_der) * y_quiebre
     
     x_pared_der = np.hstack(([x_der_entrada, x_der_entrada], x_c_der, [x_fin_der]))
     y_pared_der = np.hstack(([5.0, y_quiebre], y_c_der, [y_fin]))
@@ -193,6 +195,7 @@ ax.text(4.6, 4.6, f"Reynolds (Re): {reynolds:.2e}",
         color='#ffffff', fontsize=9, weight='bold', ha='right', va='top',
         bbox=dict(facecolor='#1e293b', alpha=0.7, edgecolor='#3b82f6', boxstyle='round,pad=0.5'))
 
+# --- SECCIÓN DEL IF/ELSE SIN ERRORES DE SINTAXIS NI DE INDENTACIÓN ---
 if intensidad_vortex > 0.6:
     estado_flujo = "🔴 FLUX: TURBULENTO (CASCADA DE VÓRTICES)"
     color_caja = '#ff3333'
@@ -223,6 +226,8 @@ with col_centro:
 st.markdown("---")
 st.header("📋 Evaluación de Ingeniería en Tiempo Real")
 st.write(f"**Configuración Frontal**: Ángulo de {angulo_deg}° con un Radio de {radio_mm} mm, Boca de {d_entrada} mm a {rpm} RPM.")
-st.warning("El estrechamiento del flujo central incrementa la velocidad de succión. Al chocar contra las esquinas ortogonales, se induce una severa recirculación bifásica simétrica con formación de microvórtices secundarios.")
+
+if intensidad_vortex > 0.6:
+    st.warning("El estrechamiento del flujo central incrementa la velocidad de succión. Al chocar contra las esquinas ortogonales, se induce una severa recirculación bifásica simétrica con formación de microvórtices secundarios.")
 else:
     st.success("La campana simétrica se expande hacia los extremos de manera divergente, encauzando y distribuyendo el aire en paralelo a las paredes cóncavas moradas.")
