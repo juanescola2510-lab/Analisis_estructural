@@ -99,7 +99,7 @@ V_final = V_base + (V_vortex1 + V_vortex2) * zona_turbulenta
 Vel_magnitud = np.sqrt(U_final**2 + V_final**2)
 
 # ==============================================================================
-# DESPLIEGUE GRÁFICO (UNIFICADO)
+# DESPLIEGUE GRÁFICO (UNIFICADO Y CENTRADO)
 # ==============================================================================
 plt.style.use('dark_background')
 fig, ax = plt.subplots(figsize=(8, 6), dpi=150)
@@ -110,7 +110,7 @@ strm = ax.streamplot(
     color=Vel_magnitud, 
     cmap='plasma', 
     linewidth=1.1, 
-    density=1.8, # Alta densidad para ver la rotación de los lazos
+    density=1.8, 
     arrowsize=0.9
 )
 
@@ -129,7 +129,6 @@ if angulo_deg == 90:
     ax.text(2.0, 2.5, "⚠️ TRANSICIÓN A 90°: RECIRCULACIÓN LOCALIZADA", color='#ff3333', weight='bold', fontsize=9)
 else:
     # Calcular la apertura angular de la chapa hasta los 180°
-    # A 180° la chapa superior se convierte en una línea totalmente recta horizontal continua
     longitud_ala = 3.2
     x_fin_ala = x_esquina + longitud_ala * np.sin(angulo_rad - np.pi/2)
     y_fin_ala = y_esquina + longitud_ala * (1.0 - np.cos(angulo_rad - np.pi/2))
@@ -152,9 +151,9 @@ ax.set_ylim(0.2, 4.8)
 ax.axis('off')
 fig.colorbar(strm.lines, ax=ax, label='Velocidad del Fluido (m/s)', pad=0.02)
 
-# Mostrar el gráfico único centrado
-col_grafico, _ = st.columns()
-with col_grafico:
+# Mostrar el gráfico único centrado con proporciones correctas (Arreglo línea 156)
+col_izq, col_centro, col_der = st.columns([1, 4, 1])
+with col_centro:
     st.pyplot(fig)
 
 # ==============================================================================
