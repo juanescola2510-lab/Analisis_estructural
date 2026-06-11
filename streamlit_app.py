@@ -121,7 +121,6 @@ strm = ax.streamplot(
     arrowsize=0.9
 )
 
-# AJUSTE SOLICITADO: Se cambió el color de los perfiles de la chapa a morado brillante (#df00ff)
 if radio_mm == 0:
     ax.plot([x_entrada, x_entrada, x_fin], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=5)
     ax.plot(x_entrada, y_quiebre, 'ro', markersize=8)
