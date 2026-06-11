@@ -112,11 +112,11 @@ plt.style.use('dark_background')
 
 fig, ax = plt.subplots(figsize=(9, 4.8), dpi=100)  
 
-# AJUSTE DE COLOR SOLICITADO: Se cambió el mapa de colores a 'Wistia' (Verde/Amarillo -> Amarillo -> Rojo)
+# MODIFICACIÓN DE COLOR DE ALTA DEFINICIÓN: Se usa 'turbo' (Escala clásica CFD: Azul -> Verde -> Rojo)
 strm = ax.streamplot(
     X, Y, U_final, V_final, 
     color=Vel_magnitud, 
-    cmap='Wistia', 
+    cmap='turbo', 
     linewidth=1.1, 
     density=1.9, 
     arrowsize=0.9
@@ -158,7 +158,6 @@ else:
     estado_flujo = "🟢 FLUX: LAMINAR / GUIADO"
     color_caja = '#00ffcc'
 
-# AJUSTE DE LETRA SOLICITADO: Se redujo 'fontsize' a 8.5 para hacer la señal de flujo más compacta
 ax.text(0.4, 0.4, estado_flujo, 
         color=color_caja, fontsize=8.5, weight='bold',
         ha='left', va='bottom',
