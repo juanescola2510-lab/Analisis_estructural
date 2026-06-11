@@ -48,7 +48,6 @@ densidad_gas = st.sidebar.number_input("Densidad del Gas (kg/m³)", value=0.95, 
 radio_ext = diametro / 2000 
 omega = (2 * np.pi * rpm) / 60
 v_periferica = omega * radio_ext
-# Cálculo estimado del Número de Reynolds (basado en velocidad periférica y ancho de salida)
 reynolds = (densidad_gas * v_periferica * (ancho_perif / 1000)) / 1.81e-5
 
 st.sidebar.markdown("---")
@@ -119,7 +118,7 @@ strm = ax.streamplot(
     arrowsize=0.9
 )
 
-# --- DIBUJO GEOMÉTRICO ADAPTATIVO SIN MODIFICAR ---
+# --- DIBUJO GEOMÉTRICO ADAPTATIVO CORREGIDO ---
 if radio_mm == 0:
     ax.plot([x_entrada, x_entrada, x_fin], [5.0, y_quiebre, y_fin], color='#ffaa00', linewidth=5)
     ax.plot(x_entrada, y_quiebre, 'ro', markersize=8)
@@ -134,8 +133,9 @@ else:
     x_c = x_centro_r + r_diseno * np.cos(theta_curva)
     y_c = y_centro_r + r_diseno * np.sin(theta_curva)
     
-    x_pared = np.concatenate(([x_entrada, x_entrada], x_c, [x_fin]))
-    y_pared = np.concatenate(([5.0, y_c], y_c, [y_fin]))
+    # UNIÓN CORREGIDA: Se combinan los elementos usando arreglos limpios uno a uno
+    x_pared = np.hstack(([x_entrada], x_c, [x_fin]))
+    y_pared = np.hstack(([5.0], y_c, [y_fin]))
     
     color_perfil = '#00ffcc' if radio_mm >= 150 else '#ffaa00'
     ax.plot(x_pared, y_pared, color=color_perfil, linewidth=5)
