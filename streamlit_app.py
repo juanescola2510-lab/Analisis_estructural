@@ -76,23 +76,23 @@ ancho_boca_visual = 3.4 * (d_entrada / diametro)
 
 x_izq_entrada = x_centro - ancho_boca_visual / 2  
 x_der_entrada = x_centro + ancho_boca_visual / 2  
-y_quiebre = 2.8  # Altura fija de inicio de la campana
+y_quiebre = 2.8  
 
-# Ángulo de giro efectivo de la campana (90° = horizontal, mayor ángulo = más abierta hacia abajo)
 angulo_rad = np.radians(angulo_deg)
-alpha_giro = np.pi - angulo_rad  # Ángulo complementario real de apertura
+alpha_giro = np.pi - angulo_rad  
 
-# Determinar extremos de salida acoplados a la expansión
-y_fin = max(0.6, y_quiebre - 1.8 * np.sin(alpha_giro)) if angulo_deg > 90 else y_quiebre
-x_fin_izq = max(0.2, x_izq_entrada - 1.8 * np.cos(alpha_giro)) if angulo_deg > 90 else 0.2
-x_fin_der = min(4.8, x_der_entrada + 1.8 * np.cos(alpha_giro)) if angulo_deg > 90 else 4.8
+if angulo_deg == 90 or angulo_deg == 180:
+    y_fin = y_quiebre
+    x_fin_izq = 0.2
+    x_fin_der = 4.8
+else:
+    y_fin = max(0.6, y_quiebre - 1.8 * np.sin(alpha_giro))
+    x_fin_izq = max(0.2, x_izq_entrada - 1.8 * np.cos(alpha_giro))
+    x_fin_der = min(4.8, x_der_entrada + 1.8 * np.cos(alpha_giro))
 
-# --- FLUJO BASE EXPANSIVO RECALIBRADO ---
-# El aire se ensancha hacia afuera de forma paralela al bajar (Modificado para seguir la línea roja)
 U_base = 2.8 * (X - x_centro) / (Y + 0.3)
 V_base = -2.5 * (Y**0.95)
 
-# Ubicación dinámica de los núcleos de los remolinos (debajo de las faldas de la campana si no hay radio)
 vortex_izq_x = x_izq_entrada - 0.45 * (1.0 + factor_angulo)
 vortex_izq_y = y_quiebre - 0.60
 r_izq_sq = (X - vortex_izq_x)**2 + (Y - vortex_izq_y)**2
@@ -136,20 +136,17 @@ strm = ax.streamplot(
     arrowsize=0.9
 )
 
-# --- DIBUJO DE LA GEOMETRÍA CON ARCOS EXPANSIVOS EN MORADO (#df00ff) ---
 if radio_mm == 0:
-    # Lado Izquierdo Recto
     ax.plot([x_izq_entrada, x_izq_entrada, x_fin_izq], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=5)
     ax.plot(x_izq_entrada, y_quiebre, 'ro', markersize=6)
-    # Lado Derecho Recto
     ax.plot([x_der_entrada, x_der_entrada, x_fin_der], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=5)
     ax.plot(x_der_entrada, y_quiebre, 'ro', markersize=6)
 else:
-    # ESCALA REFORZADA: Se incrementa la escala visual para que el radio sea gigante en pantalla
-    r_diseno = 0.2 + 2.0 * factor_radio
+    # ESCALA REFORZADA CALIBRADA Y SIN ERRORES DE SINTAXIS
+    r_diseno = 0.15 + 1.1 * factor_radio
     alfa = angulo_rad - np.pi/2
     
-    # 1. Curva Lado Izquierdo (Abierta hacia afuera)
+    # 1. Curva Lado Izquierdo
     x_centro_izq = x_izq_entrada - r_diseno
     y_centro_izq = y_quiebre
     theta_izq = np.linspace(0, -alfa if angulo_deg > 90 else -np.pi/2, 40)
@@ -157,18 +154,13 @@ else:
     x_c_izq = x_centro_izq + r_diseno * np.cos(theta_izq)
     y_c_izq = y_centro_izq + r_diseno * np.sin(theta_izq)
     
-    # Puntos de acople corregidos para el tramo recto final
-    x_t_izq = x_centro_izq + r_diseno * np.cos(theta_izq[-1])
-    y_t_izq = y_centro_izq + r_diseno * np.sin(theta_izq[-1])
-    
-    # Forzar consistencia horizontal a 180°
     if angulo_deg == 180: y_c_izq = np.ones_like(x_c_izq) * y_quiebre
     
     x_pared_izq = np.concatenate(([x_izq_entrada, x_izq_entrada], x_c_izq, [x_fin_izq]))
     y_pared_izq = np.concatenate(([5.0, y_quiebre + r_diseno], y_c_izq, [y_fin]))
-    ax.plot(x_pared_izq, y_pared_izq, color='#df00ff', linewidth=6) # Chapa más gruesa
+    ax.plot(x_pared_izq, y_pared_izq, color='#df00ff', linewidth=6)
     
-    # 2. Curva Lado Derecho (Espejo Abierto hacia afuera)
+    # 2. Curva Lado Derecho - CORRECCIÓN DE CORCHETES EFECTUADA SUCESIVAMENTE
     x_centro_der = x_der_entrada + r_diseno
     y_centro_der = y_quiebre
     theta_der = np.linspace(np.pi, np.pi + alfa if angulo_deg > 90 else np.pi + np.pi/2, 40)
@@ -176,13 +168,10 @@ else:
     x_c_der = x_centro_der + r_diseno * np.cos(theta_der)
     y_c_der = y_centro_der + r_diseno * np.sin(theta_der)
     
-    x_t_der = x_centro_der + r_diseno * np.cos(theta_der[-1])
-    y_t_der = y_centro_der + r_diseno * np.sin(theta_der[-1])
-    
     if angulo_deg == 180: y_c_der = np.ones_like(x_c_der) * y_quiebre
     
     x_pared_der = np.concatenate(([x_der_entrada, x_der_entrada], x_c_der, [x_fin_der]))
-    y_pared_der = np.concatenate(([5.0], y_quiebre + r_diseno], y_c_der, [y_fin]))
+    y_pared_der = np.concatenate(([5.0, y_quiebre + r_diseno], y_c_der, [y_fin]))
     ax.plot(x_pared_der, y_pared_der, color='#df00ff', linewidth=6)
 
 # Indicadores fijos en el lienzo
@@ -210,7 +199,17 @@ ax.set_ylim(0.2, 4.8)
 ax.axis('off')
 fig.colorbar(strm.lines, ax=ax, label='Velocidad del Fluido (m/s)', pad=0.02)
 
-# Carga directa compacta en las 3 columnas de Streamlit
 col_izq, col_centro, col_der = st.columns(3)
 with col_centro:
     st.pyplot(fig)
+
+# ==============================================================================
+# DIAGNÓSTICO TÉCNICO INFERIOR 
+# ==============================================================================
+st.markdown("---")
+st.header("📋 Evaluación de Ingeniería en Tiempo Real")
+st.write(f"**Configuración Frontal**: Ángulo de {angulo_deg}° con un Radio de {radio_mm} mm y Boca de {d_entrada} mm.")
+if intensidad_vortex > 0.6:
+    st.warning("El estrechamiento del flujo central incrementa la velocidad de succión. Al chocar contra las esquinas ortogonales, se induce una severa recirculación bifásica simétrica.")
+else:
+    st.success("La campana simétrica se expande hacia los extremos de manera divergente, encauzando y distribuyendo el aire en paralelo a las paredes cóncavas moradas.")
