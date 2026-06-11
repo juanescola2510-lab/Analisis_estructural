@@ -106,10 +106,10 @@ V_final = V_base * (1.0 - 0.9 * zona_turbulenta * (1.0 - factor_radio)) + V_vort
 Vel_magnitud = np.sqrt(U_final**2 + V_final**2)
 
 # ==============================================================================
-# DESPLIEGUE GRÁFICO (GRÁFICA GRANDE CON UNA SOLA LÍNEA DE CHAPA CONTINUA)
+# DESPLIEGUE GRÁFICO (GRÁFICA RE-AMPLIADA DIRECTA SIN COLUMNAS ACHICADORAS)
 # ==============================================================================
 plt.style.use('dark_background')
-fig, ax = plt.subplots(figsize=(12, 8), dpi=140)
+fig, ax = plt.subplots(figsize=(14, 9), dpi=140)  # Lienzo maximizado a nivel cine
 
 strm = ax.streamplot(
     X, Y, U_final, V_final, 
@@ -120,19 +120,18 @@ strm = ax.streamplot(
     arrowsize=0.9
 )
 
-# --- NUEVO ALGORITMO GEOMÉTRICO: RECONSTRUCCIÓN CON TANGENTES REALES ---
+# --- ALGORITMO GEOMÉTRICO OPTIMIZADO CON ESCALA DE RADIO REFORZADA ---
 if radio_mm == 0:
-    # Caso Base: Esquina viva pura sin radio (Muestra la escuadra original)
+    # Caso Esquina Viva Pura
     ax.plot([x_entrada, x_entrada, x_fin], [5.0, y_quiebre, y_fin], color='#ffaa00', linewidth=5)
     ax.plot(x_entrada, y_quiebre, 'ro', markersize=8)
 else:
-    # Cálculo geométrico del radio de acuerdo al ángulo de la chapa
-    r_diseno = 0.05 + 0.7 * factor_radio
+    # REFORZADO: Se incrementa el radio base para que la curva sea físicamente gigante y notoria
+    r_diseno = 0.15 + 1.1 * factor_radio
     
-    # Ángulo de barrido del arco cóncavo interno
     alfa = angulo_rad - np.pi/2
     
-    # Puntos de inicio y fin del arco donde corta exactamente a las chapas rectas (Puntos de Tangencia)
+    # Puntos de Tangencia acoplados a la nueva escala grande
     y_tangencia_vertical = y_quiebre + r_diseno
     x_tangencia_inclinada = x_entrada + r_diseno + r_diseno * np.cos(np.pi + alfa)
     y_tangencia_inclinada = y_quiebre + r_diseno + r_diseno * np.sin(np.pi + alfa)
@@ -141,8 +140,8 @@ else:
         y_tangencia_inclinada = y_quiebre
         x_tangencia_inclinada = x_entrada + r_diseno * 2.0
     
-    # Generar los puntos del arco limpio
-    theta_curva = np.linspace(np.pi, np.pi + alfa, 40)
+    # Arco de barrido
+    theta_curva = np.linspace(np.pi, np.pi + alfa, 50)
     x_centro_r = x_entrada + r_diseno
     y_centro_r = y_quiebre + r_diseno
     
@@ -152,7 +151,7 @@ else:
     if angulo_deg == 180:
         y_c = np.ones_like(x_c) * y_quiebre
     
-    # CONSTRUCCIÓN DE LA LÍNEA ÚNICA CONTINUA SIN ESQUINAS DE FONDO RESIDUALES
+    # Construcción lineal unificada
     x_tramo1 = [x_entrada, x_entrada]
     y_tramo1 = [5.0, y_tangencia_vertical]
     
@@ -163,11 +162,11 @@ else:
     y_curva_real = np.concatenate((y_tramo1, y_c, y_tramo3))
     
     color_linea = '#00ffcc' if radio_mm >= 150 else '#ffaa00'
-    ax.plot(x_curva_real, y_curva_real, color=color_linea, linewidth=5)
+    ax.plot(x_curva_real, y_curva_real, color=color_linea, linewidth=6) # Chapa más gruesa
 
 # Indicadores fijos en el lienzo
 ax.text(4.6, 4.6, f"Reynolds (Re): {reynolds:.2e}", 
-        color='#ffffff', fontsize=9, weight='bold',
+        color='#ffffff', fontsize=10, weight='bold',
         ha='right', va='top',
         bbox=dict(facecolor='#1e293b', alpha=0.7, edgecolor='#3b82f6', boxstyle='round,pad=0.5'))
 
@@ -179,7 +178,7 @@ else:
     color_caja = '#00ffcc'
 
 ax.text(0.4, 0.4, estado_flujo, 
-        color=color_caja, fontsize=10, weight='bold',
+        color=color_caja, fontsize=11, weight='bold',
         ha='left', va='bottom',
         bbox=dict(facecolor='#0e1117', alpha=0.8, edgecolor=color_caja, boxstyle='round,pad=0.6'))
 
@@ -188,10 +187,8 @@ ax.set_ylim(0.2, 4.8)
 ax.axis('off')
 fig.colorbar(strm.lines, ax=ax, label='Velocidad del Fluido (m/s)', pad=0.02)
 
-# SOLUCIÓN DEL TYPEERROR: Se define explícitamente st.columns(3) para procesar las 3 variables
-col_izq, col_centro, col_der = st.columns(3)
-with col_centro:
-    st.pyplot(fig)
+# MODIFICACIÓN REQUERIDA: Carga directa en la pantalla principal sin columnas que reduzcan la imagen
+st.pyplot(fig)
 
 # ==============================================================================
 # DIAGNÓSTICO TÉCNICO INFERIOR 
