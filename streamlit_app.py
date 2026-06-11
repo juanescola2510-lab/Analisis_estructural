@@ -23,7 +23,7 @@ st.markdown("""
 st.title("⚙️ Simulador CFD Co-axial: Control de Ángulo y Radio de Esquina")
 st.markdown("""
 **Optimización Geométrica Avanzada para la Placa Superior del Ventilador de Tiro**  
-Modifica simultáneamente el ángulo de inclinación y el radio del filete de soldadura para analizar el comportamiento dinamico de los vortices.
+Modifica simultáneamente el ángulo de inclinación y el radio del filete de soldadura para analizar el comportamiento dinámico de los vórtices.
 """)
 
 # ==============================================================================
@@ -51,7 +51,7 @@ v_periferica = omega * radio_ext
 reynolds = (densidad_gas * v_periferica * (ancho_perif / 1000)) / 1.81e-5
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("📈 Telemetría Calculada")
+st.sidebar.header("📈 Telemetría Calculada")
 st.sidebar.metric(label="Velocidad en la Punta del Álabe", value=f"{v_periferica:.2f} m/s", delta=f"{v_periferica*3.6:.1f} km/h")
 
 try:
@@ -60,9 +60,9 @@ except Exception:
     st.sidebar.subheader("🏢 UNACEM - Área Técnica")
 
 # ==============================================================================
-# NÚCLEO MATEMÁTICO: RECALIBRACIÓN TOTAL DEL CODO DE IMPACTO (CFD MODEL)
+# NÚCLEO MATEMÁTICO: MODELADO ULTRA-PRECISO DEL REMOLINO (BUCLE CERRADO)
 # ==============================================================================
-nx, ny = 160, 160
+nx, ny = 180, 180  # Mayor resolución de malla para forzar las curvas del streamplot
 x = np.linspace(0.1, 4.9, nx)
 y = np.linspace(0.1, 4.9, ny)
 X, Y = np.meshgrid(x, y)
@@ -82,34 +82,34 @@ else:
     y_fin = y_quiebre - (x_fin - x_entrada) * np.tan(angulo_rad - np.pi/2)
     if y_fin < 0.4: y_fin = 0.4 
 
-# Flujo base: Aire que ingresa de forma vertical y tiende a chocar
-U_base = 2.4 * X * (Y**0.15) * (1.0 - 0.2 * factor_angulo)
-V_base = -1.8 * (Y**(1.05 - 0.2 * factor_angulo))
+# Flujo base reducido en la esquina muerta para permitir el bucle del remolino
+U_base = 2.0 * X * (Y**0.15)
+V_base = -1.6 * (Y**1.05)
 
-# --- CORRECCIÓN CRÍTICA: ANCLAJE DEL VÓRTICE EN LA ESQUINA DE IMPACTO ---
-# Posicionamos el ojo del remolino exactamente debajo del vértice (x=2.0) para reflejar el rebote del fluido
-vortex_x = x_entrada + 0.3 * (1.0 - factor_radio)
-vortex_y = y_quiebre - 0.4 * (1.0 - factor_radio)
+# --- RECALIBRACIÓN INTENSA DEL VÓRTICE (BUCLE VISIBLE) ---
+# Posicionamos el ojo del remolino exactamente debajo del vértice (x=2.4, y=1.9)
+vortex_x = x_entrada + 0.45
+vortex_y = y_quiebre - 0.60
 
 r1_sq = (X - vortex_x)**2 + (Y - vortex_y)**2
 
-# Ley de intensidad: Crece a medida que el ángulo es más severo (140°) y disminuye con el radio
-intensidad_vortex = 5.5 * (1.0 + 1.8 * factor_angulo) * (1.0 - factor_radio)
+# Multiplicamos la potencia de giro por 3.5 para romper la inercia del flujo base si el radio es 0
+intensidad_vortex = 8.5 * (1.0 + 1.5 * factor_angulo) * (1.0 - factor_radio)
 if intensidad_vortex < 0: intensidad_vortex = 0
 
-core = 0.28
+core = 0.15  # Ojo del vórtice más cerrado y definido
 eps = 1e-5
 
-# Ecuaciones de rotación para cerrar los lazos de corriente sobre sí mismos
+# Ecuaciones hidrodinámicas puras de remolino cerrado
 U_vortex = -intensidad_vortex * (Y - vortex_y) / (r1_sq + core + eps)
 V_vortex =  intensidad_vortex * (X - vortex_x) / (r1_sq + core + eps)
 
-# Máscara hiper-localizada centrada exactamente en el quiebre de la chapa
-zona_turbulenta = np.exp(-((X - vortex_x)**2 + (Y - vortex_y)**2) / (0.7 + 0.5 * factor_angulo))
+# Máscara de turbulencia concentrada y potente en la zona de choque
+zona_turbulenta = np.exp(-((X - vortex_x)**2 + (Y - vortex_y)**2) / 0.8)
 
-# Acoplar el campo vectorial
-U_final = U_base + U_vortex * zona_turbulenta
-V_final = V_base + V_vortex * zona_turbulenta
+# Atenuar el flujo base en la esquina muerta para que el remolino domine visualmente
+U_final = U_base * (1.0 - 0.9 * zona_turbulenta * (1.0 - factor_radio)) + U_vortex * zona_turbulenta
+V_final = V_base * (1.0 - 0.9 * zona_turbulenta * (1.0 - factor_radio)) + V_vortex * zona_turbulenta
 
 Vel_magnitud = np.sqrt(U_final**2 + V_final**2)
 
@@ -117,14 +117,15 @@ Vel_magnitud = np.sqrt(U_final**2 + V_final**2)
 # DESPLIEGUE GRÁFICO (CON ENTORNO OSCURO DE INGENIERÍA)
 # ==============================================================================
 plt.style.use('dark_background')
-fig, ax = plt.subplots(figsize=(8, 6), dpi=130)
+fig, ax = plt.subplots(figsize=(8, 6), dpi=140)
 
+# Renderizar el mapa de flujo
 strm = ax.streamplot(
     X, Y, U_final, V_final, 
     color=Vel_magnitud, 
     cmap='plasma', 
     linewidth=1.1, 
-    density=1.8, # Mayor densidad para capturar perfectamente el bucle cerrado del remolino
+    density=1.9, # Máxima densidad para que Matplotlib dibuje el lazo circular cerrado
     arrowsize=0.9
 )
 
