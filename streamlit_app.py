@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 # CONFIGURACIÓN DE LA INTERFAZ DE INGENIERÍA
 # ==============================================================================
 st.set_page_config(
-    page_title="Simulador CFD Ventilador Completo - UNACEM", 
+    page_title="Simulador CFD Campana - UNACEM", 
     layout="wide", 
     initial_sidebar_state="expanded"
 )
@@ -20,37 +20,39 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🌀 Simulador CFD 2D: Ventilador Centrífugo de Tiro Completo")
+st.title("⚙️ Simulador CFD: Geometría de la Campana de Succión")
 st.markdown("""
-**Modelado Global del Campo de Flujo: Aspiración, Rodete y Carcasa (Voluta)**  
-Analiza cómo el aire ingresa axialmente por el centro, es impulsado radialmente por los álabes y se expande en la voluta para ganar presión estática.
+**Análisis Local de la Transición de Ingreso en el Ventilador de Tiro**  
+Modifica simultáneamente el ángulo de inclinación y el radio de la campana para analizar cómo se disipan o incrementan los vórtices en las líneas de flujo de succión.
 """)
 
 # ==============================================================================
-# PANEL DE CONTROL (BARRA LATERAL)
+# PANEL DE CONTROL INTERACTIVO (BARRA LATERAL)
 # ==============================================================================
-st.sidebar.header("🛠️ Parámetros del Ventilador")
-rpm = st.sidebar.slider("Velocidad del Rodete (RPM)", 500, 1200, 1040, step=10)
-num_alabes = st.sidebar.slider("Número de Álabes (Aletas)", 6, 16, 11, step=1)
-angulo_giro = st.sidebar.slider("Animar Giro del Rodete (Grados)", 0, 360, 0, step=10)
+st.sidebar.header("🛠️ Variables de Diseño Geométrico")
+
+# CONTROL 1: El ángulo de la chapa de la campana
+angulo_deg = st.sidebar.slider("Ángulo de la Transición Externa (Grados)", 90, 180, 90, step=5)
+
+# CONTROL 2: El radio de curvatura o suavizado de la campana
+radio_mm = st.sidebar.slider("Radio de Suavizado de la Campana (mm)", 0, 250, 0, step=25)
 
 st.sidebar.markdown("---")
-st.sidebar.header("📋 Dimensiones Físicas")
-d_entrada = st.sidebar.slider("Diámetro Boca Aspiración (mm)", 500, 1200, 940, step=20)
-d_externo = st.sidebar.slider("Diámetro Exterior Rodete (mm)", 1500, 2100, 1800, step=50)
-densidad_gas = st.sidebar.number_input("Densidad del Gas (kg/m³)", value=0.95, step=0.05)
+st.sidebar.header("📋 Parámetros de Operación")
+rpm = st.sidebar.slider("Velocidad de Rotación (RPM)", 500, 1200, 1040, step=10)
+diametro = st.sidebar.number_input("Diámetro Exterior Placa (mm)", value=1800)
 ancho_perif = st.sidebar.slider("Ancho de Periferia / Salida (mm)", 100, 300, 200, step=10)
+densidad_gas = st.sidebar.number_input("Densidad del Gas (kg/m³)", value=0.95, step=0.05)
 
-# Cálculos dinámicos de telemetría
-r_ext = d_externo / 2000
+# Cálculos mecánicos y fluidodinámicos rápidos
+radio_ext = diametro / 2000 
 omega = (2 * np.pi * rpm) / 60
-v_periferica = omega * r_ext
-# Corrección del cálculo de Reynolds para que coincida exactamente con la llamada del gráfico
+v_periferica = omega * radio_ext
 reynolds = (densidad_gas * v_periferica * (ancho_perif / 1000)) / 1.81e-5
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("📈 Telemetría en la Punta")
-st.sidebar.metric(label="Velocidad Periférica Lineal", value=f"{v_periferica:.2f} m/s", delta=f"{v_periferica*3.6:.1f} km/h")
+st.sidebar.header("📈 Telemetría Calculada")
+st.sidebar.metric(label="Velocidad en la Punta del Álabe", value=f"{v_periferica:.2f} m/s", delta=f"{v_periferica*3.6:.1f} km/h")
 
 try:
     st.sidebar.image("https://unacem.com.pe", width=180)
@@ -58,111 +60,136 @@ except Exception:
     st.sidebar.subheader("🏢 UNACEM - Área Técnica")
 
 # ==============================================================================
-# NÚCLEO MATEMÁTICO: MODELADO DE FLUJO EN VOLUTA Y ESPIRAL
+# NÚCLEO MATEMÁTICO: MODELADO ULTRA-PRECISO DEL REMOLINO DE SUCCIÓN
 # ==============================================================================
-nx, ny = 160, 160
-x = np.linspace(-2.5, 3.5, nx)
-y = np.linspace(-2.5, 3.0, ny)
+nx, ny = 180, 180  
+x = np.linspace(0.1, 4.9, nx)
+y = np.linspace(0.1, 4.9, ny)
 X, Y = np.meshgrid(x, y)
 
-# Convertir a coordenadas polares locales para facilitar el modelo del giro
-R = np.sqrt(X**2 + Y**2)
-THETA = np.arctan2(Y, X)
-THETA[THETA < 0] += 2 * np.pi  # Rango de 0 a 2pi
+factor_angulo = (angulo_deg - 90) / 90.0
+factor_radio = radio_mm / 250.0
 
-# Definición de Radios de control basados en los sliders (en metros)
-r_in = d_entrada / 2000
-r_out = r_ext
+# Coordenadas base fijas de la transición interna
+x_entrada = 2.0  
+y_quiebre = 2.5 - (1.3 * factor_angulo)  
+x_fin = 4.8
 
-# Componente Radial (Vr): El aire se acelera desde el centro hacia afuera
-Vr = np.zeros_like(R)
-Vr[R <= r_in] = 1.5 * (R[R <= r_in] / (r_in + 1e-5))
-Vr[R > r_in] = 1.5 * (r_in / (R[R > r_in] + 1e-5)) + 0.8 * (R[R > r_in] - r_in)
+angulo_rad = np.radians(angulo_deg)
+if angulo_deg == 90 or angulo_deg == 180:
+    y_fin = y_quiebre
+else:
+    y_fin = y_quiebre - (x_fin - x_entrada) * np.tan(angulo_rad - np.pi/2)
+    if y_fin < 0.4: y_fin = 0.4 
 
-# Componente Tangencial (Vt): Velocidad de rotación provocada por las RPM del rodete
-Vt = np.zeros_like(R)
-Vt[R <= r_out] = omega * R[R <= r_out] * 0.4
-Vt[R > r_out] = (omega * r_out * 0.4) * (r_out / (R[R > r_out] + 1e-5))
+# Sentido de flujo de succión (El aire ingresa de forma vertical por la campana)
+U_base = 2.0 * X * (Y**0.15)
+V_base = -1.6 * (Y**1.05)
 
-# Convertir las velocidades polares (Vr, Vt) de vuelta a cartesianas (U, V)
-U_final = Vr * np.cos(THETA) - Vt * np.sin(THETA)
-V_final = Vr * np.sin(THETA) + Vt * np.cos(THETA)
+# Posicionamiento físico del ojo del remolino en la zona muerta
+vortex_x = x_entrada + 0.45
+vortex_y = y_quiebre - 0.60
 
-# Forzar la salida de aire tangencial hacia la boquilla de descarga
-zona_descarga = (X > 1.5) & (Y < -0.5)
-U_final[zona_descarga] = 2.5 * v_periferica * 0.3
-V_final[zona_descarga] = -0.5
+r1_sq = (X - vortex_x)**2 + (Y - vortex_y)**2
+
+# Ley de intensidad calibrada para el codo de succión
+intensidad_vortex = 8.5 * (1.0 + 1.5 * factor_angulo) * (1.0 - factor_radio)
+if intensidad_vortex < 0: intensidad_vortex = 0
+
+core = 0.15  
+eps = 1e-5
+
+U_vortex = -intensidad_vortex * (Y - vortex_y) / (r1_sq + core + eps)
+V_vortex =  intensidad_vortex * (X - vortex_x) / (r1_sq + core + eps)
+
+zona_turbulenta = np.exp(-((X - vortex_x)**2 + (Y - vortex_y)**2) / 0.8)
+
+U_final = U_base * (1.0 - 0.9 * zona_turbulenta * (1.0 - factor_radio)) + U_vortex * zona_turbulenta
+V_final = V_base * (1.0 - 0.9 * zona_turbulenta * (1.0 - factor_radio)) + V_vortex * zona_turbulenta
 
 Vel_magnitud = np.sqrt(U_final**2 + V_final**2)
 
 # ==============================================================================
-# DESPLIEGUE GRÁFICO 2D DEL VENTILADOR COMPLETO
+# DESPLIEGUE GRÁFICO (REDUCIDO A FORMATO MONITOR COMPACTO)
 # ==============================================================================
 plt.style.use('dark_background')
-fig, ax = plt.subplots(figsize=(9, 4.8), dpi=100) # Formato compacto acoplado
 
-# 1. Renderizar las líneas de flujo en paleta TURBO
+fig, ax = plt.subplots(figsize=(9, 4.8), dpi=100)  
+
 strm = ax.streamplot(
     X, Y, U_final, V_final, 
     color=Vel_magnitud, 
     cmap='turbo', 
-    linewidth=0.9, 
+    linewidth=1.1, 
     density=1.9, 
-    arrowsize=0.8
+    arrowsize=0.9
 )
 
-# 2. DIBUJO DE LA VOLUTA EXTERIOR (Carcasa en Espiral Logarítmica - Color Morado)
-theta_voluta = np.linspace(0, 2 * np.pi, 200)
-r0_voluta = r_out + 0.2
-b_voluta = 0.08  
-r_voluta = r0_voluta * np.exp(b_voluta * theta_voluta)
+# --- DIBUJO GEOMÉTRICO CONTINUO EN COLOR MORADO BRANTE (#df00ff) ---
+if radio_mm == 0:
+    ax.plot([x_entrada, x_entrada, x_fin], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=5)
+    ax.plot(x_entrada, y_quiebre, 'ro', markersize=8)
+else:
+    # Se escala el radio geométrico para que los cambios en la campana sean notorios
+    r_diseno = 0.15 + 1.1 * factor_radio
+    alfa = angulo_rad - np.pi/2
+    
+    y_tangencia_vertical = y_quiebre + r_diseno
+    x_tangencia_inclinada = x_entrada + r_diseno + r_diseno * np.cos(np.pi + alfa)
+    y_tangencia_inclinada = y_quiebre + r_diseno + r_diseno * np.sin(np.pi + alfa)
+    
+    if angulo_deg == 180:
+        y_tangencia_inclinada = y_quiebre
+        x_tangencia_inclinada = x_entrada + r_diseno * 2.0
+    
+    theta_curva = np.linspace(np.pi, np.pi + alfa, 50)
+    x_centro_r = x_entrada + r_diseno
+    y_centro_r = y_quiebre + r_diseno
+    
+    x_c = x_centro_r + r_diseno * np.cos(theta_curva)
+    y_c = y_centro_r + r_diseno * np.sin(theta_curva)
+    
+    if angulo_deg == 180:
+        y_c = np.ones_like(x_c) * y_quiebre
+        
+    x_curva_real = np.concatenate(([x_entrada, x_entrada], x_c, [x_tangencia_inclinada, x_fin]))
+    y_curva_real = np.concatenate(([5.0, y_tangencia_vertical], y_c, [y_tangencia_inclinada, y_fin]))
+    
+    ax.plot(x_curva_real, y_curva_real, color='#df00ff', linewidth=6)
 
-x_voluta = r_voluta * np.cos(theta_voluta)
-y_voluta = r_voluta * np.sin(theta_voluta)
-
-x_voluta = np.append(x_voluta, [3.2, 3.2])
-y_voluta = np.append(y_voluta, [-r_voluta[-1], -2.5])
-
-ax.plot(x_voluta, y_voluta, color='#df00ff', linewidth=5, label='Carcasa (Voluta)')
-
-# 3. DIBUJO DE LA BOCA DE ASPIRACIÓN CENTRAL (Línea discontinua morada)
-theta_boca = np.linspace(0, 2 * np.pi, 100)
-ax.plot(r_in * np.cos(theta_boca), r_in * np.sin(theta_boca), color='#df00ff', linewidth=2, linestyle='--', label='Boca de Succión')
-
-# 4. DIBUJO DE LOS ÁLABES DEL RODETE EN ROTACIÓN
-ang_rad_offset = np.radians(angulo_giro)
-for i in range(num_alabes):
-    alpha = 2 * np.pi * i / num_alabes + ang_rad_offset
-    x_alabe = [r_in * np.cos(alpha), r_out * np.cos(alpha + 0.25)]
-    y_alabe = [r_in * np.sin(alpha), r_out * np.sin(alpha + 0.25)]
-    ax.plot(x_alabe, y_alabe, color='#00ffcc', linewidth=3, alpha=0.9)
-
-# SOLUCIÓN DEL ERROR: Llamada correcta y alineada a la variable 'reynolds'
-ax.text(3.3, 2.7, f"Reynolds (Re): {reynolds:.2e}", 
-        color='#ffffff', fontsize=9, weight='bold', ha='right',
+# Indicadores fijos en el lienzo
+ax.text(4.6, 4.6, f"Reynolds (Re): {reynolds:.2e}", 
+        color='#ffffff', fontsize=9, weight='bold',
+        ha='right', va='top',
         bbox=dict(facecolor='#1e293b', alpha=0.7, edgecolor='#3b82f6', boxstyle='round,pad=0.5'))
 
-ax.text(-2.3, -2.3, "🟢 OPERACIÓN GLOBAL: EQUILIBRADA", 
-        color='#00ffcc', fontsize=8.5, weight='bold', ha='left',
-        bbox=dict(facecolor='#0e1117', alpha=0.8, edgecolor='#00ffcc', boxstyle='round,pad=0.6'))
+if intensidad_vortex > 0.6:
+    estado_flujo = "🔴 FLUX: TURBULENTO (RECIRCULACIÓN)"
+    color_caja = '#ff3333'
+else:
+    estado_flujo = "🟢 FLUX: LAMINAR / GUIADO"
+    color_caja = '#00ffcc'
 
-# Ajustes del lienzo
-ax.set_xlim(-2.5, 3.5)
-ax.set_ylim(-2.5, 3.0)
+ax.text(0.4, 0.4, estado_flujo, 
+        color=color_caja, fontsize=8.5, weight='bold',
+        ha='left', va='bottom',
+        bbox=dict(facecolor='#0e1117', alpha=0.8, edgecolor=color_caja, boxstyle='round,pad=0.6'))
+
+ax.set_xlim(0.2, 4.8)
+ax.set_ylim(0.2, 4.8)
 ax.axis('off')
-fig.colorbar(strm.lines, ax=ax, label='Velocidad Relativa del Flujo (m/s)', pad=0.02)
+fig.colorbar(strm.lines, ax=ax, label='Velocidad del Fluido (m/s)', pad=0.02)
 
-# Carga directa compacta en la pantalla principal
+# Carga directa limpia sin columnas restrictivas
 st.pyplot(fig)
 
 # ==============================================================================
-# EXPLICACIÓN TÉCNICA
+# DIAGNÓSTICO TÉCNICO INFERIOR 
 # ==============================================================================
 st.markdown("---")
-st.header("📋 Análisis de Funcionamiento del Conjunto")
-st.write(f"""
-Este modelo representa el comportamiento completo del ventilador trabajando a **{rpm} RPM**:
-1. **Zona de Succión Central (Círculo segmentado):** El aire ingresa perpendicular a la pantalla, mostrando velocidades iniciales bajas (zonas azules/celestes).
-2. **Zona de Álabes ({num_alabes} paletas curvas):** Al rotar el rodete, los álabes transfieren energía mecánica directamente al gas. El aire se acelera fuertemente y es expulsado hacia la periferia.
-3. **Zona de Carcasa (Línea morada en espiral):** La forma de 'caracola' expande el área de paso del flujo de forma controlada. Esto disminuye la velocidad dinámica del aire saliente para transformarla en la **presión estática** requerida por los ductos de la planta.
-""")
+st.header("📋 Evaluación de Ingeniería en Tiempo Real")
+st.write(f"**Configuración Actual**: Ángulo de {angulo_deg}° con un Radio de {radio_mm} mm.")
+if intensidad_vortex > 0.6:
+    st.warning("El aire experimenta un desprendimiento al pasar el quiebre de la chapa. Se forman remolinos en la zona inferior cóncava debido al cambio de dirección abrupto.")
+else:
+    st.success("La combinación de parámetros permite un paso suave del gas, minimizando las pérdidas energéticas en el tiro del ventilador.")
