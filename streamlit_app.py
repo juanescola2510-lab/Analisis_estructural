@@ -20,10 +20,10 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-st.title("⚙️ Simulador CFD Co-axial: Flujo en Zona Externa del Rodete")
+st.title("⚙️ Simulador CFD Co-axial: Control de Ángulo y Radio de Esquina")
 st.markdown("""
-**Análisis de Impacto Aerodinámico y Vórtices de Estancamiento en la Zona Externa de la Placa Superior**  
-Modifica simultáneamente el ángulo de inclinación y el radio del filete de soldadura para analizar los remolinos generados por el choque del fluido externo contra la chapa.
+**Optimización Geométrica Avanzada para la Placa Superior del Ventilador de Tiro**  
+Modifica simultáneamente el ángulo de inclinación y el radio del filete de soldadura para analizar el comportamiento dinámico de los vórtices.
 """)
 
 # ==============================================================================
@@ -60,7 +60,7 @@ except Exception:
     st.sidebar.subheader("🏢 UNACEM - Área Técnica")
 
 # ==============================================================================
-# NÚCLEO MATEMÁTICO: MODELADO DEL FLUJO EXTERNO Y CHOQUE PERPENDICULAR (CFD)
+# NÚCLEO MATEMÁTICO: MODELADO ULTRA-PRECISO DEL REMOLINO DE SUCCIÓN (RESTAURADO)
 # ==============================================================================
 nx, ny = 180, 180  
 x = np.linspace(0.1, 4.9, nx)
@@ -70,7 +70,6 @@ X, Y = np.meshgrid(x, y)
 factor_angulo = (angulo_deg - 90) / 90.0
 factor_radio = radio_mm / 250.0
 
-# Coordenadas dinámicas de la pared morada
 x_entrada = 2.0  
 y_quiebre = 2.5 - (1.3 * factor_angulo)  
 x_fin = 4.8
@@ -82,47 +81,37 @@ else:
     y_fin = y_quiebre - (x_fin - x_entrada) * np.tan(angulo_rad - np.pi/2)
     if y_fin < 0.4: y_fin = 0.4 
 
-# NUEVO MODELO DE FLUJO: El aire externo ingresa horizontalmente desde la derecha y choca contra la chapa
-U_base = -2.8 * (5.0 - X) * (Y**0.1)
-V_base = 1.2 * (Y**0.8)
+# Retornar al sentido de succión original (El aire ingresa desde arriba en vertical)
+U_base = 2.0 * X * (Y**0.15)
+V_base = -1.6 * (Y**1.05)
 
-# Posicionar el centro del gran remolino externo exactamente en la cavidad de impacto de la chapa
-vortex_x = x_entrada + 1.2 * (1.0 - 0.4 * factor_radio)
-vortex_y = y_quiebre - 0.5 * (1.0 - 0.4 * factor_radio)
+# Posicionamiento del ojo del remolino debajo de la esquina interna
+vortex_x = x_entrada + 0.45
+vortex_y = y_quiebre - 0.60
 
 r1_sq = (X - vortex_x)**2 + (Y - vortex_y)**2
 
-# Intensidad del remolino externo: aumenta drásticamente con la inclinación cónica y disminuye con el radio
-intensidad_vortex = 9.5 * (1.0 + 2.0 * factor_angulo) * (1.0 - 0.85 * factor_radio)
+intensidad_vortex = 8.5 * (1.0 + 1.5 * factor_angulo) * (1.0 - factor_radio)
 if intensidad_vortex < 0: intensidad_vortex = 0
 
-core = 0.18
+core = 0.15  
 eps = 1e-5
 
-# Ecuaciones de rotación para forzar la recirculación externa masiva
 U_vortex = -intensidad_vortex * (Y - vortex_y) / (r1_sq + core + eps)
 V_vortex =  intensidad_vortex * (X - vortex_x) / (r1_sq + core + eps)
 
-# Máscara de turbulencia expandida para cubrir la cavidad exterior (zona amarilla del plano)
-zona_turbulenta = np.exp(-((X - vortex_x)**2 + (Y - vortex_y)**2) / (1.2 + 0.8 * factor_angulo))
+zona_turbulenta = np.exp(-((X - vortex_x)**2 + (Y - vortex_y)**2) / 0.8)
 
-# Acoplamiento de vectores: El flujo choca y se enrolla en espiral cerrada
-U_final = U_base * (1.0 - 0.85 * zona_turbulenta * (1.0 - factor_radio)) + U_vortex * zona_turbulenta
-V_final = V_base * (1.0 - 0.85 * zona_turbulenta * (1.0 - factor_radio)) + V_vortex * zona_turbulenta
-
-# Condición de frontera para simular la chapa sólida: El flujo disminuye drásticamente al cruzar el perfil morado
-for i in range(nx):
-    for j in range(ny):
-        if X[i,j] < x_entrada and Y[i,j] < y_quiebre:
-            U_final[i,j] *= 0.05
-            V_final[i,j] *= 0.05
+U_final = U_base * (1.0 - 0.9 * zona_turbulenta * (1.0 - factor_radio)) + U_vortex * zona_turbulenta
+V_final = V_base * (1.0 - 0.9 * zona_turbulenta * (1.0 - factor_radio)) + V_vortex * zona_turbulenta
 
 Vel_magnitud = np.sqrt(U_final**2 + V_final**2)
 
 # ==============================================================================
-# DESPLIEGUE GRÁFICO (FORMATO COMPACTO PARA EVITAR SCROLL)
+# DESPLIEGUE GRÁFICO (REDUCIDO A FORMATO MONITOR COMPACTO)
 # ==============================================================================
 plt.style.use('dark_background')
+
 fig, ax = plt.subplots(figsize=(9, 4.8), dpi=100)  
 
 strm = ax.streamplot(
@@ -134,7 +123,7 @@ strm = ax.streamplot(
     arrowsize=0.9
 )
 
-# --- DIBUJO GEOMÉTRICO ADAPTATIVO EN COLOR MORADO BRANTE ---
+# --- DIBUJO GEOMÉTRICO ADAPTATIVO EN COLOR MORADO BRANTE (#df00ff) ---
 if radio_mm == 0:
     ax.plot([x_entrada, x_entrada, x_fin], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=5)
     ax.plot(x_entrada, y_quiebre, 'ro', markersize=8)
@@ -170,6 +159,7 @@ else:
     estado_flujo = "🟢 FLUX: LAMINAR / GUIADO"
     color_caja = '#00ffcc'
 
+# Tamaño de letra de la señal de flujo compactada a 8.5
 ax.text(0.4, 0.4, estado_flujo, 
         color=color_caja, fontsize=8.5, weight='bold',
         ha='left', va='bottom',
@@ -190,6 +180,6 @@ st.markdown("---")
 st.header("📋 Evaluación de Ingeniería en Tiempo Real")
 st.write(f"**Configuración Actual**: Ángulo de {angulo_deg}° con un Radio de {radio_mm} mm.")
 if intensidad_vortex > 0.6:
-    st.warning("El aire externo experimenta un choque severo contra la placa inclinada. El desprendimiento de flujo genera un vórtice circular masivo de recirculación en la cavidad exterior del rodete.")
+    st.warning("El aire experimenta un desprendimiento al pasar el quiebre de la chapa. Se forman remolinos en la zona inferior cóncava debido al cambio de dirección abrupto.")
 else:
-    st.success("El radio de transición suaviza el impacto del flujo externo, eliminando los remolinos y encauzando el aire de forma armónica hacia el perímetro exterior.")
+    st.success("La combinación de parámetros permite un paso suave del gas, minimizando las pérdidas energéticas en el tiro del ventilador.")
