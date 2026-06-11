@@ -168,7 +168,8 @@ ax.set_ylim(0.2, 4.8)
 ax.axis('off')
 fig.colorbar(strm.lines, ax=ax, label='Velocidad del Fluido (m/s)', pad=0.02)
 
-col_izq, col_centro, col_der = st.columns()
+# Corrección explícita de proporciones en st.columns para evitar el TypeError
+col_izq, col_centro, col_der = st.columns([1, 10, 1])
 with col_centro:
     st.pyplot(fig)
 
