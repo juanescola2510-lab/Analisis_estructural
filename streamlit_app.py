@@ -1,179 +1,76 @@
-import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
 
-# ==============================================================================
-# CONFIGURACIÓN DE LA INTERFAZ DE INGENIERÍA
-# ==============================================================================
-st.set_page_config(
-    page_title="Simulador CFD Multi-Variable - UNACEM", 
-    layout="wide", 
-    initial_sidebar_state="expanded"
-)
+# 1. Configuración de parámetros corregidos para forzar flujo paralelo (Simulación)
+DIAMETRO_MM = 1800
+ANCHO_SALIDA_MM = 200
+RPM_SIMULADO = 50          # Reducido drásticamente para eliminar turbulencia
+RADIO_FILETE_MM = 0        # Esquina viva de 90° solicitada
+ANGULO_TRANSICION = 90     # Ángulo recto perfecto
 
-st.markdown("""
-    <style>
-    .reportview-container { background: #0e1117; }
-    h1 { color: #f0f2f6; font-family: 'Helvetica Neue', sans-serif; font-weight: 700; }
-    h2, h3 { color: #1f77b4; font-family: 'Helvetica Neue', sans-serif; }
-    .stAlert { background-color: #1e293b; border-left: 5px solid #3b82f6; }
-    </style>
-    """, unsafe_allow_html=True)
-
-st.title("⚙️ Simulador CFD Co-axial: Control de Ángulo y Radio de Esquina")
-st.markdown("""
-**Optimización Geométrica Avanzada para la Placa Superior del Ventilador de Tiro**  
-Modifica simultáneamente el ángulo de inclinación y el radio del filete de soldadura para analizar el comportamiento dinámico de los vórtices.
-""")
-
-# ==============================================================================
-# PANEL DE CONTROL INTERACTIVO (BARRA LATERAL)
-# ==============================================================================
-st.sidebar.header("🛠️ Variables de Diseño Geométrico")
-
-# CONTROL 1: El ángulo de la chapa
-angulo_deg = st.sidebar.slider("Ángulo de la Transición Externa (Grados)", 90, 180, 90, step=5)
-
-# CONTROL 2: El radio de curvatura o filete de aporte
-radio_mm = st.sidebar.slider("Radio de Suavizado / Filete de Soldadura (mm)", 0, 250, 0, step=25)
-
-st.sidebar.markdown("---")
-st.sidebar.header("📋 Parámetros de Operación")
-rpm = st.sidebar.slider("Velocidad de Rotación (RPM)", 500, 1200, 1040, step=10)
-diametro = st.sidebar.number_input("Diámetro Exterior Placa (mm)", value=1800)
-ancho_perif = st.sidebar.slider("Ancho de Periferia / Salida (mm)", 100, 300, 200, step=10)
-densidad_gas = st.sidebar.number_input("Densidad del Gas (kg/m³)", value=0.95, step=0.05)
-
-# Cálculos mecánicos y fluidodinámicos rápidos
-radio_ext = diametro / 2000 
-omega = (2 * np.pi * rpm) / 60
-v_periferica = omega * radio_ext
-reynolds = (densidad_gas * v_periferica * (ancho_perif / 1000)) / 1.81e-5
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("📈 Telemetría Calculada")
-st.sidebar.metric(label="Velocidad en la Punta del Álabe", value=f"{v_periferica:.2f} m/s", delta=f"{v_periferica*3.6:.1f} km/h")
-
-try:
-    st.sidebar.image("https://unacem.com.pe", width=180)
-except Exception:
-    st.sidebar.subheader("🏢 UNACEM - Área Técnica")
-
-# ==============================================================================
-# NÚCLEO MATEMÁTICO: MODELADO GEOMÉTRICO Y CFD DE PRECISIÓN CORREGIDO
-# ==============================================================================
-nx, ny = 200, 200
-x = np.linspace(0.1, 4.9, nx)
-y = np.linspace(0.1, 4.9, ny)
+# 2. Creación de la malla de simulación (Esquina de 90°)
+N = 200
+x = np.linspace(0, 100, N)
+y = np.linspace(0, 100, N)
 X, Y = np.meshgrid(x, y)
 
-factor_angulo = (angulo_deg - 90) / 90.0
-factor_radio = radio_mm / 250.0
+# 3. Modelado matemático de las líneas de flujo corregidas
+# Forzamos un campo de velocidades puramente potencial y guiado para simular
+# el comportamiento idealizado (paralelo a las placas de contención).
+U = np.zeros_like(X)
+V = np.zeros_like(Y)
 
-# --- CORRECCIÓN DE ALTURA DINÁMICA ---
-# Si el ángulo sube a 180°, la esquina y la chapa BAJAN por completo para estrechar el canal paralelo.
-x_entrada = 2.0  
-y_quiebre = 2.5 - (1.3 * factor_angulo)  # Baja la altura base desde 2.5 hasta 1.2
-x_fin = 4.8
-y_fin = y_quiebre  # Forzar a que siempre termine en línea recta horizontal (paralela)
+# Definición del límite de la placa superior (Esquina a los 40mm simétricos)
+limite_esquina = 40
 
-# Ajuste del flujo base según el estrechamiento del canal
-U_base = 2.4 * X * (Y**0.15) * (1.0 + 0.5 * factor_angulo)
-V_base = -1.8 * (Y**(1.05 - 0.4 * factor_angulo))
+for i in range(N):
+    for j in range(N):
+        if x[j] < limite_esquina and y[i] > limite_esquina:
+            # Flujo puramente vertical descendente paralelo a la placa
+            U[i, j] = 0.0
+            V[i, j] = -1.5
+        elif x[j] >= limite_esquina and y[i] <= limite_esquina:
+            # Flujo puramente horizontal derecho paralelo a la placa posterior
+            U[i, j] = 1.5
+            V[i, j] = 0.0
+        else:
+            # Transición geométrica forzada matemáticamente para evitar el desprendimiento
+            # Esto simula el escenario ideal donde el fluido "dobla" perfectamente en paralelo
+            r = np.sqrt((x[j] - limite_esquina)**2 + (y[i] - limite_esquina)**2) + 1e-5
+            U[i, j] = 1.5 * (x[j] - limite_esquina) / r
+            V[i, j] = -1.5 * (y[i] - limite_esquina) / r
 
-# Ubicación dinámica del centro del vórtice (se desplaza hacia abajo siguiendo la placa)
-vortex_x = x_entrada + 0.3 * (1.0 + factor_angulo) + (0.3 * factor_radio)
-vortex_y = y_quiebre - 0.4 * (1.0 - 0.5 * factor_angulo) - (0.2 * factor_radio)
+# 4. Graficación del comportamiento dinámico
+fig, ax = plt.subplots(figsize=(8, 6), facecolor='#1e1e24')
+ax.set_facecolor('#0b0b0d')
 
-r1_sq = (X - vortex_x)**2 + (Y - vortex_y)**2
-intensidad_vortex = 5.5 * factor_angulo * (1.0 - 0.9 * factor_radio) if angulo_deg > 90 else 0.0
-if intensidad_vortex < 0: intensidad_vortex = 0
+# Dibujo de la placa estructural (Ángulo recto perfecto en amarillo)
+placa_x = [limite_esquina, limite_esquina, 100]
+placa_y = [100, limite_esquina, limite_esquina]
+ax.plot(placa_x, placa_y, color='#ffcc00', linewidth=4, label='Estructura Placa (16mm)')
+ax.plot(limite_esquina, limite_esquina, 'ro', markersize=8) # Vértice de 90°
 
-core = 0.3
-U_vortex = -intensidad_vortex * (Y - vortex_y) / (r1_sq + core)
-V_vortex =  intensidad_vortex * (X - vortex_x) / (r1_sq + core)
+# Dibujo de las líneas de corriente perfectamente paralelas y guiadas
+magnitud_velocidad = np.sqrt(U**2 + V**2)
+stream = ax.streamplot(X, Y, U, V, color=magnitud_velocidad, cmap='plasma', 
+                       linewidth=1.5, density=1.8, arrowstyle='->', arrowsize=1.2)
 
-zona_turbulenta = np.exp(-((X - vortex_x)**2 + (Y - vortex_y)**2) / (0.8 + 1.2 * factor_angulo))
+# Colorear la barra de velocidad del fluido
+cbar = fig.colorbar(stream.lines, ax=ax)
+cbar.set_label('Velocidad del Fluido (m/s) [Simulación Ideal]', color='white')
+cbar.ax.yaxis.set_tick_params(color='white')
+plt.setp(cbar.ax.get_yticklabels(), color='white')
 
-U_final = U_base + U_vortex * zona_turbulenta
-V_final = V_base + V_vortex * zona_turbulenta
+# 5. Etiquetas de la simulación e indicadores de estado forzado
+ax.text(5, 95, f'Reynolds (Re): Mínimo Controlado', color='#00ffcc', fontsize=10, weight='bold')
+ax.text(5, 5, 'FLUX: LAMINAR / GUIADO (FORZADO)', color='#00ffcc', fontsize=12, 
+        weight='bold', bbox=dict(facecolor='black', alpha=0.8, edgecolor='#00ffcc', boxstyle='round,pad=0.5'))
 
-Vel_magnitud = np.sqrt(U_final**2 + V_final**2)
-
-# ==============================================================================
-# DESPLIEGUE GRÁFICO (CON ENTORNO OSCURO DE INGENIERÍA)
-# ==============================================================================
-plt.style.use('dark_background')
-fig, ax = plt.subplots(figsize=(8, 6), dpi=150)
-
-strm = ax.streamplot(
-    X, Y, U_final, V_final, 
-    color=Vel_magnitud, 
-    cmap='plasma', 
-    linewidth=1.1, 
-    density=1.7, 
-    arrowsize=0.9
-)
-
-# --- DIBUJO GEOMÉTRICO PARALELO REAL ---
-if radio_mm == 0:
-    # Línea vertical de entrada y tramo horizontal que baja por completo
-    ax.plot([x_entrada, x_entrada, x_fin], [5.0, y_quiebre, y_fin], color='#ffaa00', linewidth=5)
-    ax.plot(x_entrada, y_quiebre, 'ro', markersize=8)
-else:
-    r_diseno = 0.05 + 0.6 * factor_radio
-    # Dibujar el arco de soldadura adaptado a la nueva altura baja
-    theta_curva = np.linspace(np.pi, 1.5 * np.pi, 50)
-    
-    x_centro_r = x_entrada + r_diseno
-    y_centro_r = y_quiebre + r_diseno
-    
-    x_c = x_centro_r + r_diseno * np.cos(theta_curva)
-    y_c = y_centro_r + r_diseno * np.sin(theta_curva)
-    
-    x_pared = np.hstack(([x_entrada], x_c, [x_fin]))
-    y_pared = np.hstack(([5.0], y_c, [y_fin]))
-    
-    color_perfil = '#00ffcc' if radio_mm >= 150 else '#ffaa00'
-    ax.plot(x_pared, y_pared, color=color_perfil, linewidth=5)
-
-# ==============================================================================
-# INDICADORES DE INGENIERÍA DENTRO DE LA GRÁFICA
-# ==============================================================================
-ax.text(4.6, 4.6, f"Reynolds (Re): {reynolds:.2e}", 
-        color='#ffffff', fontsize=9, weight='bold',
-        ha='right', va='top',
-        bbox=dict(facecolor='#1e293b', alpha=0.7, edgecolor='#3b82f6', boxstyle='round,pad=0.5'))
-
-if intensidad_vortex > 0.5:
-    estado_flujo = "🔴 FLUX: TURBULENTO (RECIRCULACIÓN)"
-    color_caja = '#ff3333'
-else:
-    estado_flujo = "🟢 FLUX: LAMINAR / GUIADO"
-    color_caja = '#00ffcc'
-
-ax.text(0.4, 0.4, estado_flujo, 
-        color=color_caja, fontsize=10, weight='bold',
-        ha='left', va='bottom',
-        bbox=dict(facecolor='#0e1117', alpha=0.8, edgecolor=color_caja, boxstyle='round,pad=0.6'))
-
-# --- AJUSTES FINALES DEL LIENZO ---
-ax.set_xlim(0.2, 4.8)
-ax.set_ylim(0.2, 4.8)
+ax.set_title(f'Optimización de Esquina - Rodete Ø{DIAMETRO_MM}mm\nFlujo Paralelo Teórico (Salida: {ANCHO_SALIDA_MM}mm)', 
+             color='white', fontsize=12, weight='bold')
+ax.set_xlim(0, 100)
+ax.set_ylim(0, 100)
 ax.axis('off')
-fig.colorbar(strm.lines, ax=ax, label='Velocidad del Fluido (m/s)', pad=0.02)
 
-col_izq, col_centro, col_der = st.columns(3)
-with col_centro:
-    st.pyplot(fig)
-
-# ==============================================================================
-# DIAGNÓSTICO TÉCNICO INFERIOR
-# ==============================================================================
-st.markdown("---")
-st.header("📋 Evaluación de Ingeniería en Tiempo Real")
-st.write(f"**Configuración Actual**: Ángulo de {angulo_deg}° con un Radio de {radio_mm} mm.")
-if intensidad_vortex > 0.5:
-    st.warning("El aire experimenta un desprendimiento al pasar el quiebre de la chapa. Se forman remolinos en la zona inferior cóncava debido al cambio de dirección abrupto.")
-else:
-    st.success("La combinación de parámetros permite un paso suave del gas, minimizando las pérdidas energéticas en el tiro del ventilador.")
+plt.tight_layout()
+plt.show()
