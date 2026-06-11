@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 # CONFIGURACIÓN DE LA INTERFAZ DE INGENIERÍA
 # ==============================================================================
 st.set_page_config(
-    page_title="Simulador Dinámico CFD - UNACEM", 
+    page_title="Simulador CFD Paramétrico - UNACEM", 
     layout="wide", 
     initial_sidebar_state="expanded"
 )
@@ -20,10 +20,10 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-st.title("⚙️ Simulador CFD Interactivo: Geometría de la Placa Superior")
+st.title("⚙️ Simulador CFD Dinámico: De Ángulo Recto (90°) a Placa Plana (180°)")
 st.markdown("""
-**Análisis de Optimización Aerodinámica en Tiempo Real para el Ventilador de Tiro**  
-Modifica el radio de transición en la barra lateral para observar cómo desaparecen o se generan los vórtices de recirculación en el vértice interno.
+**Análisis Fluidodinámico de Transición de Placa Superior para el Ventilador de Tiro**  
+Modifica el ángulo de la transición en la barra lateral para observar cómo se expande la zona de desprendimiento de flujo y la magnitud de los vórtices de recirculación.
 """)
 
 # ==============================================================================
@@ -31,8 +31,8 @@ Modifica el radio de transición en la barra lateral para observar cómo desapar
 # ==============================================================================
 st.sidebar.header("🛠️ Variables de Diseño Geométrico")
 
-# El Slider Clave: Varía de 0 (Ángulo Recto) a 250 (Radio Máximo Curvo)
-radio_mm = st.sidebar.slider("Radio de Transición en la Esquina (mm)", 0, 250, 0, step=25)
+# El Slider Clave: Controla el ángulo desde 90° (Recto) hasta 180° (Plano)
+angulo_deg = st.sidebar.slider("Ángulo de la Transición Externa (Grados)", 90, 180, 90, step=5)
 
 st.sidebar.markdown("---")
 st.sidebar.header("📋 Parámetros de Operación")
@@ -40,7 +40,7 @@ rpm = st.sidebar.slider("Velocidad de Rotación (RPM)", 500, 1200, 1040, step=10
 diametro = st.sidebar.number_input("Diámetro Exterior Placa (mm)", value=1800)
 ancho_perif = st.sidebar.slider("Ancho de Periferia / Salida (mm)", 100, 300, 200, step=10)
 
-# Cálculos dinámicos para el reporte técnico
+# Cálculos mecánicos rápidos para telemetría
 radio_ext = diametro / 2000 
 omega = (2 * np.pi * rpm) / 60
 v_periferica = omega * radio_ext
@@ -55,30 +55,32 @@ except Exception:
     st.sidebar.subheader("🏢 UNACEM - Área Técnica")
 
 # ==============================================================================
-# NÚCLEO MATEMÁTICO: FLUJO PARAMÉTRICO SEGÚN EL RADIO SELECCIONADO
+# NÚCLEO MATEMÁTICO: MODELADO DE VÓRTICES EXPANSIVOS SEGÚN EL ÁNGULO
 # ==============================================================================
 nx, ny = 200, 200
 x = np.linspace(0.1, 4.9, nx)
 y = np.linspace(0.1, 4.9, ny)
 X, Y = np.meshgrid(x, y)
 
-# Flujo base ideal de la máquina
-U_base = 2.4 * X * (Y**0.15)
+# Factor de severidad: 0 en 90° (vórtice estándar) y aumenta hacia 180° (máxima obstrucción)
+factor_severidad = (angulo_deg - 90) / 90.0
+
+# Flujo base del ventilador que se degrada conforme el ángulo se abre a 180°
+U_base = 2.4 * X * (Y**0.15) * (1.0 - 0.4 * factor_severidad)
 V_base = -1.8 * (Y**1.05)
 
-# Factor de interpolación: 0 significa ángulo recto puro, 1 significa radio perfecto
-factor_curvatura = radio_mm / 250.0
-
-# Coordenadas y modelado de los vórtices turbulentos (disminuyen conforme aumenta el radio)
-vortex1_x, vortex1_y = 1.3, 1.8  
-vortex2_x, vortex2_y = 1.7, 1.4  
+# Centros dinámicos de los vórtices: se desplazan y agrandan a mayor ángulo
+vortex1_x = 1.3 - (0.5 * factor_severidad)
+vortex1_y = 1.8 - (0.3 * factor_severidad)
+vortex2_x = 1.7 + (0.4 * factor_severidad)
+vortex2_y = 1.4 - (0.4 * factor_severidad)
 
 r1_sq = (X - vortex1_x)**2 + (Y - vortex1_y)**2
 r2_sq = (X - vortex2_x)**2 + (Y - vortex2_y)**2
 
-# La intensidad del vórtice se reduce a CERO cuando el radio es máximo (250mm)
-intensidad_vortex = 4.5 * (1.0 - factor_curvatura) * (v_periferica / 98.02)
-core = 0.25 
+# La intensidad y el tamaño del núcleo (core) del vórtice crecen exponencialmente con el ángulo
+intensidad_vortex = 4.5 * (1.0 + 2.2 * factor_severidad) * (v_periferica / 98.02)
+core = 0.25 + (0.5 * factor_severidad) 
 
 U_vortex1 = -intensidad_vortex * (Y - vortex1_y) / (r1_sq + core)
 V_vortex1 =  intensidad_vortex * (X - vortex1_x) / (r1_sq + core)
@@ -86,9 +88,11 @@ V_vortex1 =  intensidad_vortex * (X - vortex1_x) / (r1_sq + core)
 U_vortex2 =  (intensidad_vortex * 0.8) * (Y - vortex2_y) / (r2_sq + core)
 V_vortex2 = -(intensidad_vortex * 0.8) * (X - vortex2_x) / (r2_sq + core)
 
-zona_turbulenta = np.exp(-((X - 1.5)**2 + (Y - 1.7)**2) / 1.2)
+# La zona afectada por la turbulencia se expande hacia el centro del flujo a 180°
+ancho_zona_turbulenta = 1.2 + (2.0 * factor_severidad)
+zona_turbulenta = np.exp(-((X - 1.5)**2 + (Y - 1.7)**2) / ancho_zona_turbulenta)
 
-# Acoplar el campo final dinámico
+# Acoplamiento del campo vectorial CFD dinámico
 U_final = U_base + (U_vortex1 + U_vortex2) * zona_turbulenta
 V_final = V_base + (V_vortex1 + V_vortex2) * zona_turbulenta
 
@@ -106,70 +110,73 @@ strm = ax.streamplot(
     color=Vel_magnitud, 
     cmap='plasma', 
     linewidth=1.1, 
-    density=1.7,
+    density=1.8, # Alta densidad para ver la rotación de los lazos
     arrowsize=0.9
 )
 
-# --- DIBUJO DINÁMICO DE LA PARED FÍSICA SEGÚN EL RADIO ---
-if radio_mm == 0:
-    # Dibujar Esquina Recta Pura de 90 grados
-    ax.plot([1.8, 1.8, 5.0], [5.0, 2.2, 2.2], color='#ff3333', linewidth=5, label='Perfil Recto Real')
-    ax.plot(1.8, 2.2, 'ro', markersize=12)
-    ax.text(2.0, 2.5, "⚠️ ÁNGULO RECTO: MÁXIMA TURBULENCIA", color='#ff3333', weight='bold', fontsize=9)
+# --- DIBUJO DINÁMICO DE LA CHAPA SEGÚN EL ÁNGULO ELECTO ---
+angulo_rad = np.radians(angulo_deg)
+
+# Punto de inicio fijo (Boca de entrada)
+x0, y0 = 1.8, 5.0
+# Punto de quiebre de la esquina (fijo en la junta de la foto para 90°)
+x_esquina, y_esquina = 1.8, 2.2
+
+if angulo_deg == 90:
+    # Caso base: Tu ángulo recto real
+    ax.plot([x0, x_esquina, 5.0], [y0, y_esquina, y_esquina], color='#ff3333', linewidth=5, label='Perfil 90°')
+    ax.plot(x_esquina, y_esquina, 'ro', markersize=12)
+    ax.text(2.0, 2.5, "⚠️ TRANSICIÓN A 90°: RECIRCULACIÓN LOCALIZADA", color='#ff3333', weight='bold', fontsize=9)
 else:
-    # Interpolar geométricamente entre la esquina y el radio curvo suavizado
-    theta = np.linspace(np.pi, 1.5 * np.pi, 50)
+    # Calcular la apertura angular de la chapa hasta los 180°
+    # A 180° la chapa superior se convierte en una línea totalmente recta horizontal continua
+    longitud_ala = 3.2
+    x_fin_ala = x_esquina + longitud_ala * np.sin(angulo_rad - np.pi/2)
+    y_fin_ala = y_esquina + longitud_ala * (1.0 - np.cos(angulo_rad - np.pi/2))
     
-    # Parámetros variables del radio
-    r_dinamico = 0.5 + 2.7 * factor_curvatura
-    x_centro = 1.8 + r_dinamico
-    y_centro = 2.2 + r_dinamico
+    # Dibujar perfil dinámico de la chapa
+    color_alerta = '#ff0055' if angulo_deg > 135 else '#ff7700'
+    ax.plot([x0, x_esquina, 5.0], [y0, y_esquina, y_esquina - (2.2 * factor_severidad)], color=color_alerta, linewidth=5)
     
-    # Reconstrucción de la chapa híbrida
-    x_curva = x_centro + r_dinamico * np.cos(theta)
-    y_curva = y_centro + r_dinamico * np.sin(theta)
+    # Graficar indicador del ojo de la tormenta / zona de estancamiento masivo
+    ax.plot(vortex1_x, vortex1_y, 'go', markersize=10, alpha=0.5)
+    ax.plot(vortex2_x, vortex2_y, 'go', markersize=10, alpha=0.5)
     
-    x_pared = np.concatenate(([1.8], x_curva, [5.0]))
-    y_pared = np.concatenate(([5.0], y_curva, [2.2]))
-    
-    # Cambiar de color según la optimización (Rojo si es ineficiente, Verde si es óptimo)
-    color_linea = '#00ffcc' if radio_mm >= 150 else '#ffaa00'
-    ax.plot(x_pared, y_pared, color=color_linea, linewidth=5)
-    
-    if radio_mm < 150:
-        ax.text(2.0, 2.5, f"⚠️ Radio Insuficiente ({radio_mm} mm): Recirculación Activa", color='#ffaa00', weight='bold', fontsize=9)
+    if angulo_deg == 180:
+        ax.text(0.5, 3.8, "❌ CRÍTICO a 180°: IMPACTO PERPENDICULAR\nBLOQUEO NEUMÁTICO", color='#ff0055', weight='bold', fontsize=9)
     else:
-        ax.text(2.0, 2.5, f"✅ Radio Óptimo ({radio_mm} mm): Flujo Guiado Eficiente", color='#00ffcc', weight='bold', fontsize=9)
+        ax.text(2.0, 2.5, f"⚠️ Degradación Angular: {angulo_deg}°", color=color_alerta, weight='bold', fontsize=9)
 
 ax.set_xlim(0.2, 4.8)
 ax.set_ylim(0.2, 4.8)
 ax.axis('off')
-fig.colorbar(strm.lines, ax=ax, label='Magnitud de Velocidad del Flujo (m/s)', pad=0.02)
+fig.colorbar(strm.lines, ax=ax, label='Velocidad del Fluido (m/s)', pad=0.02)
 
 # Mostrar el gráfico único centrado
-col_grafico, _ = st.columns([2, 1])
+col_grafico, _ = st.columns()
 with col_grafico:
     st.pyplot(fig)
 
 # ==============================================================================
-# CONCLUSIÓN TÉCNICA DINÁMICA
+# CONCLUSIÓN TÉCNICA DINÁMICA SEGÚN EL NUEVO ESCENARIO
 # ==============================================================================
 st.markdown("---")
 st.header("📋 Diagnóstico de Ingeniería en Tiempo Real")
 
-if radio_mm == 0:
+if angulo_deg == 90:
     st.error("""
-    **Estado: Configuración Real del Taller (Transición Recta)**  
-    El flujo experimenta un desprendimiento drástico de la capa límite. Los vórtices de recirculación están operando a su máxima intensidad. 
-    *Acción Recomendada:* Es estrictamente obligatorio rellenar esta esquina con cordones sucesivos de soldadura de recargue duro (**Vautid 100**) para generar mecánicamente un radio de sacrificio que absorba los impactos del polvo abrasivo.
+    **Configuración: Ángulo Recto Puro (90°)**  
+    Es el estado actual de tu rodete fotografiado. El aire choca y se desprende bruscamente formando bucles cerrados de remolinos concentrados exactamente en la esquina. La erosión es alta pero localizada en el vértice.
     """)
-elif radio_mm < 150:
+elif angulo_deg <= 135:
     st.warning(f"""
-    **Estado: Geometría con Transición Parcial ({radio_mm} mm)**  
-    Introducir un pequeño radio ayuda a mitigar la concentración de esfuerzos estructurales en la junta soldada, pero aerodinámicamente la energía del gas sigue siendo suficiente para provocar remolinos secundarios. El variador de frecuencia registrará un consumo intermedio de kW.
+    **Configuración: Ángulo de Transición Abierto ({angulo_deg}°)**  
+    Al abrirse la chapa más allá de los 90°, el aire ya no encuentra un canal libre para expandirse radialmente. La zona de baja presión se agranda hacia el centro del rodete. Los dos remolinos internos comienzan a ganar volumen físico.
     """)
 else:
-    st.success(f"""
-    **Estado: Optimización de Diseño según Planos UNACEM ({radio_mm} mm)**  
-    ¡Máxima eficiencia aerodinámica! Los vórtices de recirculación han sido completamente eliminados del modelo físico. El aire cargado de partículas se desliza de forma paralela a la chapa cóncava, minimizando el desgaste por impacto y optimizando el consumo eléctrico del variador.
+    st.error(f"""
+    **Configuración: Degradación Extrema hacia Placa Plana ({angulo_deg}°)**  
+    ¡Escenario Altamente Crítico! Conforme el ángulo se aproxima a los 180° (placa superior completamente plana), el flujo vertical impacta de frente contra una barrera perpendicular. 
+    *   **Efecto Neumático:** Los vórtices de recirculación ya no se quedan atrapados en la esquina; ahora invaden todo el canal de entrada del ventilador. 
+    *   **Consecuencia en Planta:** Esto actúa como un tapón neumático virtual que restringe drásticamente el caudal de succión del separador. El variador de frecuencia aumentará los Amperios al máximo intentando vencer la resistencia de choque sin lograr mover el volumen de aire necesario.
     """)
