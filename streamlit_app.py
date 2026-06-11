@@ -23,7 +23,7 @@ st.markdown("""
 st.title("⚙️ Simulador CFD Co-axial: Control de Ángulo y Radio de Esquina")
 st.markdown("""
 **Optimización Geométrica Avanzada para la Placa Superior del Ventilador de Tiro**  
-Modifica simultáneamente el ángulo de inclinación y el radio del filete de soldadura para analizar el comportamiento dinámico de los vórtices.
+Modifica simultáneamente el ángulo de inclinación y el radio del filete de soldadura para analizar el comportamiento dinamico de los vortices.
 """)
 
 # ==============================================================================
@@ -60,9 +60,9 @@ except Exception:
     st.sidebar.subheader("🏢 UNACEM - Área Técnica")
 
 # ==============================================================================
-# NÚCLEO MATEMÁTICO: MODELADO GEOMÉTRICO Y CFD CON ANTI-BLOQUEO INTERNO
+# NÚCLEO MATEMÁTICO: MODELADO GEOMÉTRICO DINÁMICO RECALIBRADO
 # ==============================================================================
-nx, ny = 150, 150  # Optimización de densidad de malla para evitar congelamiento
+nx, ny = 150, 150
 x = np.linspace(0.1, 4.9, nx)
 y = np.linspace(0.1, 4.9, ny)
 X, Y = np.meshgrid(x, y)
@@ -70,25 +70,32 @@ X, Y = np.meshgrid(x, y)
 factor_angulo = (angulo_deg - 90) / 90.0
 factor_radio = radio_mm / 250.0
 
-# Canal físico real que se estrecha de forma controlada
+# --- CORRECCIÓN CLAVE: El punto de quiebre BAJA a medida que abres el ángulo ---
 x_entrada = 2.0  
-y_quiebre = 2.5 - (1.2 * factor_angulo)  # Limitar descenso máximo seguro
+y_quiebre = 2.5 - (1.3 * factor_angulo)  # Pasa de 2.5 (a 90°) bajando progresivamente hasta 1.2 (a 180°)
 x_fin = 4.8
-y_fin = y_quiebre  
 
-# Flujo base estable con amortiguación polinomial
+# Calcular la inclinación real del ala
+angulo_rad = np.radians(angulo_deg)
+if angulo_deg == 90 or angulo_deg == 180:
+    y_fin = y_quiebre
+else:
+    # La chapa se inclina dinámicamente desde el nuevo punto de quiebre que ya bajó
+    y_fin = y_quiebre - (x_fin - x_entrada) * np.tan(angulo_rad - np.pi/2)
+    if y_fin < 0.4: y_fin = 0.4 # Límite de seguridad física para no perforar el fondo
+
+# Ajuste del flujo base según la posición real de la placa
 U_base = 2.4 * X * (Y**0.15) * (1.0 + 0.4 * factor_angulo)
 V_base = -1.8 * (Y**(1.05 - 0.3 * factor_angulo))
 
-# Posicionamiento del vórtice evitando divisiones por cero mediante EPS (Épsilon de seguridad)
-eps = 1e-5
+# Ubicación dinámica del centro del vórtice (persigue a la placa conforme desciende)
 vortex_x = x_entrada + 0.4 * (1.0 + factor_angulo)
 vortex_y = y_quiebre - 0.4 * (1.0 - 0.5 * factor_angulo)
 
+eps = 1e-5
 r1_sq = (X - vortex_x)**2 + (Y - vortex_y)**2
 intensidad_vortex = 5.0 * factor_angulo * (1.0 - 0.9 * factor_radio) if angulo_deg > 90 else 0.0
 
-# Ecuaciones estabilizadas del campo rotacional
 core = 0.4
 U_vortex = -intensidad_vortex * (Y - vortex_y) / (r1_sq + core + eps)
 V_vortex =  intensidad_vortex * (X - vortex_x) / (r1_sq + core + eps)
@@ -101,7 +108,7 @@ V_final = V_base + V_vortex * zona_turbulenta
 Vel_magnitud = np.sqrt(U_final**2 + V_final**2)
 
 # ==============================================================================
-# DESPLIEGUE GRÁFICO SEGURO
+# DESPLIEGUE GRÁFICO (CON ENTORNO OSCURO DE INGENIERÍA)
 # ==============================================================================
 plt.style.use('dark_background')
 fig, ax = plt.subplots(figsize=(8, 6), dpi=130)
@@ -115,13 +122,15 @@ strm = ax.streamplot(
     arrowsize=0.9
 )
 
-# --- DIBUJO GEOMÉTRICO CON PROTECCIÓN DE ARREGLOS ---
+# --- DIBUJO GEOMÉTRICO ADAPTATIVO CON DESCENSO REAL ---
 if radio_mm == 0:
+    # La línea amarilla vertical ahora se alarga hacia abajo porque y_quiebre disminuye
     ax.plot([x_entrada, x_entrada, x_fin], [5.0, y_quiebre, y_fin], color='#ffaa00', linewidth=5)
     ax.plot(x_entrada, y_quiebre, 'ro', markersize=8)
 else:
     r_diseno = 0.05 + 0.5 * factor_radio
-    theta_curva = np.linspace(np.pi, 1.5 * np.pi, 30)
+    alfa = angulo_rad - np.pi/2
+    theta_curva = np.linspace(np.pi, np.pi + alfa, 30)
     
     x_centro_r = x_entrada + r_diseno
     y_centro_r = y_quiebre + r_diseno
@@ -129,7 +138,6 @@ else:
     x_c = x_centro_r + r_diseno * np.cos(theta_curva)
     y_c = y_centro_r + r_diseno * np.sin(theta_curva)
     
-    # Evitar desalineación horizontal en el extremo de 180°
     if angulo_deg == 180:
         y_c = np.ones_like(x_c) * y_quiebre
         
