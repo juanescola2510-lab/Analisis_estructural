@@ -122,10 +122,10 @@ V_final = V_base * (1.0 - 0.95 * (zona_turb_izq + zona_turb_der) * (1.0 - factor
 Vel_magnitud = np.sqrt(U_final**2 + V_final**2)
 
 # ==============================================================================
-# DESPLIEGUE GRÁFICO FRONTAL COMPACTO (CON RADIO EXAGERADO VISUALMENTE)
+# DESPLIEGUE GRÁFICO FRONTAL COMPACTO (CON CORRECCIÓN DE TRAYECTORIA CÓNCAVA)
 # ==============================================================================
 plt.style.use('dark_background')
-fig, ax = plt.subplots(figsize=(10, 4.8), dpi=110)  
+fig, ax = plt.subplots(figsize=(9, 4.8), dpi=100)  
 
 strm = ax.streamplot(
     X, Y, U_final, V_final, 
@@ -142,36 +142,35 @@ if radio_mm == 0:
     ax.plot([x_der_entrada, x_der_entrada, x_fin_der], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=5)
     ax.plot(x_der_entrada, y_quiebre, 'ro', markersize=6)
 else:
-    # ESCALA REFORZADA CALIBRADA Y SIN ERRORES DE SINTAXIS
+    # ESCALA REFORZADA CORREGIDA PARA BAJAR Y ABRIRSE EN PARÁBOLA CONTINUA
     r_diseno = 0.15 + 1.1 * factor_radio
-    alfa = angulo_rad - np.pi/2
     
-    # 1. Curva Lado Izquierdo
+    # 1. Curva Lado Izquierdo: Corregida para nacer vertical y suavizar hacia el costado bajo
+    theta_izq = np.linspace(0, -np.pi/2 * factor_angulo if angulo_deg > 90 else -np.pi/2, 40)
     x_centro_izq = x_izq_entrada - r_diseno
-    y_centro_izq = y_quiebre
-    theta_izq = np.linspace(0, -alfa if angulo_deg > 90 else -np.pi/2, 40)
+    y_centro_izq = y_quiebre + r_diseno
     
     x_c_izq = x_centro_izq + r_diseno * np.cos(theta_izq)
-    y_c_izq = y_centro_izq + r_diseno * np.sin(theta_izq)
+    y_c_izq = y_centro_izq + r_diseno * np.sin(theta_izq) - (r_diseno * factor_angulo)
     
     if angulo_deg == 180: y_c_izq = np.ones_like(x_c_izq) * y_quiebre
     
     x_pared_izq = np.concatenate(([x_izq_entrada, x_izq_entrada], x_c_izq, [x_fin_izq]))
-    y_pared_izq = np.concatenate(([5.0, y_quiebre + r_diseno], y_c_izq, [y_fin]))
+    y_pared_izq = np.concatenate(([5.0, y_quiebre], y_c_izq, [y_fin]))
     ax.plot(x_pared_izq, y_pared_izq, color='#df00ff', linewidth=6)
     
-    # 2. Curva Lado Derecho - CORRECCIÓN DE CORCHETES EFECTUADA SUCESIVAMENTE
+    # 2. Curva Lado Derecho (Espejo exacto hacia abajo y afuera)
+    theta_der = np.linspace(np.pi, np.pi + np.pi/2 * factor_angulo if angulo_deg > 90 else np.pi + np.pi/2, 40)
     x_centro_der = x_der_entrada + r_diseno
-    y_centro_der = y_quiebre
-    theta_der = np.linspace(np.pi, np.pi + alfa if angulo_deg > 90 else np.pi + np.pi/2, 40)
+    y_centro_der = y_quiebre + r_diseno
     
     x_c_der = x_centro_der + r_diseno * np.cos(theta_der)
-    y_c_der = y_centro_der + r_diseno * np.sin(theta_der)
+    y_c_der = y_centro_der + r_diseno * np.sin(theta_der) - (r_diseno * factor_angulo)
     
     if angulo_deg == 180: y_c_der = np.ones_like(x_c_der) * y_quiebre
     
     x_pared_der = np.concatenate(([x_der_entrada, x_der_entrada], x_c_der, [x_fin_der]))
-    y_pared_der = np.concatenate(([5.0, y_quiebre + r_diseno], y_c_der, [y_fin]))
+    y_pared_der = np.concatenate(([5.0, y_quiebre], y_c_der, [y_fin]))
     ax.plot(x_pared_der, y_pared_der, color='#df00ff', linewidth=6)
 
 # Indicadores fijos en el lienzo
