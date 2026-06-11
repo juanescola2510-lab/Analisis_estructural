@@ -94,8 +94,7 @@ else:
 U_base = 2.8 * (X - x_centro) / (Y + 0.3)
 V_base = -2.5 * (Y**0.95)
 
-# --- CORRECCIÓN CRÍTICA DE SIGNOS: VÓRTICES EN LA ZONA INTERNA DEL CANAL ---
-# Desplazamos los ojos de los remolinos hacia ADENTRO (+0.45 en el lado izquierdo, -0.45 en el derecho)
+# Vórtices fijados en la sección interna del canal
 vortex_izq_x = x_izq_entrada + 0.45 * (1.0 - 0.5 * factor_angulo)
 vortex_izq_y = y_quiebre - 0.65
 r_izq_sq = (X - vortex_izq_x)**2 + (Y - vortex_izq_y)**2
@@ -110,14 +109,12 @@ if intensidad_vortex < 0: intensidad_vortex = 0
 core = 0.15  
 eps = 1e-5
 
-# Giro invertido para que la recirculación rompa hacia adentro de la campana
 U_v_izq = intensidad_vortex * (Y - vortex_izq_y) / (r_izq_sq + core + eps)
 V_v_izq = -intensidad_vortex * (X - vortex_izq_x) / (r_izq_sq + core + eps)
 
 U_v_der = -intensidad_vortex * (Y - vortex_der_y) / (r_der_sq + core + eps)
 V_v_der = intensidad_vortex * (X - vortex_der_x) / (r_der_sq + core + eps)
 
-# Concentración local de la zona turbulenta interna
 zona_turb_izq = np.exp(-((X - vortex_izq_x)**2 + (Y - vortex_izq_y)**2) / 0.6)
 zona_turb_der = np.exp(-((X - vortex_der_x)**2 + (Y - vortex_der_y)**2) / 0.6)
 
@@ -141,6 +138,7 @@ strm = ax.streamplot(
     arrowsize=0.9
 )
 
+# --- DIBUJO GEOMÉTRICO CON CORRECCIÓN DE TRAZADO UNIFICADO (np.hstack) ---
 if radio_mm == 0:
     ax.plot([x_izq_entrada, x_izq_entrada, x_fin_izq], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=5)
     ax.plot(x_izq_entrada, y_quiebre, 'ro', markersize=6)
@@ -148,6 +146,7 @@ if radio_mm == 0:
     ax.plot(x_der_entrada, y_quiebre, 'ro', markersize=6)
 else:
     r_diseno = 0.15 + 1.1 * factor_radio
+    alfa = angulo_rad - np.pi/2
     
     # 1. Curva Lado Izquierdo
     theta_izq = np.linspace(0, -np.pi/2 * factor_angulo if angulo_deg > 90 else -np.pi/2, 40)
@@ -159,11 +158,11 @@ else:
     
     if angulo_deg == 180: y_c_izq = np.ones_like(x_c_izq) * y_quiebre
     
-    x_pared_izq = np.concatenate(([x_izq_entrada, x_izq_entrada], x_c_izq, [x_fin_izq]))
-    y_pared_izq = np.concatenate(([5.0, y_quiebre], y_c_izq, [y_fin]))
+    x_pared_izq = np.hstack(([x_izq_entrada, x_izq_entrada], x_c_izq, [x_fin_izq]))
+    y_pared_izq = np.hstack(([5.0, y_quiebre], y_c_izq, [y_fin]))
     ax.plot(x_pared_izq, y_pared_izq, color='#df00ff', linewidth=6)
     
-    # 2. Curva Lado Derecho
+    # 2. Curva Lado Derecho (CORREGIDO DE RAÍZ CON np.hstack)
     theta_der = np.linspace(np.pi, np.pi + np.pi/2 * factor_angulo if angulo_deg > 90 else np.pi + np.pi/2, 40)
     x_centro_der = x_der_entrada + r_diseno
     y_centro_der = y_quiebre + r_diseno
@@ -173,8 +172,8 @@ else:
     
     if angulo_deg == 180: y_c_der = np.ones_like(x_c_der) * y_quiebre
     
-    x_pared_der = np.concatenate(([x_der_entrada, x_der_entrada], x_c_der, [x_fin_der]))
-    y_pared_der = np.concatenate(([5.0], y_quiebre], y_c_der, [y_fin]))
+    x_pared_der = np.hstack(([x_der_entrada, x_der_entrada], x_c_der, [x_fin_der]))
+    y_pared_der = np.hstack(([5.0, y_quiebre], y_c_der, [y_fin]))
     ax.plot(x_pared_der, y_pared_der, color='#df00ff', linewidth=6)
 
 # Indicadores fijos en el lienzo
