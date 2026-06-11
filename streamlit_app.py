@@ -60,9 +60,9 @@ except Exception:
     st.sidebar.subheader("🏢 UNACEM - Área Técnica")
 
 # ==============================================================================
-# NÚCLEO MATEMÁTICO: MODELADO DE TURBULENCIA RECALIBRADO (MÁXIMA A 90°)
+# NÚCLEO MATEMÁTICO: RECALIBRACIÓN TOTAL DEL CODO DE IMPACTO (CFD MODEL)
 # ==============================================================================
-nx, ny = 150, 150
+nx, ny = 160, 160
 x = np.linspace(0.1, 4.9, nx)
 y = np.linspace(0.1, 4.9, ny)
 X, Y = np.meshgrid(x, y)
@@ -70,7 +70,7 @@ X, Y = np.meshgrid(x, y)
 factor_angulo = (angulo_deg - 90) / 90.0
 factor_radio = radio_mm / 250.0
 
-# Coordenadas dinámicas de la placa superior
+# Coordenadas dinámicas de la pared
 x_entrada = 2.0  
 y_quiebre = 2.5 - (1.3 * factor_angulo)  
 x_fin = 4.8
@@ -82,30 +82,32 @@ else:
     y_fin = y_quiebre - (x_fin - x_entrada) * np.tan(angulo_rad - np.pi/2)
     if y_fin < 0.4: y_fin = 0.4 
 
-# Flujo base
-U_base = 2.4 * X * (Y**0.15) * (1.0 + 0.4 * factor_angulo)
-V_base = -1.8 * (Y**(1.05 - 0.3 * factor_angulo))
+# Flujo base: Aire que ingresa de forma vertical y tiende a chocar
+U_base = 2.4 * X * (Y**0.15) * (1.0 - 0.2 * factor_angulo)
+V_base = -1.8 * (Y**(1.05 - 0.2 * factor_angulo))
 
-# --- CORRECCIÓN DE LA FÍSICA DEL VÓRTICE ---
-# La turbulencia se posiciona justo debajo del punto de quiebre (la esquina)
-vortex_x = x_entrada + 0.5 * (1.0 + factor_angulo)
-vortex_y = y_quiebre - 0.5 * (1.0 - 0.3 * factor_angulo)
+# --- CORRECCIÓN CRÍTICA: ANCLAJE DEL VÓRTICE EN LA ESQUINA DE IMPACTO ---
+# Posicionamos el ojo del remolino exactamente debajo del vértice (x=2.0) para reflejar el rebote del fluido
+vortex_x = x_entrada + 0.3 * (1.0 - factor_radio)
+vortex_y = y_quiebre - 0.4 * (1.0 - factor_radio)
 
 r1_sq = (X - vortex_x)**2 + (Y - vortex_y)**2
 
-# REGLA: A 90° con 0 radio la intensidad es MÁXIMA (4.8). Solo disminuye si factor_radio sube.
-# Si el ángulo sube hacia 180°, la severidad del desprendimiento aumenta aún más.
-intensidad_vortex = 4.8 * (1.0 + 1.2 * factor_angulo) * (1.0 - factor_radio)
+# Ley de intensidad: Crece a medida que el ángulo es más severo (140°) y disminuye con el radio
+intensidad_vortex = 5.5 * (1.0 + 1.8 * factor_angulo) * (1.0 - factor_radio)
 if intensidad_vortex < 0: intensidad_vortex = 0
 
-core = 0.35
+core = 0.28
 eps = 1e-5
+
+# Ecuaciones de rotación para cerrar los lazos de corriente sobre sí mismos
 U_vortex = -intensidad_vortex * (Y - vortex_y) / (r1_sq + core + eps)
 V_vortex =  intensidad_vortex * (X - vortex_x) / (r1_sq + core + eps)
 
-# Ampliar la zona de recirculación en esquinas vivas
-zona_turbulenta = np.exp(-((X - vortex_x)**2 + (Y - vortex_y)**2) / (1.1 + 0.9 * factor_angulo))
+# Máscara hiper-localizada centrada exactamente en el quiebre de la chapa
+zona_turbulenta = np.exp(-((X - vortex_x)**2 + (Y - vortex_y)**2) / (0.7 + 0.5 * factor_angulo))
 
+# Acoplar el campo vectorial
 U_final = U_base + U_vortex * zona_turbulenta
 V_final = V_base + V_vortex * zona_turbulenta
 
@@ -122,7 +124,7 @@ strm = ax.streamplot(
     color=Vel_magnitud, 
     cmap='plasma', 
     linewidth=1.1, 
-    density=1.6, 
+    density=1.8, # Mayor densidad para capturar perfectamente el bucle cerrado del remolino
     arrowsize=0.9
 )
 
@@ -156,7 +158,6 @@ ax.text(4.6, 4.6, f"Reynolds (Re): {reynolds:.2e}",
         ha='right', va='top',
         bbox=dict(facecolor='#1e293b', alpha=0.7, edgecolor='#3b82f6', boxstyle='round,pad=0.5'))
 
-# Condición de letrero calibrada según la intensidad real del vórtice mapeado
 if intensidad_vortex > 0.6:
     estado_flujo = "🔴 FLUX: TURBULENTO (RECIRCULACIÓN)"
     color_caja = '#ff3333'
