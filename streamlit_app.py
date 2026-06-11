@@ -42,11 +42,14 @@ st.sidebar.header("📋 Parámetros de Operación")
 rpm = st.sidebar.slider("Velocidad de Rotación (RPM)", 500, 1200, 1040, step=10)
 diametro = st.sidebar.number_input("Diámetro Exterior Placa (mm)", value=1800)
 ancho_perif = st.sidebar.slider("Ancho de Periferia / Salida (mm)", 100, 300, 200, step=10)
+densidad_gas = st.sidebar.number_input("Densidad del Gas (kg/m³)", value=0.95, step=0.05)
 
-# Cálculos mecánicos rápidos para telemetría
+# Cálculos mecánicos y fluidodinámicos rápidos
 radio_ext = diametro / 2000 
 omega = (2 * np.pi * rpm) / 60
 v_periferica = omega * radio_ext
+# Cálculo estimado del Número de Reynolds (basado en velocidad periférica y ancho de salida)
+reynolds = (densidad_gas * v_periferica * (ancho_perif / 1000)) / 1.81e-5
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("📈 Telemetría Calculada")
@@ -82,7 +85,7 @@ l_ala = 2.5
 x_fin = x_entrada + l_ala * np.sin(angulo_rad - np.pi/2) if angulo_deg > 90 else 5.0
 y_fin = y_quiebre - l_ala * np.cos(angulo_rad - np.pi/2) if angulo_deg > 90 else y_quiebre
 
-# Ubicación dinámica del centro del vórtice (disminuye con el radio de redondeo)
+# Ubicación dinámica del centro del vórtice
 vortex_x = x_entrada + 0.3 * (1.0 + factor_angulo) + (0.3 * factor_radio)
 vortex_y = y_quiebre - 0.4 * (1.0 + factor_angulo) - (0.2 * factor_radio)
 
@@ -102,7 +105,7 @@ V_final = V_base + V_vortex * zona_turbulenta
 Vel_magnitud = np.sqrt(U_final**2 + V_final**2)
 
 # ==============================================================================
-# DESPLIEGUE GRÁFICO (RECALIBRADO PARA DIBUJO CONTINUO)
+# DESPLIEGUE GRÁFICO (CON ENTORNO OSCURO DE INGENIERÍA)
 # ==============================================================================
 plt.style.use('dark_background')
 fig, ax = plt.subplots(figsize=(8, 6), dpi=150)
@@ -116,40 +119,50 @@ strm = ax.streamplot(
     arrowsize=0.9
 )
 
-# --- DIBUJO GEOMÉTRICO ADAPTATIVO SIN BLOQUEOS (SOLUCIÓN AL ERROR VISUAL) ---
+# --- DIBUJO GEOMÉTRICO ADAPTATIVO SIN MODIFICAR ---
 if radio_mm == 0:
-    # Esquina viva pura en cualquier ángulo
     ax.plot([x_entrada, x_entrada, x_fin], [5.0, y_quiebre, y_fin], color='#ffaa00', linewidth=5)
     ax.plot(x_entrada, y_quiebre, 'ro', markersize=8)
 else:
-    # El radio se calcula vectorialmente para que funcione SIEMPRE, incluso a 180°
     r_diseno = 0.05 + 0.8 * factor_radio
-    
-    # Calcular ángulo de barrido para el arco de transición
     alfa = angulo_rad - np.pi/2
     theta_curva = np.linspace(np.pi, np.pi + alfa, 50)
     
-    # Ajustar centro del radio según la apertura de la chapa
     x_centro_r = x_entrada + r_diseno
     y_centro_r = y_quiebre + r_diseno
     
     x_c = x_centro_r + r_diseno * np.cos(theta_curva)
     y_c = y_centro_r + r_diseno * np.sin(theta_curva)
     
-    # Puntos de acople limpios para evitar deformaciones
     x_pared = np.concatenate(([x_entrada, x_entrada], x_c, [x_fin]))
-    y_pared = np.concatenate(([5.0, y_c[0]], y_c, [y_fin]))
+    y_pared = np.concatenate(([5.0, y_c], y_c, [y_fin]))
     
-    # Cambiar color según optimización técnica
     color_perfil = '#00ffcc' if radio_mm >= 150 else '#ffaa00'
     ax.plot(x_pared, y_pared, color=color_perfil, linewidth=5)
 
-# Indicadores de texto en pantalla
-if intensidad_vortex > 0.5:
-    ax.text(0.4, 0.4, f"⚠️ VÓRTICE ACTIVO BAJO EL ÁNGULO DE {angulo_deg}°", color='#ffaa00', weight='bold', fontsize=9)
-else:
-    ax.text(0.4, 0.4, "✅ FLUJO GUIADO Y CONTROLADO", color='#00ffcc', weight='bold', fontsize=9)
+# ==============================================================================
+# NUEVOS INDICADORES DE INGENIERÍA DENTRO DE LA GRÁFICA
+# ==============================================================================
+# 1. Mostrar Número de Reynolds dinámico en la esquina superior derecha
+ax.text(4.6, 4.6, f"Reynolds (Re): {reynolds:.2e}", 
+        color='#ffffff', fontsize=9, weight='bold',
+        ha='right', va='top',
+        bbox=dict(facecolor='#1e293b', alpha=0.7, edgecolor='#3b82f6', boxstyle='round,pad=0.5'))
 
+# 2. Señal dinámica de tipo de flujo en la esquina inferior izquierda
+if intensidad_vortex > 0.5:
+    estado_flujo = "🔴 FLUX: TURBULENTO (RECIRCULACIÓN)"
+    color_caja = '#ff3333'
+else:
+    estado_flujo = "🟢 FLUX: LAMINAR / GUIADO"
+    color_caja = '#00ffcc'
+
+ax.text(0.4, 0.4, estado_flujo, 
+        color=color_caja, fontsize=10, weight='bold',
+        ha='left', va='bottom',
+        bbox=dict(facecolor='#0e1117', alpha=0.8, edgecolor=color_caja, boxstyle='round,pad=0.6'))
+
+# --- AJUSTES FINALES DEL LIENZO ---
 ax.set_xlim(0.2, 4.8)
 ax.set_ylim(0.2, 4.8)
 ax.axis('off')
@@ -160,7 +173,7 @@ with col_centro:
     st.pyplot(fig)
 
 # ==============================================================================
-# DIAGNÓSTICO TÉCNICO
+# DIAGNÓSTICO TÉCNICO INFERIOR
 # ==============================================================================
 st.markdown("---")
 st.header("📋 Evaluación de Ingeniería en Tiempo Real")
