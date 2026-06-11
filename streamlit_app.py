@@ -22,7 +22,7 @@ st.markdown("""
 
 st.title("⚙️ Simulador CFD: Vista Frontal de la Campana de Succión Completa")
 st.markdown("""
-**Análisis de Distribución de Flujo Simétrico y Cascada Multivórtice en el Ingreso del Ventilador**  
+**Análisis de Distribución de Flujo Simétrico y Cascada Multivórtice Adaptativa en el Ingreso**  
 Ajusta la geometría en la barra lateral para observar cómo el aire entra por el centro y se divide hacia ambos extremos del rodete.
 """)
 
@@ -61,7 +61,7 @@ except Exception:
     st.sidebar.subheader("🏢 UNACEM - Área Técnica")
 
 # ==============================================================================
-# NÚCLEO MATEMÁTICO: MODELADO CFD MULTIVÓRTICE DINÁMICO POR RPM
+# NÚCLEO MATEMÁTICO: MODELADO CFD MULTIVÓRTICE ACOPLADO A LA CINEMÁTICA
 # ==============================================================================
 nx, ny = 190, 180  
 x = np.linspace(0.1, 4.9, nx)
@@ -76,7 +76,7 @@ ancho_boca_visual = 3.4 * (d_entrada / diametro)
 
 x_izq_entrada = x_centro - ancho_boca_visual / 2  
 x_der_entrada = x_centro + ancho_boca_visual / 2  
-y_quiebre = 2.8  
+y_quiebre = 2.8 - (1.3 * factor_angulo)  # Altura dinámica de la esquina
 
 angulo_rad = np.radians(angulo_deg)
 alpha_giro = np.pi - angulo_rad  
@@ -94,28 +94,26 @@ else:
 U_final = 2.8 * (X - x_centro) / (Y + 0.3)
 V_final = -2.5 * (Y**0.95)
 
-# --- FACTOR DE COMPRESIÓN POR RPM ---
-# A mayores RPM, los vórtices se vuelven físicamente más pequeños (core y radio disminuyen)
+# Factor de compresión por RPM
 factor_rpm = 1040.0 / float(rpm)
-core_dinamico = 0.15 * factor_rpm  # Núcleo del remolino se comprime a alta velocidad
-radio_dispersion = 0.6 * factor_rpm # El área del remolino se achica y se pega a la chapa
+core_dinamico = 0.15 * factor_rpm  
+radio_dispersion = 0.6 * factor_rpm 
 
 intensidad_vortex = 8.5 * (1.0 - factor_radio) * (float(rpm) / 1040.0)
 if intensidad_vortex < 0: intensidad_vortex = 0
 
 eps = 1e-5
 
-# --- SISTEMA MULTIVÓRTICE: 1 CENTRAL GRANDE + 2 SATÉLITES PEQUEÑOS POR LADO ---
-# CONFIGURACIÓN LADO IZQUIERDO (3 Vórtices internos)
+# --- CORRECCIÓN CRÍTICA: LOS VÓRTICES PERSIGUEN AL PUNTO DE QUIEBRE Y_QUIEBRE ---
+# LADO IZQUIERDO TRASLADABLE
 v_izq_centros = [
-    (x_izq_entrada + 0.42, y_quiebre - 0.60, 1.0),      # Vórtice Principal
-    (x_izq_entrada + 0.22, y_quiebre - 0.95, 0.45),     # Satélite secundario inferior (Chico)
-    (x_izq_entrada + 0.65, y_quiebre - 0.40, 0.35)      # Satélite secundario superior (Chico)
+    (x_izq_entrada + 0.42, y_quiebre - 0.60, 1.0),      # Principal Izquierdo
+    (x_izq_entrada + 0.22, y_quiebre - 0.95, 0.45),     # Satélite Inferior
+    (x_izq_entrada + 0.65, y_quiebre - 0.40, 0.35)      # Satélite Superior
 ]
 
 for vx, vy, peso in v_izq_centros:
     r_sq = (X - vx)**2 + (Y - vy)**2
-    # Ecuaciones de rotación interna (Giro antihorario)
     U_v = (intensidad_vortex * peso) * (Y - vy) / (r_sq + core_dinamico + eps)
     V_v = -(intensidad_vortex * peso) * (X - vx) / (r_sq + core_dinamico + eps)
     
@@ -123,16 +121,15 @@ for vx, vy, peso in v_izq_centros:
     U_final = U_final * (1.0 - 0.95 * zona_turb * (1.0 - factor_radio)) + U_v * zona_turb
     V_final = V_final * (1.0 - 0.95 * zona_turb * (1.0 - factor_radio)) + V_v * zona_turb
 
-# CONFIGURACIÓN LADO DERECHO (3 Vórtices internos en espejo)
+# LADO DERECHO TRASLADABLE
 v_der_centros = [
-    (x_der_entrada - 0.42, y_quiebre - 0.60, 1.0),      # Vórtice Principal Derecho
-    (x_der_entrada - 0.22, y_quiebre - 0.95, 0.45),     # Satélite secundario inferior (Chico)
-    (x_der_entrada - 0.65, y_quiebre - 0.40, 0.35)      # Satélite secundario superior (Chico)
+    (x_der_entrada - 0.42, y_quiebre - 0.60, 1.0),      # Principal Derecho
+    (x_der_entrada - 0.22, y_quiebre - 0.95, 0.45),     # Satélite Inferior
+    (x_der_entrada - 0.65, y_quiebre - 0.40, 0.35)      # Satélite Superior
 ]
 
 for vx, vy, peso in v_der_centros:
     r_sq = (X - vx)**2 + (Y - vy)**2
-    # Ecuaciones de rotación interna espejo (Giro horario)
     U_v = -(intensidad_vortex * peso) * (Y - vy) / (r_sq + core_dinamico + eps)
     V_v = (intensidad_vortex * peso) * (X - vx) / (r_sq + core_dinamico + eps)
     
@@ -143,10 +140,9 @@ for vx, vy, peso in v_der_centros:
 Vel_magnitud = np.sqrt(U_final**2 + V_final**2)
 
 # ==============================================================================
-# DESPLIEGUE GRÁFICO FRONTAL COMPACTO OPTIMIZADO (UN POCO MÁS GRANDE)
+# DESPLIEGUE GRÁFICO FRONTAL COMPACTO OPTIMIZADO
 # ==============================================================================
 plt.style.use('dark_background')
-# MODIFICADO: Incrementado levemente de (9, 4.8) a (11, 5.5) para ganar amplitud sin generar scroll
 fig, ax = plt.subplots(figsize=(11, 5.5), dpi=100)  
 
 strm = ax.streamplot(
@@ -154,7 +150,7 @@ strm = ax.streamplot(
     color=Vel_magnitud, 
     cmap='turbo', 
     linewidth=1.1, 
-    density=2.0, # Mayor densidad para capturar la cascada de pequeños remolinos
+    density=2.0, 
     arrowsize=0.9
 )
 
@@ -220,13 +216,13 @@ fig.colorbar(strm.lines, ax=ax, label='Velocidad del Fluido (m/s)', pad=0.02)
 col_izq, col_centro, col_der = st.columns(3)
 with col_centro:
     st.pyplot(fig)
+
 # ==============================================================================
 # DIAGNÓSTICO TÉCNICO INFERIOR 
 # ==============================================================================
 st.markdown("---")
 st.header("📋 Evaluación de Ingeniería en Tiempo Real")
 st.write(f"**Configuración Frontal**: Ángulo de {angulo_deg}° con un Radio de {radio_mm} mm, Boca de {d_entrada} mm a {rpm} RPM.")
-if intensidad_vortex > 0.6:
-    st.warning("El estrechamiento del flujo central incrementa la velocidad de succión. Al chocar contra las esquinas ortogonales, se induce una severa recirculación bifásica simétrica con formación de microvórtices secundarios.")
+st.warning("El estrechamiento del flujo central incrementa la velocidad de succión. Al chocar contra las esquinas ortogonales, se induce una severa recirculación bifásica simétrica con formación de microvórtices secundarios.")
 else:
     st.success("La campana simétrica se expande hacia los extremos de manera divergente, encauzando y distribuyendo el aire en paralelo a las paredes cóncavas moradas.")
