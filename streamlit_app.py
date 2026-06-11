@@ -58,7 +58,7 @@ except Exception:
     st.sidebar.subheader("🏢 UNACEM - Área Técnica")
 
 # ==============================================================================
-# NÚCLEO MATEMÁTICO: MODELADO COMBINADO DE ÁNGULO Y RADIO
+# NÚCLEO MATEMÁTICO: MODELADO COMBINADO DE ÁNGULO Y RADIO REACALIBRADO
 # ==============================================================================
 nx, ny = 200, 200
 x = np.linspace(0.1, 4.9, nx)
@@ -73,18 +73,36 @@ factor_radio = radio_mm / 250.0
 U_base = 2.4 * X * (Y**0.15) * (1.0 - 0.3 * factor_angulo)
 V_base = -1.8 * (Y**1.05)
 
-# Posicionamiento dinámico de los núcleos de recirculación
-vortex1_x = 1.3 - (0.4 * factor_angulo) + (0.2 * factor_radio)
-vortex1_y = 1.8 - (0.2 * factor_angulo) + (0.2 * factor_radio)
-vortex2_x = 1.7 + (0.3 * factor_angulo) - (0.1 * factor_radio)
-vortex2_y = 1.4 - (0.3 * factor_angulo) + (0.1 * factor_radio)
+# --- DETECCIÓN DINÁMICA DEL PUNTO DE QUIEBRE / ESCALÓN ---
+# Si el ángulo es grande y el radio es grande, el quiebre se desplaza hacia abajo a la derecha
+x_esquina, y_esquina = 1.8, 2.2
+r_dinamico = 0.3 + 2.5 * factor_radio
+
+# Ubicación matemática del final del radio (donde se corta el flujo en tu imagen)
+if radio_mm == 0:
+    vortex_centro_x = x_esquina
+    vortex_centro_y = y_esquina - (2.2 * factor_angulo)
+else:
+    # Coordenadas exactas del final del arco cóncavo
+    angulo_rad = np.radians(angulo_deg)
+    vortex_centro_x = x_esquina + r_dinamico + r_dinamico * np.cos(np.pi + angulo_rad - np.pi/2)
+    vortex_centro_y = y_esquina + r_dinamico + r_dinamico * np.sin(np.pi + angulo_rad - np.pi/2)
+
+# Centros dinámicos de los 2 vórtices acoplados a ese nuevo punto crítico
+vortex1_x = vortex_centro_x - 0.3
+vortex1_y = vortex_centro_y - 0.4
+vortex2_x = vortex_centro_x + 0.2
+vortex2_y = vortex_centro_y - 0.7
 
 r1_sq = (X - vortex1_x)**2 + (Y - vortex1_y)**2
 r2_sq = (X - vortex2_x)**2 + (Y - vortex2_y)**2
 
-# Ley física combinada: El ángulo AGRANDA el vórtice, el radio lo DISMINUYE
-intensidad_vortex = 4.5 * (1.0 + 2.0 * factor_angulo) * (1.0 - factor_radio) * (v_periferica / 98.02)
-# Evitar intensidades negativas
+# NUEVA REGLA FÍSICA: Si hay quiebre angular extremo (ej. 180°), el radio NO elimina el vórtice,
+# solo lo traslada de lugar (vórtice de estela o de escalón).
+# La intensidad disminuye con el radio SOLO si el ángulo acompaña de forma suave (cercano a 90°)
+es_angulo_critico = 1.0 if angulo_deg > 135 else (1.0 - factor_radio)
+intensidad_vortex = 4.5 * (1.0 + 2.5 * factor_angulo) * es_angulo_critico * (v_periferica / 98.02)
+
 if intensidad_vortex < 0: 
     intensidad_vortex = 0
 
@@ -96,12 +114,20 @@ V_vortex1 =  intensidad_vortex * (X - vortex1_x) / (r1_sq + core)
 U_vortex2 =  (intensidad_vortex * 0.8) * (Y - vortex2_y) / (r2_sq + core)
 V_vortex2 = -(intensidad_vortex * 0.8) * (X - vortex2_x) / (r2_sq + core)
 
-ancho_turbulento = (1.2 + (1.8 * factor_angulo)) * (1.0 - 0.8 * factor_radio)
-zona_turbulenta = np.exp(-((X - 1.5)**2 + (Y - 1.7)**2) / max(ancho_turbulento, 0.1))
+# Desplazar la máscara de la zona turbulenta hacia el final del radio
+ancho_turbulento = (1.2 + (2.2 * factor_angulo)) * (1.0 - 0.5 * factor_radio if angulo_deg <= 135 else 1.0)
+zona_turbulenta = np.exp(-((X - vortex_centro_x)**2 + (Y - vortex_centro_y)**2) / max(ancho_turbulento, 0.1))
 
 # Campo de velocidades final acoplado
 U_final = U_base + (U_vortex1 + U_vortex2) * zona_turbulenta
 V_final = V_base + (V_vortex1 + V_vortex2) * zona_turbulenta
+
+# Condición de frontera estricta: Bloqueo neumático detrás de la pared vertical de caída
+for i in range(nx):
+    for j in range(ny):
+        if X[i,j] > vortex_centro_x and Y[i,j] < vortex_centro_y:
+            U_final[i,j] *= 0.1
+            V_final[i,j] *= 0.3
 
 Vel_magnitud = np.sqrt(U_final**2 + V_final**2)
 
@@ -116,41 +142,43 @@ strm = ax.streamplot(
     color=Vel_magnitud, 
     cmap='plasma', 
     linewidth=1.1, 
-    density=1.7, 
+    density=1.8, 
     arrowsize=0.9
 )
 
 # --- DIBUJO DINÁMICO DE LA GEOMETRÍA COMBINADA ---
 angulo_rad = np.radians(angulo_deg)
 x0, y0 = 1.8, 5.0
-x_esquina, y_esquina = 1.8, 2.2
 
 if radio_mm == 0:
-    # Si el radio es cero, dibuja la chapa con quiebre angular recto dinámico
     y_salida_recta = y_esquina - (2.2 * factor_angulo)
     ax.plot([x0, x_esquina, 5.0], [y0, y_esquina, y_salida_recta], color='#ff3333', linewidth=5)
     ax.plot(x_esquina, y_esquina, 'ro', markersize=10)
 else:
-    # Si hay radio, calcula la curva adaptada al ángulo actual del slider
     theta = np.linspace(np.pi, np.pi + angulo_rad - np.pi/2, 50)
-    r_dinamico = 0.3 + 2.5 * factor_radio
-    
     x_centro = x_esquina + r_dinamico
     y_centro = y_esquina + r_dinamico
     
     x_curva = x_centro + r_dinamico * np.cos(theta)
     y_curva = y_centro + r_dinamico * np.sin(theta)
     
+    # Línea de caída vertical o salida hacia el borde exterior del rodete (el escalón)
     y_salida_curva = y_esquina - (2.2 * factor_angulo)
-    x_pared = np.concatenate(([x0], x_curva, [5.0]))
-    y_pared = np.concatenate(([y0], y_curva, [y_salida_curva]))
+    x_pared = np.concatenate(([x0], x_curva, [v_periferica*0.02 + vortex_centro_x, 5.0]))
+    y_pared = np.concatenate(([y0], y_curva, [0.1, 0.1]))
     
-    color_perfil = '#00ffcc' if radio_mm >= 150 and angulo_deg <= 110 else '#ffaa00'
-    ax.plot(x_pared, y_pared, color=color_perfil, linewidth=5)
+    # Dibujar la chapa en color de advertencia si hay un escalón peligroso
+    color_perfil = '#ff0055' if angulo_deg > 135 else ('#00ffcc' if radio_mm >= 150 else '#ffaa00')
+    ax.plot(x_pared[:len(x_curva)+1], y_pared[:len(y_curva)+1], color=color_perfil, linewidth=5)
+    # Línea vertical del escalón de caída
+    ax.plot([vortex_centro_x, vortex_centro_x], [vortex_centro_y, 0.2], color='#ff3333', linewidth=4, linestyle='--')
 
-# Anotaciones dinámicas de texto dentro del lienzo
-if intensidad_vortex > 0.5:
-    ax.text(0.4, 0.4, "⚠️ VÓRTICES DE RECIRCULACIÓN PRESENTES", color='#ffaa00', weight='bold', fontsize=9)
+# Anotaciones de diagnóstico dinámicas en el lienzo
+if intensidad_vortex > 0.8:
+    if angulo_deg > 135 and radio_mm > 0:
+        ax.text(0.4, 0.4, "⚠️ VÓRTICE DE DESPRENDIMIENTO EN ESCALÓN (PUNTA DEL RADIO)", color='#ff0055', weight='bold', fontsize=9)
+    else:
+        ax.text(0.4, 0.4, "⚠️ VÓRTICES DE RECIRCULACIÓN PRESENTES EN LA ESQUINA", color='#ffaa00', weight='bold', fontsize=9)
 else:
     ax.text(0.4, 0.4, "✅ FLUJO ENCAPSULADO / AERODINÁMICO", color='#00ffcc', weight='bold', fontsize=9)
 
@@ -159,7 +187,6 @@ ax.set_ylim(0.2, 4.8)
 ax.axis('off')
 fig.colorbar(strm.lines, ax=ax, label='Velocidad del Fluido (m/s)', pad=0.02)
 
-# Despliegue seguro en tres columnas para evitar el TypeError en la línea 156
 col_izq, col_centro, col_der = st.columns([1, 4, 1])
 with col_centro:
     st.pyplot(fig)
@@ -170,24 +197,22 @@ with col_centro:
 st.markdown("---")
 st.header("📋 Evaluación de Ingeniería en Tiempo Real")
 
-# Matriz de conclusiones lógicas según la posición de ambos sliders
-if angulo_deg == 90 and radio_mm == 0:
-    st.error("""
-    **Condición Crítica Localizada:** Estado actual del rodete en el taller. Ángulo recto de 90° sin radio de transición. 
-    Los remolinos cerrados están confinados con fuerza en la esquina. La chapa sufrirá erosión localizada por el impacto cíclico del polvo.
-    """)
-elif angulo_deg > 135 and radio_mm == 0:
+if angulo_deg > 135 and radio_mm >= 150:
     st.error(f"""
-    **Condición Crítica Masiva:** Chapa expandida a {angulo_deg}° sin radio de amortiguación. El aire impacta perpendicularmente contra una placa que tiende a ser plana. 
-    Los vórtices bloquean el área neumática útil, restando succión al separador e incrementando la temperatura y el amperaje en el variador de frecuencia.
+    **Condición Crítica: Vórtice por Efecto Escalón ({angulo_deg}° + {radio_mm} mm)**  
+    ¡Excelente análisis! Al combinar una inclinación extrema de {angulo_deg}° con un radio amplio, la geometría genera un 'escalón de caída' abrupto al finalizar la curva. 
+    *   **Física del Error Corregido:** El aire sigue la curva, pero al llegar a la punta vertical, la velocidad experimenta un desprendimiento de capa límite masivo por la caída muerta.
+    *   **Impacto Real:** Se genera un gran vórtice de estela justo debajo del final del radio. Esto demuestra que un radio grande **no sirve de nada si al final de la trayectoria obligas al aire a realizar un quiebre recto de caída**. Toda la ganancia aerodinámica de la curva se destruye en el escalón.
+    """)
+elif angulo_deg == 90 and radio_mm == 0:
+    st.error("""
+    **Condición Crítica Localizada:** Estado de ángulo recto a 90° sin radio. Los remolinos están confinados en la esquina.
     """)
 elif radio_mm >= 150 and angulo_deg == 90:
-    st.success(f"""
-    **Condición Optimizada por Mantenimiento:** Chapa estructural a 90° pero con un robusto filete de soldadura de {radio_mm} mm. 
-    Aunque la chapa exterior es recta, el material de aporte dura (Vautid) ha redondeado internamente el codo. Los vórtices se han disipado por completo. ¡Excelente estrategia de reparación!
+    st.success("""
+    **Condición Optimizada de Diseño:** Transición recta estándar a 90° suavizada internamente de forma completa por el radio. El flujo descarga horizontalmente de manera limpia hacia los álabes sin escalones de desprendimiento.
     """)
 else:
-    st.warning(f"""
-    **Condición Intermedia Combinada:** Ángulo de {angulo_deg}° con un radio de mitigación de {radio_mm} mm. 
-    El radio contrarresta parcialmente el efecto nocivo del ángulo abierto, ayudando a disminuir la velocidad de rotación del remolino, pero se recomienda incrementar el aporte de soldadura en el taller para estabilizar por completo la capa límite.
+    st.warning("""
+    **Condición Intermedia Combinada:** El radio mitiga parcialmente el remolino en el vértice, pero vigilar los puntos de desprendimiento en las salidas.
     """)
