@@ -61,9 +61,9 @@ except Exception:
     st.sidebar.subheader("🏢 UNACEM - Área Técnica")
 
 # ==============================================================================
-# NÚCLEO MATEMÁTICO: MODELADO CFD MULTIVÓRTICE Y BERNOULLI (SIN CAMBIOS)
+# NÚCLEO MATEMÁTICO: MODELADO CFD MULTIVÓRTICE Y BERNOULLI
 # ==============================================================================
-nx, ny = 160, 150  # Malla balanceada para renderizado fluido de dos gráficos
+nx, ny = 160, 150  
 x = np.linspace(0.1, 4.9, nx)
 y = np.linspace(0.1, 4.9, ny)
 X, Y = np.meshgrid(x, y)
@@ -138,14 +138,14 @@ for vx, vy, peso in v_der_centros:
 
 Vel_magnitud = np.sqrt(U_final**2 + V_final**2)
 
-# Simulación matemática de presiones (Ecuación de Bernoulli deductiva)
+# Simulación matemática de presiones (Ecuación de Bernoulli)
 Presion_Relativa = 4000.0 * (Y / 4.8) - 0.5 * densidad_gas * (Vel_magnitud**2)
 for vx, vy, peso in v_izq_centros + v_der_centros:
     r_sq = (X - vx)**2 + (Y - vy)**2
     Presion_Relativa += 1500.0 * np.exp(-r_sq / 0.5) * (1.0 - factor_radio)
 
 # ==============================================================================
-# PROCESAMIENTO GEOMÉTRICO ADAPTATIVO DE LA CHAPA MORADA (MÚLTIPLE USO)
+# PROCESAMIENTO GEOMÉTRICO ADAPTATIVO DE LA CHAPA MORADA
 # ==============================================================================
 r_diseno = 0.15 + 1.1 * factor_radio
 alfa = angulo_rad - np.pi/2
@@ -169,19 +169,17 @@ x_pared_der = np.hstack(([x_der_entrada, x_der_entrada], x_c_der, [x_fin_der]))
 y_pared_der = np.hstack(([5.0, y_quiebre], y_c_der, [y_fin]))
 
 # ==============================================================================
-# DESPLIEGUE EN DOS COLUMNAS PARALELAS DE STREAMLIT (SINTAXIS SEGURA)
+# DESPLIEGUE EN DOS COLUMNAS PARALELAS DE STREAMLIT
 # ==============================================================================
 plt.style.use('dark_background')
 col_grafico_izq, col_grafico_der = st.columns(2)
 
 with col_grafico_izq:
-    st.subheader("📊 1. Líneas de Flujo (Vectores de Velocidad)")
+    st.subheader("📊 1. Líneas de Flujo (Campos de Velocidad)")
     fig_vel, ax_vel = plt.subplots(figsize=(7, 5.2), dpi=110)
     
-    # Renderizar únicamente líneas de corriente 'turbo'
     strm_vel = ax_vel.streamplot(X, Y, U_final, V_final, color=Vel_magnitud, cmap='turbo', linewidth=1.1, density=1.8, arrowsize=0.8)
     
-    # Dibujo de chapa morada
     if radio_mm == 0:
         ax_vel.plot([x_izq_entrada, x_izq_entrada, x_fin_izq], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=4)
         ax_vel.plot([x_der_entrada, x_der_entrada, x_fin_der], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=4)
@@ -199,10 +197,8 @@ with col_grafico_der:
     st.subheader("🌡️ 2. Gradientes de Presión Estática Relativa")
     fig_pres, ax_pres = plt.subplots(figsize=(7, 5.2), dpi=110)
     
-    # Renderizar únicamente contornos de presión 'coolwarm'
     cont_pres = ax_pres.contourf(X, Y, Presion_Relativa, levels=35, cmap='coolwarm')
     
-    # Dibujo de chapa morada
     if radio_mm == 0:
         ax_pres.plot([x_izq_entrada, x_izq_entrada, x_fin_izq], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=4)
         ax_pres.plot([x_der_entrada, x_der_entrada, x_fin_der], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=4)
@@ -213,7 +209,9 @@ with col_grafico_der:
     ax_pres.set_xlim(0.1, 4.9)
     ax_pres.set_ylim(0.2, 4.8)
     ax_pres.axis('off')
-    fig.colorbar(cont_pres, ax=ax_pres, label='Presión Estática Relativa (Pa)', pad=0.02, orientation='horizontal')
+    
+    # CORRECCIÓN DE VARIABLE EFECTUADA SUCESIVAMENTE (De fig a fig_pres)
+    fig_pres.colorbar(cont_pres, ax=ax_pres, label='Presión Estática Relativa (Pa)', pad=0.02, orientation='horizontal')
     st.pyplot(fig_pres)
 
 # ==============================================================================
