@@ -60,9 +60,9 @@ except Exception:
     st.sidebar.subheader("🏢 UNACEM - Área Técnica")
 
 # ==============================================================================
-# NÚCLEO MATEMÁTICO: MODELADO ULTRA-PRECISO DEL REMOLINO (BUCLE CERRADO)
+# NÚCLEO MATEMÁTICO: MODELADO ULTRA-PRECISO DEL REMOLINO (SIN CAMBIOS)
 # ==============================================================================
-nx, ny = 180, 180  # Mayor resolución de malla para forzar las curvas del streamplot
+nx, ny = 180, 180  
 x = np.linspace(0.1, 4.9, nx)
 y = np.linspace(0.1, 4.9, ny)
 X, Y = np.meshgrid(x, y)
@@ -70,7 +70,6 @@ X, Y = np.meshgrid(x, y)
 factor_angulo = (angulo_deg - 90) / 90.0
 factor_radio = radio_mm / 250.0
 
-# Coordenadas dinámicas de la pared
 x_entrada = 2.0  
 y_quiebre = 2.5 - (1.3 * factor_angulo)  
 x_fin = 4.8
@@ -82,54 +81,47 @@ else:
     y_fin = y_quiebre - (x_fin - x_entrada) * np.tan(angulo_rad - np.pi/2)
     if y_fin < 0.4: y_fin = 0.4 
 
-# Flujo base reducido en la esquina muerta para permitir el bucle del remolino
 U_base = 2.0 * X * (Y**0.15)
 V_base = -1.6 * (Y**1.05)
 
-# --- RECALIBRACIÓN INTENSA DEL VÓRTICE (BUCLE VISIBLE) ---
-# Posicionamos el ojo del remolino exactamente debajo del vértice (x=2.4, y=1.9)
 vortex_x = x_entrada + 0.45
 vortex_y = y_quiebre - 0.60
 
 r1_sq = (X - vortex_x)**2 + (Y - vortex_y)**2
 
-# Multiplicamos la potencia de giro por 3.5 para romper la inercia del flujo base si el radio es 0
 intensidad_vortex = 8.5 * (1.0 + 1.5 * factor_angulo) * (1.0 - factor_radio)
 if intensidad_vortex < 0: intensidad_vortex = 0
 
-core = 0.15  # Ojo del vórtice más cerrado y definido
+core = 0.15  
 eps = 1e-5
 
-# Ecuaciones hidrodinámicas puras de remolino cerrado
 U_vortex = -intensidad_vortex * (Y - vortex_y) / (r1_sq + core + eps)
 V_vortex =  intensidad_vortex * (X - vortex_x) / (r1_sq + core + eps)
 
-# Máscara de turbulencia concentrada y potente en la zona de choque
 zona_turbulenta = np.exp(-((X - vortex_x)**2 + (Y - vortex_y)**2) / 0.8)
 
-# Atenuar el flujo base en la esquina muerta para que el remolino domine visualmente
 U_final = U_base * (1.0 - 0.9 * zona_turbulenta * (1.0 - factor_radio)) + U_vortex * zona_turbulenta
 V_final = V_base * (1.0 - 0.9 * zona_turbulenta * (1.0 - factor_radio)) + V_vortex * zona_turbulenta
 
 Vel_magnitud = np.sqrt(U_final**2 + V_final**2)
 
 # ==============================================================================
-# DESPLIEGUE GRÁFICO (CON ENTORNO OSCURO DE INGENIERÍA)
+# DESPLIEGUE GRÁFICO (MODIFICADO ÚNICAMENTE PARA AMPLIAR EL TAMAÑO VISUAL)
 # ==============================================================================
 plt.style.use('dark_background')
-fig, ax = plt.subplots(figsize=(8, 6), dpi=140)
 
-# Renderizar el mapa de flujo
+# MODIFICACIÓN 1: Se incrementa el tamaño del lienzo de (8, 6) a (12, 8) para máxima escala
+fig, ax = plt.subplots(figsize=(12, 8), dpi=140)
+
 strm = ax.streamplot(
     X, Y, U_final, V_final, 
     color=Vel_magnitud, 
     cmap='plasma', 
     linewidth=1.1, 
-    density=1.9, # Máxima densidad para que Matplotlib dibuje el lazo circular cerrado
+    density=1.9, 
     arrowsize=0.9
 )
 
-# --- DIBUJO GEOMÉTRICO ADAPTATIVO ---
 if radio_mm == 0:
     ax.plot([x_entrada, x_entrada, x_fin], [5.0, y_quiebre, y_fin], color='#ffaa00', linewidth=5)
     ax.plot(x_entrada, y_quiebre, 'ro', markersize=8)
@@ -153,7 +145,7 @@ else:
     color_perfil = '#00ffcc' if radio_mm >= 150 else '#ffaa00'
     ax.plot(x_pared, y_pared, color=color_perfil, linewidth=5)
 
-# --- ANOTACIONES DE TELEMETRÍA EN PANTALLA ---
+# Indicadores fijos en el lienzo
 ax.text(4.6, 4.6, f"Reynolds (Re): {reynolds:.2e}", 
         color='#ffffff', fontsize=9, weight='bold',
         ha='right', va='top',
@@ -176,12 +168,13 @@ ax.set_ylim(0.2, 4.8)
 ax.axis('off')
 fig.colorbar(strm.lines, ax=ax, label='Velocidad del Fluido (m/s)', pad=0.02)
 
-col_izq, col_centro, col_der = st.columns(3)
+# MODIFICACIÓN 2: Nueva proporción de columnas [1, 10, 1] para que el centro expanda al máximo la imagen
+col_izq, col_centro, col_der = st.columns([1, 10, 1])
 with col_centro:
     st.pyplot(fig)
 
 # ==============================================================================
-# DIAGNÓSTICO TÉCNICO INFERIOR
+# DIAGNÓSTICO TÉCNICO INFERIOR (SIN CAMBIOS)
 # ==============================================================================
 st.markdown("---")
 st.header("📋 Evaluación de Ingeniería en Tiempo Real")
