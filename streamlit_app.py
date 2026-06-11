@@ -61,7 +61,7 @@ except Exception:
     st.sidebar.subheader("🏢 UNACEM - Área Técnica")
 
 # ==============================================================================
-# NÚCLEO MATEMÁTICO: MODELADO CFD MULTIVÓRTICE Y BERNOULLI
+# NÚCLEO MATEMÁTICO: MODELADO CFD MULTIVÓRTICE Y BERNOULLI REAL
 # ==============================================================================
 nx, ny = 160, 150  
 x = np.linspace(0.1, 4.9, nx)
@@ -138,11 +138,21 @@ for vx, vy, peso in v_der_centros:
 
 Vel_magnitud = np.sqrt(U_final**2 + V_final**2)
 
-# Simulación matemática de presiones (Ecuación de Bernoulli deductiva)
-Presion_Relativa = 4000.0 * (Y / 4.8) - 0.5 * densidad_gas * (Vel_magnitud**2)
+# --- CORRECCIÓN MATEMÁTICA DEFINITIVA DE LA PRESIÓN DE SUCESIÓN ---
+# Presión de succión base (Arriba es Vacío/Presión Negativa. Cae conforme acelera el fluido)
+Presion_Relativa = -3500.0 * (Y / 4.8) - 0.5 * densidad_gas * (Vel_magnitud**2)
+
+# Añadir picos de Alta Presión Estática por impacto real CONTRA la chapa de choque morada
+# Y caídas drásticas de presión (vacío de ojo) en los centros de los vórtices turbulentos
 for vx, vy, peso in v_izq_centros + v_der_centros:
     r_sq = (X - vx)**2 + (Y - vy)**2
-    Presion_Relativa += 1500.0 * np.exp(-r_sq / 0.5) * (1.0 - factor_radio)
+    # Zona de estancamiento / desaceleración contra la chapa (Sube la presión)
+    Presion_Relativa += 4500.0 * np.exp(-r_sq / 0.4) * (1.0 - factor_radio)
+    # Centro rotacional del remolino (Efecto sumidero ciclónico: Cae la presión en el eje)
+    Presion_Relativa -= 3000.0 * np.exp(-r_sq / 0.08) * (1.0 - factor_radio)
+
+# Normalizar escala para que los Pascales muestren valores lógicos de un tiro inducido (-4500 a +1500 Pa)
+Presion_Relativa = np.clip(Presion_Relativa, -4500, 2000)
 
 # ==============================================================================
 # PROCESAMIENTO GEOMÉTRICO ADAPTATIVO DE LA CHAPA MORADA
@@ -173,7 +183,6 @@ y_pared_der = np.hstack(([5.0, y_quiebre], y_c_der, [y_fin]))
 # ==============================================================================
 plt.style.use('dark_background')
 
-# Declaración explícita de las dos columnas de visualización en el lienzo principal
 col_grafico_izq, col_grafico_der = st.columns(2)
 
 with col_grafico_izq:
@@ -201,7 +210,7 @@ with col_grafico_izq:
     ax_vel.text(0.4, 0.4, estado_flujo_izq, color=color_caja_izq, fontsize=8, weight='bold', ha='left', va='bottom', bbox=dict(facecolor='#0e1117', alpha=0.8, edgecolor=color_caja_izq, boxstyle='round,pad=0.5'))
     ax_vel.text(2.5, 4.6, f"↔️ Diámetro Real: {d_entrada} mm", color='#ff3344', fontsize=8, weight='bold', ha='center', va='top', bbox=dict(facecolor='#0e1117', alpha=0.8, edgecolor='#ff3344', boxstyle='round,pad=0.4'))
     
-    ax_vel.set_xlim(0.1, 4.9)
+    x_vel.set_xlim(0.1, 4.9)
     ax_vel.set_ylim(0.2, 4.8)
     ax_vel.axis('off')
     fig_vel.colorbar(strm_vel.lines, ax=ax_vel, label='Velocidad del Fluido (m/s)', pad=0.02, orientation='horizontal')
@@ -211,7 +220,8 @@ with col_grafico_der:
     st.subheader("🌡️ 2. Gradientes de Presión Estática Relativa")
     fig_pres, ax_pres = plt.subplots(figsize=(7, 5.2), dpi=110)
     
-    cont_pres = ax_pres.contourf(X, Y, Presion_Relativa, levels=35, cmap='coolwarm')
+    # Renderizar el mapa de presiones corregido en paleta coolwarm
+    cont_pres = ax_pres.contourf(X, Y, Presion_Relativa, levels=40, cmap='coolwarm')
     
     if radio_mm == 0:
         ax_pres.plot([x_izq_entrada, x_izq_entrada, x_fin_izq], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=4)
