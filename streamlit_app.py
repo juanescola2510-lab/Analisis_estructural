@@ -60,7 +60,7 @@ except Exception:
     st.sidebar.subheader("🏢 UNACEM - Área Técnica")
 
 # ==============================================================================
-# NÚCLEO MATEMÁTICO: MODELADO GEOMÉTRICO Y CFD DE PRECISIÓN RECALIBRADO
+# NÚCLEO MATEMÁTICO: MODELADO GEOMÉTRICO Y CFD DE PRECISIÓN CORREGIDO
 # ==============================================================================
 nx, ny = 200, 200
 x = np.linspace(0.1, 4.9, nx)
@@ -70,38 +70,30 @@ X, Y = np.meshgrid(x, y)
 factor_angulo = (angulo_deg - 90) / 90.0
 factor_radio = radio_mm / 250.0
 
-# Flujo base del ventilador
-U_base = 2.4 * X * (Y**0.15) * (1.0 - 0.3 * factor_angulo)
-V_base = -1.8 * (Y**1.05)
-
-# Coordenadas base fijas de la transición interna
+# --- CORRECCIÓN DE ALTURA DINÁMICA ---
+# Si el ángulo sube a 180°, la esquina y la chapa BAJAN por completo para estrechar el canal paralelo.
 x_entrada = 2.0  
-y_quiebre = 2.5  
+y_quiebre = 2.5 - (1.3 * factor_angulo)  # Baja la altura base desde 2.5 hasta 1.2
 x_fin = 4.8
+y_fin = y_quiebre  # Forzar a que siempre termine en línea recta horizontal (paralela)
 
-# --- CORRECCIÓN DE PENDIENTE FÍSICA PARA 180 GRADOS ---
-# En 90° es completamente horizontal. Conforme sube, se inclina, pero al llegar a 180°
-# vuelve a ser una línea perfectamente recta horizontal (paralela a la base).
-if angulo_deg == 90 or angulo_deg == 180:
-    y_fin = y_quiebre
-else:
-    angulo_rad = np.radians(angulo_deg)
-    # Factor de corrección geométrica para suavizar el comportamiento intermedio
-    y_fin = y_quiebre - (1.5 * np.sin(np.pi * factor_angulo))
+# Ajuste del flujo base según el estrechamiento del canal
+U_base = 2.4 * X * (Y**0.15) * (1.0 + 0.5 * factor_angulo)
+V_base = -1.8 * (Y**(1.05 - 0.4 * factor_angulo))
 
-# Ubicación dinámica del centro del vórtice
+# Ubicación dinámica del centro del vórtice (se desplaza hacia abajo siguiendo la placa)
 vortex_x = x_entrada + 0.3 * (1.0 + factor_angulo) + (0.3 * factor_radio)
-vortex_y = y_quiebre - 0.4 * (1.0 + factor_angulo) - (0.2 * factor_radio)
+vortex_y = y_quiebre - 0.4 * (1.0 - 0.5 * factor_angulo) - (0.2 * factor_radio)
 
 r1_sq = (X - vortex_x)**2 + (Y - vortex_y)**2
-intensidad_vortex = 4.5 * (1.0 + 1.5 * factor_angulo) * (1.0 - 0.9 * factor_radio)
+intensidad_vortex = 5.5 * factor_angulo * (1.0 - 0.9 * factor_radio) if angulo_deg > 90 else 0.0
 if intensidad_vortex < 0: intensidad_vortex = 0
 
 core = 0.3
 U_vortex = -intensidad_vortex * (Y - vortex_y) / (r1_sq + core)
 V_vortex =  intensidad_vortex * (X - vortex_x) / (r1_sq + core)
 
-zona_turbulenta = np.exp(-((X - vortex_x)**2 + (Y - vortex_y)**2) / (1.0 + factor_angulo))
+zona_turbulenta = np.exp(-((X - vortex_x)**2 + (Y - vortex_y)**2) / (0.8 + 1.2 * factor_angulo))
 
 U_final = U_base + U_vortex * zona_turbulenta
 V_final = V_base + V_vortex * zona_turbulenta
@@ -123,30 +115,21 @@ strm = ax.streamplot(
     arrowsize=0.9
 )
 
-# --- DIBUJO GEOMÉTRICO CON RECALIBRACIÓN HORIZONTAL ---
+# --- DIBUJO GEOMÉTRICO PARALELO REAL ---
 if radio_mm == 0:
+    # Línea vertical de entrada y tramo horizontal que baja por completo
     ax.plot([x_entrada, x_entrada, x_fin], [5.0, y_quiebre, y_fin], color='#ffaa00', linewidth=5)
     ax.plot(x_entrada, y_quiebre, 'ro', markersize=8)
 else:
-    r_diseno = 0.05 + 0.8 * factor_radio
-    
-    # Interpolar dinámicamente el arco para que acompañe la nueva altura horizontal corregida
-    if angulo_deg == 180:
-        theta_curva = np.linspace(np.pi, 2.0 * np.pi, 50)
-    else:
-        angulo_rad = np.radians(angulo_deg)
-        alfa = angulo_rad - np.pi/2
-        theta_curva = np.linspace(np.pi, np.pi + alfa, 50)
+    r_diseno = 0.05 + 0.6 * factor_radio
+    # Dibujar el arco de soldadura adaptado a la nueva altura baja
+    theta_curva = np.linspace(np.pi, 1.5 * np.pi, 50)
     
     x_centro_r = x_entrada + r_diseno
     y_centro_r = y_quiebre + r_diseno
     
     x_c = x_centro_r + r_diseno * np.cos(theta_curva)
     y_c = y_centro_r + r_diseno * np.sin(theta_curva)
-    
-    # Ajustar el tramo final para que enganche con la altura y_fin corregida
-    if angulo_deg == 180:
-        y_c = np.ones_like(x_c) * y_quiebre
     
     x_pared = np.hstack(([x_entrada], x_c, [x_fin]))
     y_pared = np.hstack(([5.0], y_c, [y_fin]))
