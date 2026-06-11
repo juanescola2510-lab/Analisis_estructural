@@ -104,7 +104,7 @@ if intensidad_vortex < 0:
 
 eps = 1e-5
 
-# LADO IZQUIERDO TRASLADABLE
+# LADO IZQUIERDO TRASLADABLE (Vórtices internos)
 v_izq_centros = [
     (x_izq_entrada + 0.42, y_quiebre - 0.60, 1.0),      
     (x_izq_entrada + 0.22, y_quiebre - 0.95, 0.45),     
@@ -120,7 +120,7 @@ for vx, vy, peso in v_izq_centros:
     U_final = U_final * (1.0 - 0.95 * zona_turb * (1.0 - factor_radio)) + U_v * zona_turb
     V_final = V_final * (1.0 - 0.95 * zona_turb * (1.0 - factor_radio)) + V_v * zona_turb
 
-# LADO DERECHO TRASLADABLE
+# LADO DERECHO TRASLADABLE (Vórtices internos en espejo)
 v_der_centros = [
     (x_der_entrada - 0.42, y_quiebre - 0.60, 1.0),      
     (x_der_entrada - 0.22, y_quiebre - 0.95, 0.45),     
@@ -138,7 +138,7 @@ for vx, vy, peso in v_der_centros:
 
 Vel_magnitud = np.sqrt(U_final**2 + V_final**2)
 
-# Simulación matemática de presiones (Ecuación de Bernoulli)
+# Simulación matemática de presiones (Ecuación de Bernoulli deductiva)
 Presion_Relativa = 4000.0 * (Y / 4.8) - 0.5 * densidad_gas * (Vel_magnitud**2)
 for vx, vy, peso in v_izq_centros + v_der_centros:
     r_sq = (X - vx)**2 + (Y - vy)**2
@@ -169,9 +169,11 @@ x_pared_der = np.hstack(([x_der_entrada, x_der_entrada], x_c_der, [x_fin_der]))
 y_pared_der = np.hstack(([5.0, y_quiebre], y_c_der, [y_fin]))
 
 # ==============================================================================
-# DESPLIEGUE EN DOS COLUMNAS PARALELAS DE STREAMLIT
+# DESPLIEGUE EN DOS COLUMNAS PARALELAS UNIFICADAS DE STREAMLIT
 # ==============================================================================
 plt.style.use('dark_background')
+
+# Declaración explícita de las dos columnas de visualización en el lienzo principal
 col_grafico_izq, col_grafico_der = st.columns(2)
 
 with col_grafico_izq:
@@ -187,6 +189,18 @@ with col_grafico_izq:
         ax_vel.plot(x_pared_izq, y_pared_izq, color='#df00ff', linewidth=4)
         ax_vel.plot(x_pared_der, y_pared_der, color='#df00ff', linewidth=4)
         
+    ax_vel.text(4.6, 4.6, f"Reynolds (Re): {reynolds:.2e}", color='#ffffff', fontsize=8, weight='bold', ha='right', va='top', bbox=dict(facecolor='#1e293b', alpha=0.7, edgecolor='#3b82f6', boxstyle='round,pad=0.4'))
+    
+    if intensidad_vortex > 0.6:
+        estado_flujo_izq = "🔴 FLUX: TURBULENTO (CASCADA)"
+        color_caja_izq = '#ff3333'
+    else:
+        estado_flujo_izq = "🟢 FLUX: LAMINAR / GUIADO"
+        color_caja_izq = '#00ffcc'
+        
+    ax_vel.text(0.4, 0.4, estado_flujo_izq, color=color_caja_izq, fontsize=8, weight='bold', ha='left', va='bottom', bbox=dict(facecolor='#0e1117', alpha=0.8, edgecolor=color_caja_izq, boxstyle='round,pad=0.5'))
+    ax_vel.text(2.5, 4.6, f"↔️ Diámetro Real: {d_entrada} mm", color='#ff3344', fontsize=8, weight='bold', ha='center', va='top', bbox=dict(facecolor='#0e1117', alpha=0.8, edgecolor='#ff3344', boxstyle='round,pad=0.4'))
+    
     ax_vel.set_xlim(0.1, 4.9)
     ax_vel.set_ylim(0.2, 4.8)
     ax_vel.axis('off')
@@ -206,11 +220,21 @@ with col_grafico_der:
         ax_pres.plot(x_pared_izq, y_pared_izq, color='#df00ff', linewidth=4)
         ax_pres.plot(x_pared_der, y_pared_der, color='#df00ff', linewidth=4)
         
+    ax_pres.text(4.6, 4.6, f"Reynolds (Re): {reynolds:.2e}", color='#ffffff', fontsize=8, weight='bold', ha='right', va='top', bbox=dict(facecolor='#1e293b', alpha=0.7, edgecolor='#3b82f6', boxstyle='round,pad=0.4'))
+    
+    if intensidad_vortex > 0.6:
+        estado_flujo_der = "🔴 FLUX: TURBULENTO (CASCADA)"
+        color_caja_der = '#ff3333'
+    else:
+        estado_flujo_der = "🟢 FLUX: LAMINAR / GUIADO"
+        color_caja_der = '#00ffcc'
+        
+    ax_pres.text(0.4, 0.4, estado_flujo_der, color=color_caja_der, fontsize=8, weight='bold', ha='left', va='bottom', bbox=dict(facecolor='#0e1117', alpha=0.8, edgecolor=color_caja_der, boxstyle='round,pad=0.5'))
+    ax_pres.text(2.5, 4.6, f"↔️ Diámetro Real: {d_entrada} mm", color='#ff3344', fontsize=8, weight='bold', ha='center', va='top', bbox=dict(facecolor='#0e1117', alpha=0.8, edgecolor='#ff3344', boxstyle='round,pad=0.4'))
+    
     ax_pres.set_xlim(0.1, 4.9)
     ax_pres.set_ylim(0.2, 4.8)
     ax_pres.axis('off')
-    
-    # CORRECCIÓN DE VARIABLE EFECTUADA SUCESIVAMENTE (De fig a fig_pres)
     fig_pres.colorbar(cont_pres, ax=ax_pres, label='Presión Estática Relativa (Pa)', pad=0.02, orientation='horizontal')
     st.pyplot(fig_pres)
 
