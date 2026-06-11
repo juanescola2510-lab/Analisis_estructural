@@ -40,6 +40,10 @@ radio_mm = st.sidebar.slider("Radio de Suavizado de la Campana (mm)", 0, 250, 0,
 st.sidebar.markdown("---")
 st.sidebar.header("📋 Parámetros de Operación")
 rpm = st.sidebar.slider("Velocidad de Rotación (RPM)", 500, 1200, 1040, step=10)
+
+# AJUSTE DE DISTANCIA REAL: Control dinámico para la boca de succión (Ingresa 800 mm aquí)
+d_entrada = st.sidebar.slider("Diámetro Boca Aspiración / Cuello (mm)", 400, 1400, 800, step=50)
+
 diametro = st.sidebar.number_input("Diámetro Exterior Placa (mm)", value=1800)
 ancho_perif = st.sidebar.slider("Ancho de Periferia / Salida (mm)", 100, 300, 200, step=10)
 densidad_gas = st.sidebar.number_input("Densidad del Gas (kg/m³)", value=0.95, step=0.05)
@@ -60,9 +64,9 @@ except Exception:
     st.sidebar.subheader("🏢 UNACEM - Área Técnica")
 
 # ==============================================================================
-# NÚCLEO MATEMÁTICO: MODELADO SIMÉTRICO CO-AXIAL (VISTA FRONTAL COMPLET)
+# NÚCLEO MATEMÁTICO: MODELADO SIMÉTRICO CO-AXIAL PROPORCIONAL
 # ==============================================================================
-nx, ny = 200, 180  # Malla optimizada para vista ancha
+nx, ny = 200, 180  
 x = np.linspace(0.1, 4.9, nx)
 y = np.linspace(0.1, 4.9, ny)
 X, Y = np.meshgrid(x, y)
@@ -70,12 +74,13 @@ X, Y = np.meshgrid(x, y)
 factor_angulo = (angulo_deg - 90) / 90.0
 factor_radio = radio_mm / 250.0
 
-# Coordenadas base fijas de la boca de entrada central (Centrado en X = 2.5)
+# --- LÓGICA DE ESCALA REAL ---
 x_centro = 2.5
-ancho_boca = 1.0  # Ancho del cuello de succión vertical
+# El ancho visual se calcula proporcionalmente dividiendo el diámetro de entrada entre el exterior total
+ancho_boca_visual = 3.6 * (d_entrada / diametro)
 
-x_izq_entrada = x_centro - ancho_boca/2  # 2.0
-x_der_entrada = x_centro + ancho_boca/2  # 3.0
+x_izq_entrada = x_centro - ancho_boca_visual / 2  
+x_der_entrada = x_centro + ancho_boca_visual / 2  
 y_quiebre = 2.5 - (1.3 * factor_angulo)  
 
 angulo_rad = np.radians(angulo_deg)
@@ -85,19 +90,16 @@ else:
     y_fin = y_quiebre - (2.0 - 0.2) * np.tan(angulo_rad - np.pi/2)
     if y_fin < 0.4: y_fin = 0.4 
 
-# --- FLUJO BASE SIMÉTRICO ---
-# El aire baja verticalmente por el centro (X=2.5) y se abre hacia los lados
-U_base = 2.5 * (X - x_centro) * (Y**0.1)
+# Flujo base simétrico adaptado al ancho del cuello real (Efecto tobera)
+U_base = 2.5 * (X - x_centro) * (Y**0.1) * (1.5 / ancho_boca_visual)
 V_base = -2.2 * (Y**1.05)
 
-# --- CONFIGURACIÓN DE DOBLE VÓRTICE (GEMELOS SIMÉTRICOS) ---
-# Vórtice Izquierdo
-vortex_izq_x = x_izq_entrada - 0.35
+# Reubicación automática de los vórtices según la distancia del cuello
+vortex_izq_x = x_izq_entrada - 0.35 * (ancho_boca_visual / 1.6)
 vortex_izq_y = y_quiebre - 0.55
 r_izq_sq = (X - vortex_izq_x)**2 + (Y - vortex_izq_y)**2
 
-# Vórtice Derecho (Espejo exacto del izquierdo)
-vortex_der_x = x_der_entrada + 0.35
+vortex_der_x = x_der_entrada + 0.35 * (ancho_boca_visual / 1.6)
 vortex_der_y = y_quiebre - 0.55
 r_der_sq = (X - vortex_der_x)**2 + (Y - vortex_der_y)**2
 
@@ -107,19 +109,15 @@ if intensidad_vortex < 0: intensidad_vortex = 0
 core = 0.15  
 eps = 1e-5
 
-# Campo rotacional del Vórtice Izquierdo (Giro antihorario)
 U_v_izq = -intensidad_vortex * (Y - vortex_izq_y) / (r_izq_sq + core + eps)
 V_v_izq =  intensidad_vortex * (X - vortex_izq_x) / (r_izq_sq + core + eps)
 
-# Campo rotacional del Vórtice Derecho (Giro horario inverso)
 U_v_der =  intensidad_vortex * (Y - vortex_der_y) / (r_der_sq + core + eps)
 V_v_der = -intensidad_vortex * (X - vortex_der_x) / (r_der_sq + core + eps)
 
-# Máscaras de turbulencia para ambas esquinas muertas
 zona_turb_izq = np.exp(-((X - vortex_izq_x)**2 + (Y - vortex_izq_y)**2) / 0.7)
 zona_turb_der = np.exp(-((X - vortex_der_x)**2 + (Y - vortex_der_y)**2) / 0.7)
 
-# Acoplamiento simétrico total del campo CFD
 U_final = U_base * (1.0 - 0.95 * (zona_turb_izq + zona_turb_der) * (1.0 - factor_radio)) + U_v_izq * zona_turb_izq + U_v_der * zona_turb_der
 V_final = V_base * (1.0 - 0.95 * (zona_turb_izq + zona_turb_der) * (1.0 - factor_radio)) + V_v_izq * zona_turb_izq + V_v_der * zona_turb_der
 
@@ -136,33 +134,32 @@ strm = ax.streamplot(
     color=Vel_magnitud, 
     cmap='turbo', 
     linewidth=1.1, 
-    density=2.0, # Mayor densidad para capturar ambos remolinos a la vez
+    density=2.0, 
     arrowsize=0.9
 )
 
-# --- DIBUJO DE LA GEOMETRÍA SIMÉTRICA DE LA CAMPANA (COLOR MORADO #df00ff) ---
+# --- DIBUJO GEOMÉTRICO CON PROPORCIONES DE ENTRADA REALES ---
 if radio_mm == 0:
-    # Lado Izquierdo Recto
     ax.plot([x_izq_entrada, x_izq_entrada, 0.2], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=5)
     ax.plot(x_izq_entrada, y_quiebre, 'ro', markersize=6)
-    # Lado Derecho Recto (Espejo)
+    
     ax.plot([x_der_entrada, x_der_entrada, 4.8], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=5)
     ax.plot(x_der_entrada, y_quiebre, 'ro', markersize=6)
 else:
     r_diseno = 0.15 + 1.0 * factor_radio
     alfa = angulo_rad - np.pi/2
     
-    # 1. Curva Lado Izquierdo
+    # Lado Izquierdo
     theta_izq = np.linspace(np.pi, np.pi + alfa, 40)
     x_c_izq = (x_izq_entrada + r_diseno) + r_diseno * np.cos(theta_izq)
-    y_c_izq = (y_quiebre + r_diseno) + r_diseno * np.sin(theta_curva := theta_izq)
+    y_c_izq = (y_quiebre + r_diseno) + r_diseno * np.sin(theta_izq)
     if angulo_deg == 180: y_c_izq = np.ones_like(x_c_izq) * y_quiebre
     
     x_pared_izq = np.concatenate(([x_izq_entrada], x_c_izq, [0.2]))
     y_pared_izq = np.concatenate(([5.0], y_c_izq, [y_fin]))
     ax.plot(x_pared_izq, y_pared_izq, color='#df00ff', linewidth=5)
     
-    # 2. Curva Lado Derecho (Espejo simétrico inverso)
+    # Lado Derecho
     theta_der = np.linspace(2.0 * np.pi, 2.0 * np.pi - alfa, 40)
     x_c_der = (x_der_entrada - r_diseno) + r_diseno * np.cos(theta_der)
     y_c_der = (y_quiebre + r_diseno) + r_diseno * np.sin(theta_der)
@@ -188,12 +185,16 @@ ax.text(0.4, 0.4, estado_flujo,
         color=color_caja, fontsize=8.5, weight='bold', ha='left', va='bottom',
         bbox=dict(facecolor='#0e1117', alpha=0.8, edgecolor=color_caja, boxstyle='round,pad=0.6'))
 
+# Anotación acoplada que marca dinámicamente la distancia real del cuello seleccionado
+ax.text(2.5, 4.6, f"↔️ Diámetro Real: {d_entrada} mm", 
+        color='#ff3344', fontsize=9, weight='bold', ha='center', va='top',
+        bbox=dict(facecolor='#0e1117', alpha=0.8, edgecolor='#ff3344', boxstyle='round,pad=0.4'))
+
 ax.set_xlim(0.1, 4.9)
 ax.set_ylim(0.2, 4.8)
 ax.axis('off')
 fig.colorbar(strm.lines, ax=ax, label='Velocidad del Fluido (m/s)', pad=0.02)
 
-# Carga directa compacta en la pantalla
 st.pyplot(fig)
 
 # ==============================================================================
@@ -201,8 +202,8 @@ st.pyplot(fig)
 # ==============================================================================
 st.markdown("---")
 st.header("📋 Evaluación de Ingeniería en Tiempo Real")
-st.write(f"**Configuración Frontal**: Ángulo de {angulo_deg}° con un Radio de {radio_mm} mm.")
+st.write(f"**Configuración Frontal**: Ángulo de {angulo_deg}° con un Radio de {radio_mm} mm y Boca de {d_entrada} mm.")
 if intensidad_vortex > 0.6:
-    st.warning("El flujo central de succión experimenta un desprendimiento de capa límite en ambas esquinas vivas simultáneamente, generando un par de vórtices simétricos de recirculación.")
+    st.warning("El estrechamiento del flujo central incrementa la velocidad de succión. Al chocar contra las esquinas ortogonales, se induce una severa recirculación bifásica simétrica.")
 else:
-    st.success("La campana simétrica guía el flujo de aire central de forma perfecta hacia ambos extremos, eliminando los remolinos y equilibrando la carga aerodinámica en el rodete.")
+    st.success("La transicion geométrica suavizada encauza eficientemente el volumen central hacia los álabes periféricos sin caídas de presión por choque.")
