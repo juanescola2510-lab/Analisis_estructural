@@ -60,7 +60,7 @@ except Exception:
     st.sidebar.subheader("🏢 UNACEM - Área Técnica")
 
 # ==============================================================================
-# NÚCLEO MATEMÁTICO: MODELADO GEOMÉTRICO Y CFD DE PRECISIÓN
+# NÚCLEO MATEMÁTICO: MODELADO GEOMÉTRICO Y CFD DE PRECISIÓN RECALIBRADO
 # ==============================================================================
 nx, ny = 200, 200
 x = np.linspace(0.1, 4.9, nx)
@@ -74,15 +74,25 @@ factor_radio = radio_mm / 250.0
 U_base = 2.4 * X * (Y**0.15) * (1.0 - 0.3 * factor_angulo)
 V_base = -1.8 * (Y**1.05)
 
-# Coordenadas base de la transición
+# Coordenadas base fijas de la transición interna
 x_entrada = 2.0  
 y_quiebre = 2.5  
 
-# Calcular la dirección del tramo inclinado de la chapa
+# --- CORRECCIÓN GEOMÉTRICA DE EXTREMO ACOTRADO ---
+# El final de la chapa siempre debe terminar horizontalmente en el borde de salida del gráfico (x = 4.8)
+x_fin = 4.8
 angulo_rad = np.radians(angulo_deg)
-l_ala = 2.5  
-x_fin = x_entrada + l_ala * np.sin(angulo_rad - np.pi/2) if angulo_deg > 90 else 5.0
-y_fin = y_quiebre - l_ala * np.cos(angulo_rad - np.pi/2) if angulo_deg > 90 else y_quiebre
+
+if angulo_deg == 90:
+    y_fin = y_quiebre
+elif angulo_deg == 180:
+    y_fin = 0.5
+else:
+    # Calcular caída real adaptada a la pendiente real del slider sin desbordar el lienzo
+    pendiente = -np.tan(np.pi - angulo_rad) if angulo_deg > 90 else 0
+    y_fin = y_quiebre + pendiente * (x_fin - x_entrada)
+    # Evitar que los valores negativos perforen el fondo del gráfico
+    if y_fin < 0.5: y_fin = 0.5
 
 # Ubicación dinámica del centro del vórtice
 vortex_x = x_entrada + 0.3 * (1.0 + factor_angulo) + (0.3 * factor_radio)
@@ -118,7 +128,7 @@ strm = ax.streamplot(
     arrowsize=0.9
 )
 
-# --- DIBUJO GEOMÉTRICO ADAPTATIVO CORREGIDO ---
+# --- DIBUJO GEOMÉTRICO CON LÍMITES PARAMÉTRICOS ---
 if radio_mm == 0:
     ax.plot([x_entrada, x_entrada, x_fin], [5.0, y_quiebre, y_fin], color='#ffaa00', linewidth=5)
     ax.plot(x_entrada, y_quiebre, 'ro', markersize=8)
@@ -133,7 +143,6 @@ else:
     x_c = x_centro_r + r_diseno * np.cos(theta_curva)
     y_c = y_centro_r + r_diseno * np.sin(theta_curva)
     
-    # UNIÓN CORREGIDA: Se combinan los elementos usando arreglos limpios uno a uno
     x_pared = np.hstack(([x_entrada], x_c, [x_fin]))
     y_pared = np.hstack(([5.0], y_c, [y_fin]))
     
@@ -141,15 +150,13 @@ else:
     ax.plot(x_pared, y_pared, color=color_perfil, linewidth=5)
 
 # ==============================================================================
-# NUEVOS INDICADORES DE INGENIERÍA DENTRO DE LA GRÁFICA
+# INDICADORES DE INGENIERÍA DENTRO DE LA GRÁFICA
 # ==============================================================================
-# 1. Mostrar Número de Reynolds dinámico en la esquina superior derecha
 ax.text(4.6, 4.6, f"Reynolds (Re): {reynolds:.2e}", 
         color='#ffffff', fontsize=9, weight='bold',
         ha='right', va='top',
         bbox=dict(facecolor='#1e293b', alpha=0.7, edgecolor='#3b82f6', boxstyle='round,pad=0.5'))
 
-# 2. Señal dinámica de tipo de flujo en la esquina inferior izquierda
 if intensidad_vortex > 0.5:
     estado_flujo = "🔴 FLUX: TURBULENTO (RECIRCULACIÓN)"
     color_caja = '#ff3333'
