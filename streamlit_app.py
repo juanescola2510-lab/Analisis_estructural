@@ -110,13 +110,13 @@ Vel_magnitud = np.sqrt(U_final**2 + V_final**2)
 # ==============================================================================
 plt.style.use('dark_background')
 
-# AJUSTE EXCLUSIVO: Formato apaisado horizontal (9x4.8 pulgadas) y DPI ligero para evitar scroll
 fig, ax = plt.subplots(figsize=(9, 4.8), dpi=100)  
 
+# AJUSTE DE COLOR SOLICITADO: Se cambió el mapa de colores a 'Wistia' (Verde/Amarillo -> Amarillo -> Rojo)
 strm = ax.streamplot(
     X, Y, U_final, V_final, 
     color=Vel_magnitud, 
-    cmap='plasma', 
+    cmap='Wistia', 
     linewidth=1.1, 
     density=1.9, 
     arrowsize=0.9
@@ -158,8 +158,9 @@ else:
     estado_flujo = "🟢 FLUX: LAMINAR / GUIADO"
     color_caja = '#00ffcc'
 
+# AJUSTE DE LETRA SOLICITADO: Se redujo 'fontsize' a 8.5 para hacer la señal de flujo más compacta
 ax.text(0.4, 0.4, estado_flujo, 
-        color=color_caja, fontsize=10, weight='bold',
+        color=color_caja, fontsize=8.5, weight='bold',
         ha='left', va='bottom',
         bbox=dict(facecolor='#0e1117', alpha=0.8, edgecolor=color_caja, boxstyle='round,pad=0.6'))
 
