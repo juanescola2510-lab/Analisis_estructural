@@ -106,12 +106,12 @@ V_final = V_base * (1.0 - 0.9 * zona_turbulenta * (1.0 - factor_radio)) + V_vort
 Vel_magnitud = np.sqrt(U_final**2 + V_final**2)
 
 # ==============================================================================
-# DESPLIEGUE GRÁFICO (REDUCIDO ÚNICAMENTE EN DIMENSIONES VISUALES)
+# DESPLIEGUE GRÁFICO (REDUCIDO A FORMATO MONITOR COMPACTO)
 # ==============================================================================
 plt.style.use('dark_background')
 
-# AJUSTE EXCLUSIVO: Reducción del tamaño a un cómodo formato estándar (10x7 pulgadas) con 110 DPI
-fig, ax = plt.subplots(figsize=(10, 7), dpi=110)  
+# AJUSTE EXCLUSIVO: Formato apaisado horizontal (9x4.8 pulgadas) y DPI ligero para evitar scroll
+fig, ax = plt.subplots(figsize=(9, 4.8), dpi=100)  
 
 strm = ax.streamplot(
     X, Y, U_final, V_final, 
@@ -147,7 +147,7 @@ else:
 
 # Indicadores fijos en el lienzo
 ax.text(4.6, 4.6, f"Reynolds (Re): {reynolds:.2e}", 
-        color='#ffffff', fontsize=10, weight='bold',
+        color='#ffffff', fontsize=9, weight='bold',
         ha='right', va='top',
         bbox=dict(facecolor='#1e293b', alpha=0.7, edgecolor='#3b82f6', boxstyle='round,pad=0.5'))
 
@@ -159,7 +159,7 @@ else:
     color_caja = '#00ffcc'
 
 ax.text(0.4, 0.4, estado_flujo, 
-        color=color_caja, fontsize=11, weight='bold',
+        color=color_caja, fontsize=10, weight='bold',
         ha='left', va='bottom',
         bbox=dict(facecolor='#0e1117', alpha=0.8, edgecolor=color_caja, boxstyle='round,pad=0.6'))
 
