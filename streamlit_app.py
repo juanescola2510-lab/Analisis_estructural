@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 # CONFIGURACIÓN DE LA INTERFAZ DE INGENIERÍA
 # ==============================================================================
 st.set_page_config(
-    page_title="Simulador CFD Campana Completa - UNACEM", 
+    page_title="Simulador CFD Dual - UNACEM", 
     layout="wide", 
     initial_sidebar_state="expanded"
 )
@@ -20,10 +20,10 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-st.title("⚙️ Simulador CFD: Vista Frontal de la Campana de Succión Completa")
+st.title("⚙️ Simulador CFD Co-axial: Análisis Dual del Ingreso")
 st.markdown("""
-**Análisis de Distribución de Flujo Simétrico y Cascada Multivórtice Adaptativa en el Ingreso**  
-Ajusta la geometría en la barra lateral para observar cómo el aire entra por el centro y se divide hacia ambos extremos del rodete.
+**Evaluación Simultánea de Dinámica de Fluidos: Campos de Velocidad y Gradientes de Presión Estática**  
+Modifica la geometría en la barra lateral para observar en paralelo cómo se disipan los microvórtices y cómo se homogenizan las presiones en la campana.
 """)
 
 # ==============================================================================
@@ -61,9 +61,9 @@ except Exception:
     st.sidebar.subheader("🏢 UNACEM - Área Técnica")
 
 # ==============================================================================
-# NÚCLEO MATEMÁTICO: MODELADO CFD MULTIVÓRTICE ACOPLADO A LA CINEMÁTICA
+# NÚCLEO MATEMÁTICO: MODELADO CFD MULTIVÓRTICE Y BERNOULLI (SIN CAMBIOS)
 # ==============================================================================
-nx, ny = 190, 180  
+nx, ny = 160, 150  # Malla balanceada para renderizado fluido de dos gráficos
 x = np.linspace(0.1, 4.9, nx)
 y = np.linspace(0.1, 4.9, ny)
 X, Y = np.meshgrid(x, y)
@@ -94,7 +94,6 @@ else:
 U_final = 2.8 * (X - x_centro) / (Y + 0.3)
 V_final = -2.5 * (Y**0.95)
 
-# Factor de compresión por RPM
 factor_rpm = 1040.0 / float(rpm)
 core_dinamico = 0.15 * factor_rpm  
 radio_dispersion = 0.6 * factor_rpm 
@@ -105,7 +104,7 @@ if intensidad_vortex < 0:
 
 eps = 1e-5
 
-# LADO IZQUIERDO TRASLADABLE (Vórtices internos)
+# LADO IZQUIERDO TRASLADABLE
 v_izq_centros = [
     (x_izq_entrada + 0.42, y_quiebre - 0.60, 1.0),      
     (x_izq_entrada + 0.22, y_quiebre - 0.95, 0.45),     
@@ -121,7 +120,7 @@ for vx, vy, peso in v_izq_centros:
     U_final = U_final * (1.0 - 0.95 * zona_turb * (1.0 - factor_radio)) + U_v * zona_turb
     V_final = V_final * (1.0 - 0.95 * zona_turb * (1.0 - factor_radio)) + V_v * zona_turb
 
-# LADO DERECHO TRASLADABLE (Vórtices internos en espejo)
+# LADO DERECHO TRASLADABLE
 v_der_centros = [
     (x_der_entrada - 0.42, y_quiebre - 0.60, 1.0),      
     (x_der_entrada - 0.22, y_quiebre - 0.95, 0.45),     
@@ -139,86 +138,83 @@ for vx, vy, peso in v_der_centros:
 
 Vel_magnitud = np.sqrt(U_final**2 + V_final**2)
 
+# Simulación matemática de presiones (Ecuación de Bernoulli deductiva)
+Presion_Relativa = 4000.0 * (Y / 4.8) - 0.5 * densidad_gas * (Vel_magnitud**2)
+for vx, vy, peso in v_izq_centros + v_der_centros:
+    r_sq = (X - vx)**2 + (Y - vy)**2
+    Presion_Relativa += 1500.0 * np.exp(-r_sq / 0.5) * (1.0 - factor_radio)
+
 # ==============================================================================
-# DESPLIEGUE GRÁFICO FRONTAL COMPACTO OPTIMIZADO
+# PROCESAMIENTO GEOMÉTRICO ADAPTATIVO DE LA CHAPA MORADA (MÚLTIPLE USO)
+# ==============================================================================
+r_diseno = 0.15 + 1.1 * factor_radio
+alfa = angulo_rad - np.pi/2
+
+# Coordenadas lado izquierdo redondeado
+theta_izq = np.linspace(0, -np.pi/2 * factor_angulo if angulo_deg > 90 else -np.pi/2, 40)
+x_c_izq = (x_izq_entrada - r_diseno) + r_diseno * np.cos(theta_izq)
+y_c_izq = (y_quiebre + r_diseno) + r_diseno * np.sin(theta_izq) - (r_diseno * factor_angulo)
+if angulo_deg == 180: y_c_izq = np.ones_like(x_c_izq) * y_quiebre
+x_pared_izq = np.hstack(([x_izq_entrada, x_izq_entrada], x_c_izq, [x_fin_izq]))
+y_pared_izq = np.hstack(([5.0, y_quiebre], y_c_izq, [y_fin]))
+
+# Coordenadas lado derecho redondeado
+theta_der = np.linspace(np.pi, np.pi + np.pi/2 * factor_angulo if angulo_deg > 90 else np.pi + np.pi/2, 40)
+x_centro_der = x_der_entrada + r_diseno
+y_centro_der = y_quiebre + r_diseno
+x_c_der = x_centro_der + r_diseno * np.cos(theta_der)
+y_c_der = y_centro_der + r_diseno * np.sin(theta_der) - (r_diseno * factor_angulo)
+if angulo_deg == 180: y_c_der = np.ones_like(x_c_der) * y_quiebre
+x_pared_der = np.hstack(([x_der_entrada, x_der_entrada], x_c_der, [x_fin_der]))
+y_pared_der = np.hstack(([5.0, y_quiebre], y_c_der, [y_fin]))
+
+# ==============================================================================
+# DESPLIEGUE EN DOS COLUMNAS PARALELAS DE STREAMLIT (SINTAXIS SEGURA)
 # ==============================================================================
 plt.style.use('dark_background')
-fig, ax = plt.subplots(figsize=(12, 6.5), dpi=100)  
+col_grafico_izq, col_grafico_der = st.columns(2)
 
-strm = ax.streamplot(
-    X, Y, U_final, V_final, 
-    color=Vel_magnitud, 
-    cmap='turbo', 
-    linewidth=1.1, 
-    density=2.0, 
-    arrowsize=0.9
-)
-
-# --- DIBUJO GEOMÉTRICO ADAPTATIVO CON TRAZO HORIZONTAL UNIFICADO ---
-if radio_mm == 0:
-    ax.plot([x_izq_entrada, x_izq_entrada, x_fin_izq], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=5)
-    ax.plot(x_izq_entrada, y_quiebre, 'ro', markersize=6)
-    ax.plot([x_der_entrada, x_der_entrada, x_fin_der], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=5)
-    ax.plot(x_der_entrada, y_quiebre, 'ro', markersize=6)
-else:
-    r_diseno = 0.15 + 1.1 * factor_radio
-    alfa = angulo_rad - np.pi/2
+with col_grafico_izq:
+    st.subheader("📊 1. Líneas de Flujo (Vectores de Velocidad)")
+    fig_vel, ax_vel = plt.subplots(figsize=(7, 5.2), dpi=110)
     
-    # 1. Curva Lado Izquierdo
-    theta_izq = np.linspace(0, -np.pi/2 * factor_angulo if angulo_deg > 90 else -np.pi/2, 40)
-    x_centro_izq = x_izq_entrada - r_diseno
-    y_centro_izq = y_quiebre + r_diseno
-    x_c_izq = x_centro_izq + r_diseno * np.cos(theta_izq)
-    y_c_izq = y_centro_izq + r_diseno * np.sin(theta_izq) - (r_diseno * factor_angulo)
-    if angulo_deg == 180: 
-        y_c_izq = np.ones_like(x_c_izq) * y_quiebre
+    # Renderizar únicamente líneas de corriente 'turbo'
+    strm_vel = ax_vel.streamplot(X, Y, U_final, V_final, color=Vel_magnitud, cmap='turbo', linewidth=1.1, density=1.8, arrowsize=0.8)
     
-    x_pared_izq = np.hstack(([x_izq_entrada, x_izq_entrada], x_c_izq, [x_fin_izq]))
-    y_pared_izq = np.hstack(([5.0, y_quiebre], y_c_izq, [y_fin]))
-    ax.plot(x_pared_izq, y_pared_izq, color='#df00ff', linewidth=6)
+    # Dibujo de chapa morada
+    if radio_mm == 0:
+        ax_vel.plot([x_izq_entrada, x_izq_entrada, x_fin_izq], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=4)
+        ax_vel.plot([x_der_entrada, x_der_entrada, x_fin_der], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=4)
+    else:
+        ax_vel.plot(x_pared_izq, y_pared_izq, color='#df00ff', linewidth=4)
+        ax_vel.plot(x_pared_der, y_pared_der, color='#df00ff', linewidth=4)
+        
+    ax_vel.set_xlim(0.1, 4.9)
+    ax_vel.set_ylim(0.2, 4.8)
+    ax_vel.axis('off')
+    fig_vel.colorbar(strm_vel.lines, ax=ax_vel, label='Velocidad del Fluido (m/s)', pad=0.02, orientation='horizontal')
+    st.pyplot(fig_vel)
+
+with col_grafico_der:
+    st.subheader("🌡️ 2. Gradientes de Presión Estática Relativa")
+    fig_pres, ax_pres = plt.subplots(figsize=(7, 5.2), dpi=110)
     
-    # 2. Curva Lado Derecho
-    theta_der = np.linspace(np.pi, np.pi + np.pi/2 * factor_angulo if angulo_deg > 90 else np.pi + np.pi/2, 40)
-    x_centro_der = x_der_entrada + r_diseno
-    y_centro_der = y_quiebre + r_diseno
-    x_c_der = x_centro_der + r_diseno * np.cos(theta_der)
-    y_c_der = y_centro_der + r_diseno * np.sin(theta_der) - (r_diseno * factor_angulo)
-    if angulo_deg == 180: 
-        y_c_der = np.ones_like(x_c_der) * y_quiebre
+    # Renderizar únicamente contornos de presión 'coolwarm'
+    cont_pres = ax_pres.contourf(X, Y, Presion_Relativa, levels=35, cmap='coolwarm')
     
-    x_pared_der = np.hstack(([x_der_entrada, x_der_entrada], x_c_der, [x_fin_der]))
-    y_pared_der = np.hstack(([5.0, y_quiebre], y_c_der, [y_fin]))
-    ax.plot(x_pared_der, y_pared_der, color='#df00ff', linewidth=6)
-
-# Indicadores fijos en el lienzo
-ax.text(4.6, 4.6, f"Reynolds (Re): {reynolds:.2e}", 
-        color='#ffffff', fontsize=9, weight='bold', ha='right', va='top',
-        bbox=dict(facecolor='#1e293b', alpha=0.7, edgecolor='#3b82f6', boxstyle='round,pad=0.5'))
-
-# --- SECCIÓN DEL IF/ELSE SIN ERRORES DE SINTAXIS NI DE INDENTACIÓN ---
-if intensidad_vortex > 0.6:
-    estado_flujo = "🔴 FLUX: TURBULENTO (CASCADA DE VÓRTICES)"
-    color_caja = '#ff3333'
-else:
-    estado_flujo = "🟢 FLUX: LAMINAR / GUIADO"
-    color_caja = '#00ffcc'
-
-ax.text(0.4, 0.4, estado_flujo, 
-        color=color_caja, fontsize=8.5, weight='bold', ha='left', va='bottom',
-        bbox=dict(facecolor='#0e1117', alpha=0.8, edgecolor=color_caja, boxstyle='round,pad=0.6'))
-
-ax.text(2.5, 4.6, f"↔️ Diámetro Real: {d_entrada} mm", 
-        color='#ff3344', fontsize=9, weight='bold', ha='center', va='top',
-        bbox=dict(facecolor='#0e1117', alpha=0.8, edgecolor='#ff3344', boxstyle='round,pad=0.4'))
-
-ax.set_xlim(0.1, 4.9)
-ax.set_ylim(0.2, 4.8)
-ax.axis('off')
-fig.colorbar(strm.lines, ax=ax, label='Velocidad del Fluido (m/s)', pad=0.02)
-
-col_izq, col_centro, col_der = st.columns(3)
-with col_centro:
-    st.pyplot(fig)
+    # Dibujo de chapa morada
+    if radio_mm == 0:
+        ax_pres.plot([x_izq_entrada, x_izq_entrada, x_fin_izq], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=4)
+        ax_pres.plot([x_der_entrada, x_der_entrada, x_fin_der], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=4)
+    else:
+        ax_pres.plot(x_pared_izq, y_pared_izq, color='#df00ff', linewidth=4)
+        ax_pres.plot(x_pared_der, y_pared_der, color='#df00ff', linewidth=4)
+        
+    ax_pres.set_xlim(0.1, 4.9)
+    ax_pres.set_ylim(0.2, 4.8)
+    ax_pres.axis('off')
+    fig.colorbar(cont_pres, ax=ax_pres, label='Presión Estática Relativa (Pa)', pad=0.02, orientation='horizontal')
+    st.pyplot(fig_pres)
 
 # ==============================================================================
 # DIAGNÓSTICO TÉCNICO INFERIOR 
