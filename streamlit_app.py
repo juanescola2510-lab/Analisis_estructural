@@ -40,10 +40,7 @@ radio_mm = st.sidebar.slider("Radio de Suavizado de la Campana (mm)", 0, 250, 0,
 st.sidebar.markdown("---")
 st.sidebar.header("📋 Parámetros de Operación")
 rpm = st.sidebar.slider("Velocidad de Rotación (RPM)", 500, 1200, 1040, step=10)
-
-# AJUSTE DE DISTANCIA REAL: Control dinámico para la boca de succión (Ingresa 800 mm aquí)
-d_entrada = st.sidebar.slider("Diámetro Boca Aspiración / Cuello (mm)", 400, 1400, 800, step=50)
-
+d_entrada = st.sidebar.slider("Diámetro Boca Aspiración / Cuello (mm)", 400, 1400, 950, step=50)
 diametro = st.sidebar.number_input("Diámetro Exterior Placa (mm)", value=1800)
 ancho_perif = st.sidebar.slider("Ancho de Periferia / Salida (mm)", 100, 300, 200, step=10)
 densidad_gas = st.sidebar.number_input("Densidad del Gas (kg/m³)", value=0.95, step=0.05)
@@ -64,7 +61,7 @@ except Exception:
     st.sidebar.subheader("🏢 UNACEM - Área Técnica")
 
 # ==============================================================================
-# NÚCLEO MATEMÁTICO: MODELADO SIMÉTRICO CO-AXIAL PROPORCIONAL
+# NÚCLEO MATEMÁTICO: MODELADO SIMÉTRICO CON APERTURA EXPANSIBLE REAL
 # ==============================================================================
 nx, ny = 200, 180  
 x = np.linspace(0.1, 4.9, nx)
@@ -74,27 +71,34 @@ X, Y = np.meshgrid(x, y)
 factor_angulo = (angulo_deg - 90) / 90.0
 factor_radio = radio_mm / 250.0
 
-# --- LÓGICA DE ESCALA REAL ---
+# Lógica de escala base central
 x_centro = 2.5
-# El ancho visual se calcula proporcionalmente dividiendo el diámetro de entrada entre el exterior total
 ancho_boca_visual = 3.6 * (d_entrada / diametro)
 
 x_izq_entrada = x_centro - ancho_boca_visual / 2  
 x_der_entrada = x_centro + ancho_boca_visual / 2  
-y_quiebre = 2.5 - (1.3 * factor_angulo)  
+y_quiebre = 2.5 - (1.1 * factor_angulo)  
 
 angulo_rad = np.radians(angulo_deg)
+
+# --- CORRECCIÓN CLAVE DE SIGNOS EN EXTENSIÓN GEOMÉTRICA (APERTURA HACIA AFUERA) ---
+# A mayor ángulo, el ala de salida se desplaza horizontalmente hacia los extremos exteriores (0.1 e izquierdo, 4.9 derecho)
 if angulo_deg == 90 or angulo_deg == 180:
     y_fin = y_quiebre
+    x_fin_izq = 0.2
+    x_fin_der = 4.8
 else:
-    y_fin = y_quiebre - (2.0 - 0.2) * np.tan(angulo_rad - np.pi/2)
-    if y_fin < 0.4: y_fin = 0.4 
+    y_fin = y_quiebre - 0.8 * factor_angulo
+    if y_fin < 0.4: y_fin = 0.4
+    # Apertura proporcional progresiva hacia los bordes exteriores del lienzo
+    x_fin_izq = max(0.2, x_izq_entrada - (y_quiebre - y_fin) / np.tan(angulo_rad - np.pi/2))
+    x_fin_der = min(4.8, x_der_entrada + (y_quiebre - y_fin) / np.tan(angulo_rad - np.pi/2))
 
-# Flujo base simétrico adaptado al ancho del cuello real (Efecto tobera)
+# Flujo base simétrico acoplado
 U_base = 2.5 * (X - x_centro) * (Y**0.1) * (1.5 / ancho_boca_visual)
 V_base = -2.2 * (Y**1.05)
 
-# Reubicación automática de los vórtices según la distancia del cuello
+# Reubicación adaptativa de los vórtices
 vortex_izq_x = x_izq_entrada - 0.35 * (ancho_boca_visual / 1.6)
 vortex_izq_y = y_quiebre - 0.55
 r_izq_sq = (X - vortex_izq_x)**2 + (Y - vortex_izq_y)**2
@@ -138,34 +142,36 @@ strm = ax.streamplot(
     arrowsize=0.9
 )
 
-# --- DIBUJO GEOMÉTRICO CON PROPORCIONES DE ENTRADA REALES ---
+# --- DIBUJO GEOMÉTRICO ADAPTATIVO CON APERTURA EXTERNA ---
 if radio_mm == 0:
-    ax.plot([x_izq_entrada, x_izq_entrada, 0.2], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=5)
+    # Lado Izquierdo
+    ax.plot([x_izq_entrada, x_izq_entrada, x_fin_izq], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=5)
     ax.plot(x_izq_entrada, y_quiebre, 'ro', markersize=6)
-    
-    ax.plot([x_der_entrada, x_der_entrada, 4.8], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=5)
+    # Lado Derecho
+    ax.plot([x_der_entrada, x_der_entrada, x_fin_der], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=5)
     ax.plot(x_der_entrada, y_quiebre, 'ro', markersize=6)
 else:
     r_diseno = 0.15 + 1.0 * factor_radio
     alfa = angulo_rad - np.pi/2
     
-    # Lado Izquierdo
+    # 1. Curva Lado Izquierdo
     theta_izq = np.linspace(np.pi, np.pi + alfa, 40)
     x_c_izq = (x_izq_entrada + r_diseno) + r_diseno * np.cos(theta_izq)
     y_c_izq = (y_quiebre + r_diseno) + r_diseno * np.sin(theta_izq)
     if angulo_deg == 180: y_c_izq = np.ones_like(x_c_izq) * y_quiebre
     
-    x_pared_izq = np.concatenate(([x_izq_entrada], x_c_izq, [0.2]))
+    # Sincronizar el enganche del tramo final expansivo
+    x_pared_izq = np.concatenate(([x_entrada_fix_izq := x_izq_entrada], x_c_izq, [x_fin_izq]))
     y_pared_izq = np.concatenate(([5.0], y_c_izq, [y_fin]))
     ax.plot(x_pared_izq, y_pared_izq, color='#df00ff', linewidth=5)
     
-    # Lado Derecho
+    # 2. Curva Lado Derecho (Espejo)
     theta_der = np.linspace(2.0 * np.pi, 2.0 * np.pi - alfa, 40)
     x_c_der = (x_der_entrada - r_diseno) + r_diseno * np.cos(theta_der)
     y_c_der = (y_quiebre + r_diseno) + r_diseno * np.sin(theta_der)
     if angulo_deg == 180: y_c_der = np.ones_like(x_c_der) * y_quiebre
     
-    x_pared_der = np.concatenate(([x_der_entrada], x_c_der, [4.8]))
+    x_pared_der = np.concatenate(([x_entrada_fix_der := x_der_entrada], x_c_der, [x_fin_der]))
     y_pared_der = np.concatenate(([5.0], y_c_der, [y_fin]))
     ax.plot(x_pared_der, y_pared_der, color='#df00ff', linewidth=5)
 
@@ -185,7 +191,6 @@ ax.text(0.4, 0.4, estado_flujo,
         color=color_caja, fontsize=8.5, weight='bold', ha='left', va='bottom',
         bbox=dict(facecolor='#0e1117', alpha=0.8, edgecolor=color_caja, boxstyle='round,pad=0.6'))
 
-# Anotación acoplada que marca dinámicamente la distancia real del cuello seleccionado
 ax.text(2.5, 4.6, f"↔️ Diámetro Real: {d_entrada} mm", 
         color='#ff3344', fontsize=9, weight='bold', ha='center', va='top',
         bbox=dict(facecolor='#0e1117', alpha=0.8, edgecolor='#ff3344', boxstyle='round,pad=0.4'))
@@ -206,4 +211,4 @@ st.write(f"**Configuración Frontal**: Ángulo de {angulo_deg}° con un Radio de
 if intensidad_vortex > 0.6:
     st.warning("El estrechamiento del flujo central incrementa la velocidad de succión. Al chocar contra las esquinas ortogonales, se induce una severa recirculación bifásica simétrica.")
 else:
-    st.success("La transicion geométrica suavizada encauza eficientemente el volumen central hacia los álabes periféricos sin caídas de presión por choque.")
+    st.success("La transición geométrica suavizada encauza eficientemente el volumen central hacia los álabes periféricos sin caídas de presión por choque.")
