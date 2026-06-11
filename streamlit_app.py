@@ -22,7 +22,7 @@ st.markdown("""
 
 st.title("⚙️ Simulador CFD: Vista Frontal de la Campana de Succión Completa")
 st.markdown("""
-**Análisis de Distribución de Flujo Simétrico y Doble Vórtice en el Ingreso del Ventilador**  
+**Análisis de Distribución de Flujo Simétrico y Cascada Multivórtice en el Ingreso del Ventilador**  
 Ajusta la geometría en la barra lateral para observar cómo el aire entra por el centro y se divide hacia ambos extremos del rodete.
 """)
 
@@ -61,7 +61,7 @@ except Exception:
     st.sidebar.subheader("🏢 UNACEM - Área Técnica")
 
 # ==============================================================================
-# NÚCLEO MATEMÁTICO: MODELADO SIMÉTRICO CON VÓRTICES INTERNOS CALIBRADOS
+# NÚCLEO MATEMÁTICO: MODELADO CFD MULTIVÓRTICE DINÁMICO POR RPM
 # ==============================================================================
 nx, ny = 190, 180  
 x = np.linspace(0.1, 4.9, nx)
@@ -91,54 +91,74 @@ else:
     x_fin_der = min(4.8, x_der_entrada + 1.8 * np.cos(alpha_giro))
 
 # Flujo base simétrico descendente
-U_base = 2.8 * (X - x_centro) / (Y + 0.3)
-V_base = -2.5 * (Y**0.95)
+U_final = 2.8 * (X - x_centro) / (Y + 0.3)
+V_final = -2.5 * (Y**0.95)
 
-# Vórtices fijados en la sección interna del canal
-vortex_izq_x = x_izq_entrada + 0.45 * (1.0 - 0.5 * factor_angulo)
-vortex_izq_y = y_quiebre - 0.65
-r_izq_sq = (X - vortex_izq_x)**2 + (Y - vortex_izq_y)**2
+# --- FACTOR DE COMPRESIÓN POR RPM ---
+# A mayores RPM, los vórtices se vuelven físicamente más pequeños (core y radio disminuyen)
+factor_rpm = 1040.0 / float(rpm)
+core_dinamico = 0.15 * factor_rpm  # Núcleo del remolino se comprime a alta velocidad
+radio_dispersion = 0.6 * factor_rpm # El área del remolino se achica y se pega a la chapa
 
-vortex_der_x = x_der_entrada - 0.45 * (1.0 - 0.5 * factor_angulo)
-vortex_der_y = y_quiebre - 0.65
-r_der_sq = (X - vortex_der_x)**2 + (Y - vortex_der_y)**2
-
-intensidad_vortex = 8.5 * (1.0 - factor_radio)
+intensidad_vortex = 8.5 * (1.0 - factor_radio) * (float(rpm) / 1040.0)
 if intensidad_vortex < 0: intensidad_vortex = 0
 
-core = 0.15  
 eps = 1e-5
 
-U_v_izq = intensidad_vortex * (Y - vortex_izq_y) / (r_izq_sq + core + eps)
-V_v_izq = -intensidad_vortex * (X - vortex_izq_x) / (r_izq_sq + core + eps)
+# --- SISTEMA MULTIVÓRTICE: 1 CENTRAL GRANDE + 2 SATÉLITES PEQUEÑOS POR LADO ---
+# CONFIGURACIÓN LADO IZQUIERDO (3 Vórtices internos)
+v_izq_centros = [
+    (x_izq_entrada + 0.42, y_quiebre - 0.60, 1.0),      # Vórtice Principal
+    (x_izq_entrada + 0.22, y_quiebre - 0.95, 0.45),     # Satélite secundario inferior (Chico)
+    (x_izq_entrada + 0.65, y_quiebre - 0.40, 0.35)      # Satélite secundario superior (Chico)
+]
 
-U_v_der = -intensidad_vortex * (Y - vortex_der_y) / (r_der_sq + core + eps)
-V_v_der = intensidad_vortex * (X - vortex_der_x) / (r_der_sq + core + eps)
+for vx, vy, peso in v_izq_centros:
+    r_sq = (X - vx)**2 + (Y - vy)**2
+    # Ecuaciones de rotación interna (Giro antihorario)
+    U_v = (intensidad_vortex * peso) * (Y - vy) / (r_sq + core_dinamico + eps)
+    V_v = -(intensidad_vortex * peso) * (X - vx) / (r_sq + core_dinamico + eps)
+    
+    zona_turb = np.exp(-(r_sq) / (radio_dispersion * peso))
+    U_final = U_final * (1.0 - 0.95 * zona_turb * (1.0 - factor_radio)) + U_v * zona_turb
+    V_final = V_final * (1.0 - 0.95 * zona_turb * (1.0 - factor_radio)) + V_v * zona_turb
 
-zona_turb_izq = np.exp(-((X - vortex_izq_x)**2 + (Y - vortex_izq_y)**2) / 0.6)
-zona_turb_der = np.exp(-((X - vortex_der_x)**2 + (Y - vortex_der_y)**2) / 0.6)
+# CONFIGURACIÓN LADO DERECHO (3 Vórtices internos en espejo)
+v_der_centros = [
+    (x_der_entrada - 0.42, y_quiebre - 0.60, 1.0),      # Vórtice Principal Derecho
+    (x_der_entrada - 0.22, y_quiebre - 0.95, 0.45),     # Satélite secundario inferior (Chico)
+    (x_der_entrada - 0.65, y_quiebre - 0.40, 0.35)      # Satélite secundario superior (Chico)
+]
 
-U_final = U_base * (1.0 - 0.95 * (zona_turb_izq + zona_turb_der) * (1.0 - factor_radio)) + U_v_izq * zona_turb_izq + U_v_der * zona_turb_der
-V_final = V_base * (1.0 - 0.95 * (zona_turb_izq + zona_turb_der) * (1.0 - factor_radio)) + V_v_izq * zona_turb_izq + V_v_der * zona_turb_der
+for vx, vy, peso in v_der_centros:
+    r_sq = (X - vx)**2 + (Y - vy)**2
+    # Ecuaciones de rotación interna espejo (Giro horario)
+    U_v = -(intensidad_vortex * peso) * (Y - vy) / (r_sq + core_dinamico + eps)
+    V_v = (intensidad_vortex * peso) * (X - vx) / (r_sq + core_dinamico + eps)
+    
+    zona_turb = np.exp(-(r_sq) / (radio_dispersion * peso))
+    U_final = U_final * (1.0 - 0.95 * zona_turb * (1.0 - factor_radio)) + U_v * zona_turb
+    V_final = V_final * (1.0 - 0.95 * zona_turb * (1.0 - factor_radio)) + V_v * zona_turb
 
 Vel_magnitud = np.sqrt(U_final**2 + V_final**2)
 
 # ==============================================================================
-# DESPLIEGUE GRÁFICO FRONTAL COMPACTO
+# DESPLIEGUE GRÁFICO FRONTAL COMPACTO OPTIMIZADO (UN POCO MÁS GRANDE)
 # ==============================================================================
 plt.style.use('dark_background')
-fig, ax = plt.subplots(figsize=(9, 4.8), dpi=100)  
+# MODIFICADO: Incrementado levemente de (9, 4.8) a (11, 5.5) para ganar amplitud sin generar scroll
+fig, ax = plt.subplots(figsize=(11, 5.5), dpi=100)  
 
 strm = ax.streamplot(
     X, Y, U_final, V_final, 
     color=Vel_magnitud, 
     cmap='turbo', 
     linewidth=1.1, 
-    density=1.9, 
+    density=2.0, # Mayor densidad para capturar la cascada de pequeños remolinos
     arrowsize=0.9
 )
 
-# --- DIBUJO GEOMÉTRICO CON CORRECCIÓN DE TRAZADO UNIFICADO (np.hstack) ---
+# --- DIBUJO GEOMÉTRICO ADAPTATIVO ---
 if radio_mm == 0:
     ax.plot([x_izq_entrada, x_izq_entrada, x_fin_izq], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=5)
     ax.plot(x_izq_entrada, y_quiebre, 'ro', markersize=6)
@@ -152,24 +172,20 @@ else:
     theta_izq = np.linspace(0, -np.pi/2 * factor_angulo if angulo_deg > 90 else -np.pi/2, 40)
     x_centro_izq = x_izq_entrada - r_diseno
     y_centro_izq = y_quiebre + r_diseno
-    
     x_c_izq = x_centro_izq + r_diseno * np.cos(theta_izq)
     y_c_izq = y_centro_izq + r_diseno * np.sin(theta_izq) - (r_diseno * factor_angulo)
-    
     if angulo_deg == 180: y_c_izq = np.ones_like(x_c_izq) * y_quiebre
     
     x_pared_izq = np.hstack(([x_izq_entrada, x_izq_entrada], x_c_izq, [x_fin_izq]))
     y_pared_izq = np.hstack(([5.0, y_quiebre], y_c_izq, [y_fin]))
     ax.plot(x_pared_izq, y_pared_izq, color='#df00ff', linewidth=6)
     
-    # 2. Curva Lado Derecho (CORREGIDO DE RAÍZ CON np.hstack)
+    # 2. Curva Lado Derecho
     theta_der = np.linspace(np.pi, np.pi + np.pi/2 * factor_angulo if angulo_deg > 90 else np.pi + np.pi/2, 40)
     x_centro_der = x_der_entrada + r_diseno
     y_centro_der = y_quiebre + r_diseno
-    
     x_c_der = x_centro_der + r_diseno * np.cos(theta_der)
     y_c_der = y_centro_der + r_diseno * np.sin(theta_der) - (r_diseno * factor_angulo)
-    
     if angulo_deg == 180: y_c_der = np.ones_like(x_c_der) * y_quiebre
     
     x_pared_der = np.hstack(([x_der_entrada, x_der_entrada], x_c_der, [x_fin_der]))
@@ -182,7 +198,7 @@ ax.text(4.6, 4.6, f"Reynolds (Re): {reynolds:.2e}",
         bbox=dict(facecolor='#1e293b', alpha=0.7, edgecolor='#3b82f6', boxstyle='round,pad=0.5'))
 
 if intensidad_vortex > 0.6:
-    estado_flujo = "🔴 FLUX: TURBULENTO (RECIRCULACIÓN)"
+    estado_flujo = "🔴 FLUX: TURBULENTO (CASCADA DE VÓRTICES)"
     color_caja = '#ff3333'
 else:
     estado_flujo = "🟢 FLUX: LAMINAR / GUIADO"
@@ -204,14 +220,13 @@ fig.colorbar(strm.lines, ax=ax, label='Velocidad del Fluido (m/s)', pad=0.02)
 col_izq, col_centro, col_der = st.columns(3)
 with col_centro:
     st.pyplot(fig)
-
 # ==============================================================================
 # DIAGNÓSTICO TÉCNICO INFERIOR 
 # ==============================================================================
 st.markdown("---")
 st.header("📋 Evaluación de Ingeniería en Tiempo Real")
-st.write(f"**Configuración Frontal**: Ángulo de {angulo_deg}° con un Radio de {radio_mm} mm y Boca de {d_entrada} mm.")
+st.write(f"**Configuración Frontal**: Ángulo de {angulo_deg}° con un Radio de {radio_mm} mm, Boca de {d_entrada} mm a {rpm} RPM.")
 if intensidad_vortex > 0.6:
-    st.warning("El estrechamiento del flujo central incrementa la velocidad de succión. Al chocar contra las esquinas ortogonales, se induce una severa recirculación bifásica simétrica.")
+    st.warning("El estrechamiento del flujo central incrementa la velocidad de succión. Al chocar contra las esquinas ortogonales, se induce una severa recirculación bifásica simétrica con formación de microvórtices secundarios.")
 else:
     st.success("La campana simétrica se expande hacia los extremos de manera divergente, encauzando y distribuyendo el aire en paralelo a las paredes cóncavas moradas.")
