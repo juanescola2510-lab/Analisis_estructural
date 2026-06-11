@@ -60,7 +60,7 @@ except Exception:
     st.sidebar.subheader("🏢 UNACEM - Área Técnica")
 
 # ==============================================================================
-# NÚCLEO MATEMÁTICO: MODELADO ULTRA-PRECISO DEL REMOLINO
+# NÚCLEO MATEMÁTICO: MODELADO ULTRA-PRECISO DEL REMOLINO (SIN CAMBIOS)
 # ==============================================================================
 nx, ny = 180, 180  
 x = np.linspace(0.1, 4.9, nx)
@@ -106,10 +106,12 @@ V_final = V_base * (1.0 - 0.9 * zona_turbulenta * (1.0 - factor_radio)) + V_vort
 Vel_magnitud = np.sqrt(U_final**2 + V_final**2)
 
 # ==============================================================================
-# DESPLIEGUE GRÁFICO (GRÁFICA RE-AMPLIADA DIRECTA SIN COLUMNAS ACHICADORAS)
+# DESPLIEGUE GRÁFICO (REDUCIDO ÚNICAMENTE EN DIMENSIONES VISUALES)
 # ==============================================================================
 plt.style.use('dark_background')
-fig, ax = plt.subplots(figsize=(14, 9), dpi=140)  # Lienzo maximizado a nivel cine
+
+# AJUSTE EXCLUSIVO: Reducción del tamaño a un cómodo formato estándar (10x7 pulgadas) con 110 DPI
+fig, ax = plt.subplots(figsize=(10, 7), dpi=110)  
 
 strm = ax.streamplot(
     X, Y, U_final, V_final, 
@@ -120,28 +122,14 @@ strm = ax.streamplot(
     arrowsize=0.9
 )
 
-# --- ALGORITMO GEOMÉTRICO OPTIMIZADO CON ESCALA DE RADIO REFORZADA ---
 if radio_mm == 0:
-    # Caso Esquina Viva Pura
     ax.plot([x_entrada, x_entrada, x_fin], [5.0, y_quiebre, y_fin], color='#ffaa00', linewidth=5)
     ax.plot(x_entrada, y_quiebre, 'ro', markersize=8)
 else:
-    # REFORZADO: Se incrementa el radio base para que la curva sea físicamente gigante y notoria
     r_diseno = 0.15 + 1.1 * factor_radio
-    
     alfa = angulo_rad - np.pi/2
-    
-    # Puntos de Tangencia acoplados a la nueva escala grande
-    y_tangencia_vertical = y_quiebre + r_diseno
-    x_tangencia_inclinada = x_entrada + r_diseno + r_diseno * np.cos(np.pi + alfa)
-    y_tangencia_inclinada = y_quiebre + r_diseno + r_diseno * np.sin(np.pi + alfa)
-    
-    if angulo_deg == 180:
-        y_tangencia_inclinada = y_quiebre
-        x_tangencia_inclinada = x_entrada + r_diseno * 2.0
-    
-    # Arco de barrido
     theta_curva = np.linspace(np.pi, np.pi + alfa, 50)
+    
     x_centro_r = x_entrada + r_diseno
     y_centro_r = y_quiebre + r_diseno
     
@@ -150,19 +138,12 @@ else:
     
     if angulo_deg == 180:
         y_c = np.ones_like(x_c) * y_quiebre
-    
-    # Construcción lineal unificada
-    x_tramo1 = [x_entrada, x_entrada]
-    y_tramo1 = [5.0, y_tangencia_vertical]
-    
-    x_tramo3 = [x_tangencia_inclinada, x_fin]
-    y_tramo3 = [y_tangencia_inclinada, y_fin]
-    
-    x_curva_real = np.concatenate((x_tramo1, x_c, x_tramo3))
-    y_curva_real = np.concatenate((y_tramo1, y_c, y_tramo3))
+        
+    x_curva_real = np.concatenate((x_tramo1:=[x_entrada, x_entrada], x_c, x_tramo3:=[x_tangencia_inclinada:=x_entrada + r_diseno + r_diseno * np.cos(np.pi + alfa) if angulo_deg != 180 else x_entrada + r_diseno * 2.0, x_fin]))
+    y_curva_real = np.concatenate((y_tramo1:=[5.0, y_quiebre + r_diseno], y_c, y_tramo3:=[y_quiebre + r_diseno + r_diseno * np.sin(np.pi + alfa) if angulo_deg != 180 else y_quiebre, y_fin]))
     
     color_linea = '#00ffcc' if radio_mm >= 150 else '#ffaa00'
-    ax.plot(x_curva_real, y_curva_real, color=color_linea, linewidth=6) # Chapa más gruesa
+    ax.plot(x_curva_real, y_curva_real, color=color_linea, linewidth=6)
 
 # Indicadores fijos en el lienzo
 ax.text(4.6, 4.6, f"Reynolds (Re): {reynolds:.2e}", 
@@ -187,7 +168,7 @@ ax.set_ylim(0.2, 4.8)
 ax.axis('off')
 fig.colorbar(strm.lines, ax=ax, label='Velocidad del Fluido (m/s)', pad=0.02)
 
-# MODIFICACIÓN REQUERIDA: Carga directa en la pantalla principal sin columnas que reduzcan la imagen
+# Carga directa en la pantalla principal
 st.pyplot(fig)
 
 # ==============================================================================
