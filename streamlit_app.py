@@ -112,7 +112,6 @@ plt.style.use('dark_background')
 
 fig, ax = plt.subplots(figsize=(9, 4.8), dpi=100)  
 
-# MODIFICACIÓN DE COLOR DE ALTA DEFINICIÓN: Se usa 'turbo' (Escala clásica CFD: Azul -> Verde -> Rojo)
 strm = ax.streamplot(
     X, Y, U_final, V_final, 
     color=Vel_magnitud, 
@@ -122,8 +121,9 @@ strm = ax.streamplot(
     arrowsize=0.9
 )
 
+# AJUSTE SOLICITADO: Se cambió el color de los perfiles de la chapa a morado brillante (#df00ff)
 if radio_mm == 0:
-    ax.plot([x_entrada, x_entrada, x_fin], [5.0, y_quiebre, y_fin], color='#ffaa00', linewidth=5)
+    ax.plot([x_entrada, x_entrada, x_fin], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=5)
     ax.plot(x_entrada, y_quiebre, 'ro', markersize=8)
 else:
     r_diseno = 0.15 + 1.1 * factor_radio
@@ -142,8 +142,7 @@ else:
     x_curva_real = np.concatenate((x_tramo1:=[x_entrada, x_entrada], x_c, x_tramo3:=[x_tangencia_inclinada:=x_entrada + r_diseno + r_diseno * np.cos(np.pi + alfa) if angulo_deg != 180 else x_entrada + r_diseno * 2.0, x_fin]))
     y_curva_real = np.concatenate((y_tramo1:=[5.0, y_quiebre + r_diseno], y_c, y_tramo3:=[y_quiebre + r_diseno + r_diseno * np.sin(np.pi + alfa) if angulo_deg != 180 else y_quiebre, y_fin]))
     
-    color_linea = '#00ffcc' if radio_mm >= 150 else '#ffaa00'
-    ax.plot(x_curva_real, y_curva_real, color=color_linea, linewidth=6)
+    ax.plot(x_curva_real, y_curva_real, color='#df00ff', linewidth=6)
 
 # Indicadores fijos en el lienzo
 ax.text(4.6, 4.6, f"Reynolds (Re): {reynolds:.2e}", 
