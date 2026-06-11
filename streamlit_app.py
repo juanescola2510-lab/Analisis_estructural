@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 # CONFIGURACIÓN DE LA INTERFAZ DE INGENIERÍA
 # ==============================================================================
 st.set_page_config(
-    page_title="Simulador CFD Campana - UNACEM", 
+    page_title="Simulador CFD Campana Completa - UNACEM", 
     layout="wide", 
     initial_sidebar_state="expanded"
 )
@@ -20,10 +20,10 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-st.title("⚙️ Simulador CFD: Geometría de la Campana de Succión")
+st.title("⚙️ Simulador CFD: Vista Frontal de la Campana de Succión Completa")
 st.markdown("""
-**Análisis Local de la Transición de Ingreso en el Ventilador de Tiro**  
-Modifica simultáneamente el ángulo de inclinación y el radio de la campana para analizar cómo se disipan o incrementan los vórtices en las líneas de flujo de succión.
+**Análisis de Distribución de Flujo Simétrico y Doble Vórtice en el Ingreso del Ventilador**  
+Ajusta la geometría en la barra lateral para observar cómo el aire entra por el centro y se divide hacia ambos extremos del rodete.
 """)
 
 # ==============================================================================
@@ -60,9 +60,9 @@ except Exception:
     st.sidebar.subheader("🏢 UNACEM - Área Técnica")
 
 # ==============================================================================
-# NÚCLEO MATEMÁTICO: MODELADO ULTRA-PRECISO DEL REMOLINO DE SUCCIÓN
+# NÚCLEO MATEMÁTICO: MODELADO SIMÉTRICO CO-AXIAL (VISTA FRONTAL COMPLET)
 # ==============================================================================
-nx, ny = 180, 180  
+nx, ny = 200, 180  # Malla optimizada para vista ancha
 x = np.linspace(0.1, 4.9, nx)
 y = np.linspace(0.1, 4.9, ny)
 X, Y = np.meshgrid(x, y)
@@ -70,97 +70,111 @@ X, Y = np.meshgrid(x, y)
 factor_angulo = (angulo_deg - 90) / 90.0
 factor_radio = radio_mm / 250.0
 
-# Coordenadas base fijas de la transición interna
-x_entrada = 2.0  
+# Coordenadas base fijas de la boca de entrada central (Centrado en X = 2.5)
+x_centro = 2.5
+ancho_boca = 1.0  # Ancho del cuello de succión vertical
+
+x_izq_entrada = x_centro - ancho_boca/2  # 2.0
+x_der_entrada = x_centro + ancho_boca/2  # 3.0
 y_quiebre = 2.5 - (1.3 * factor_angulo)  
-x_fin = 4.8
 
 angulo_rad = np.radians(angulo_deg)
 if angulo_deg == 90 or angulo_deg == 180:
     y_fin = y_quiebre
 else:
-    y_fin = y_quiebre - (x_fin - x_entrada) * np.tan(angulo_rad - np.pi/2)
+    y_fin = y_quiebre - (2.0 - 0.2) * np.tan(angulo_rad - np.pi/2)
     if y_fin < 0.4: y_fin = 0.4 
 
-# Sentido de flujo de succión (El aire ingresa de forma vertical por la campana)
-U_base = 2.0 * X * (Y**0.15)
-V_base = -1.6 * (Y**1.05)
+# --- FLUJO BASE SIMÉTRICO ---
+# El aire baja verticalmente por el centro (X=2.5) y se abre hacia los lados
+U_base = 2.5 * (X - x_centro) * (Y**0.1)
+V_base = -2.2 * (Y**1.05)
 
-# Posicionamiento físico del ojo del remolino en la zona muerta
-vortex_x = x_entrada + 0.45
-vortex_y = y_quiebre - 0.60
+# --- CONFIGURACIÓN DE DOBLE VÓRTICE (GEMELOS SIMÉTRICOS) ---
+# Vórtice Izquierdo
+vortex_izq_x = x_izq_entrada - 0.35
+vortex_izq_y = y_quiebre - 0.55
+r_izq_sq = (X - vortex_izq_x)**2 + (Y - vortex_izq_y)**2
 
-r1_sq = (X - vortex_x)**2 + (Y - vortex_y)**2
+# Vórtice Derecho (Espejo exacto del izquierdo)
+vortex_der_x = x_der_entrada + 0.35
+vortex_der_y = y_quiebre - 0.55
+r_der_sq = (X - vortex_der_x)**2 + (Y - vortex_der_y)**2
 
-# Ley de intensidad calibrada para el codo de succión
 intensidad_vortex = 8.5 * (1.0 + 1.5 * factor_angulo) * (1.0 - factor_radio)
 if intensidad_vortex < 0: intensidad_vortex = 0
 
 core = 0.15  
 eps = 1e-5
 
-U_vortex = -intensidad_vortex * (Y - vortex_y) / (r1_sq + core + eps)
-V_vortex =  intensidad_vortex * (X - vortex_x) / (r1_sq + core + eps)
+# Campo rotacional del Vórtice Izquierdo (Giro antihorario)
+U_v_izq = -intensidad_vortex * (Y - vortex_izq_y) / (r_izq_sq + core + eps)
+V_v_izq =  intensidad_vortex * (X - vortex_izq_x) / (r_izq_sq + core + eps)
 
-zona_turbulenta = np.exp(-((X - vortex_x)**2 + (Y - vortex_y)**2) / 0.8)
+# Campo rotacional del Vórtice Derecho (Giro horario inverso)
+U_v_der =  intensidad_vortex * (Y - vortex_der_y) / (r_der_sq + core + eps)
+V_v_der = -intensidad_vortex * (X - vortex_der_x) / (r_der_sq + core + eps)
 
-U_final = U_base * (1.0 - 0.9 * zona_turbulenta * (1.0 - factor_radio)) + U_vortex * zona_turbulenta
-V_final = V_base * (1.0 - 0.9 * zona_turbulenta * (1.0 - factor_radio)) + V_vortex * zona_turbulenta
+# Máscaras de turbulencia para ambas esquinas muertas
+zona_turb_izq = np.exp(-((X - vortex_izq_x)**2 + (Y - vortex_izq_y)**2) / 0.7)
+zona_turb_der = np.exp(-((X - vortex_der_x)**2 + (Y - vortex_der_y)**2) / 0.7)
+
+# Acoplamiento simétrico total del campo CFD
+U_final = U_base * (1.0 - 0.95 * (zona_turb_izq + zona_turb_der) * (1.0 - factor_radio)) + U_v_izq * zona_turb_izq + U_v_der * zona_turb_der
+V_final = V_base * (1.0 - 0.95 * (zona_turb_izq + zona_turb_der) * (1.0 - factor_radio)) + V_v_izq * zona_turb_izq + V_v_der * zona_turb_der
 
 Vel_magnitud = np.sqrt(U_final**2 + V_final**2)
 
 # ==============================================================================
-# DESPLIEGUE GRÁFICO (REDUCIDO A FORMATO MONITOR COMPACTO)
+# DESPLIEGUE GRÁFICO FRONTAL COMPACTO
 # ==============================================================================
 plt.style.use('dark_background')
-
-fig, ax = plt.subplots(figsize=(9, 4.8), dpi=100)  
+fig, ax = plt.subplots(figsize=(10, 4.8), dpi=110)  
 
 strm = ax.streamplot(
     X, Y, U_final, V_final, 
     color=Vel_magnitud, 
     cmap='turbo', 
     linewidth=1.1, 
-    density=1.9, 
+    density=2.0, # Mayor densidad para capturar ambos remolinos a la vez
     arrowsize=0.9
 )
 
-# --- DIBUJO GEOMÉTRICO CONTINUO EN COLOR MORADO BRANTE (#df00ff) ---
+# --- DIBUJO DE LA GEOMETRÍA SIMÉTRICA DE LA CAMPANA (COLOR MORADO #df00ff) ---
 if radio_mm == 0:
-    ax.plot([x_entrada, x_entrada, x_fin], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=5)
-    ax.plot(x_entrada, y_quiebre, 'ro', markersize=8)
+    # Lado Izquierdo Recto
+    ax.plot([x_izq_entrada, x_izq_entrada, 0.2], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=5)
+    ax.plot(x_izq_entrada, y_quiebre, 'ro', markersize=6)
+    # Lado Derecho Recto (Espejo)
+    ax.plot([x_der_entrada, x_der_entrada, 4.8], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=5)
+    ax.plot(x_der_entrada, y_quiebre, 'ro', markersize=6)
 else:
-    # Se escala el radio geométrico para que los cambios en la campana sean notorios
-    r_diseno = 0.15 + 1.1 * factor_radio
+    r_diseno = 0.15 + 1.0 * factor_radio
     alfa = angulo_rad - np.pi/2
     
-    y_tangencia_vertical = y_quiebre + r_diseno
-    x_tangencia_inclinada = x_entrada + r_diseno + r_diseno * np.cos(np.pi + alfa)
-    y_tangencia_inclinada = y_quiebre + r_diseno + r_diseno * np.sin(np.pi + alfa)
+    # 1. Curva Lado Izquierdo
+    theta_izq = np.linspace(np.pi, np.pi + alfa, 40)
+    x_c_izq = (x_izq_entrada + r_diseno) + r_diseno * np.cos(theta_izq)
+    y_c_izq = (y_quiebre + r_diseno) + r_diseno * np.sin(theta_curva := theta_izq)
+    if angulo_deg == 180: y_c_izq = np.ones_like(x_c_izq) * y_quiebre
     
-    if angulo_deg == 180:
-        y_tangencia_inclinada = y_quiebre
-        x_tangencia_inclinada = x_entrada + r_diseno * 2.0
+    x_pared_izq = np.concatenate(([x_izq_entrada], x_c_izq, [0.2]))
+    y_pared_izq = np.concatenate(([5.0], y_c_izq, [y_fin]))
+    ax.plot(x_pared_izq, y_pared_izq, color='#df00ff', linewidth=5)
     
-    theta_curva = np.linspace(np.pi, np.pi + alfa, 50)
-    x_centro_r = x_entrada + r_diseno
-    y_centro_r = y_quiebre + r_diseno
+    # 2. Curva Lado Derecho (Espejo simétrico inverso)
+    theta_der = np.linspace(2.0 * np.pi, 2.0 * np.pi - alfa, 40)
+    x_c_der = (x_der_entrada - r_diseno) + r_diseno * np.cos(theta_der)
+    y_c_der = (y_quiebre + r_diseno) + r_diseno * np.sin(theta_der)
+    if angulo_deg == 180: y_c_der = np.ones_like(x_c_der) * y_quiebre
     
-    x_c = x_centro_r + r_diseno * np.cos(theta_curva)
-    y_c = y_centro_r + r_diseno * np.sin(theta_curva)
-    
-    if angulo_deg == 180:
-        y_c = np.ones_like(x_c) * y_quiebre
-        
-    x_curva_real = np.concatenate(([x_entrada, x_entrada], x_c, [x_tangencia_inclinada, x_fin]))
-    y_curva_real = np.concatenate(([5.0, y_tangencia_vertical], y_c, [y_tangencia_inclinada, y_fin]))
-    
-    ax.plot(x_curva_real, y_curva_real, color='#df00ff', linewidth=6)
+    x_pared_der = np.concatenate(([x_der_entrada], x_c_der, [4.8]))
+    y_pared_der = np.concatenate(([5.0], y_c_der, [y_fin]))
+    ax.plot(x_pared_der, y_pared_der, color='#df00ff', linewidth=5)
 
 # Indicadores fijos en el lienzo
 ax.text(4.6, 4.6, f"Reynolds (Re): {reynolds:.2e}", 
-        color='#ffffff', fontsize=9, weight='bold',
-        ha='right', va='top',
+        color='#ffffff', fontsize=9, weight='bold', ha='right', va='top',
         bbox=dict(facecolor='#1e293b', alpha=0.7, edgecolor='#3b82f6', boxstyle='round,pad=0.5'))
 
 if intensidad_vortex > 0.6:
@@ -171,16 +185,15 @@ else:
     color_caja = '#00ffcc'
 
 ax.text(0.4, 0.4, estado_flujo, 
-        color=color_caja, fontsize=8.5, weight='bold',
-        ha='left', va='bottom',
+        color=color_caja, fontsize=8.5, weight='bold', ha='left', va='bottom',
         bbox=dict(facecolor='#0e1117', alpha=0.8, edgecolor=color_caja, boxstyle='round,pad=0.6'))
 
-ax.set_xlim(0.2, 4.8)
+ax.set_xlim(0.1, 4.9)
 ax.set_ylim(0.2, 4.8)
 ax.axis('off')
 fig.colorbar(strm.lines, ax=ax, label='Velocidad del Fluido (m/s)', pad=0.02)
 
-# Carga directa limpia sin columnas restrictivas
+# Carga directa compacta en la pantalla
 st.pyplot(fig)
 
 # ==============================================================================
@@ -188,8 +201,8 @@ st.pyplot(fig)
 # ==============================================================================
 st.markdown("---")
 st.header("📋 Evaluación de Ingeniería en Tiempo Real")
-st.write(f"**Configuración Actual**: Ángulo de {angulo_deg}° con un Radio de {radio_mm} mm.")
+st.write(f"**Configuración Frontal**: Ángulo de {angulo_deg}° con un Radio de {radio_mm} mm.")
 if intensidad_vortex > 0.6:
-    st.warning("El aire experimenta un desprendimiento al pasar el quiebre de la chapa. Se forman remolinos en la zona inferior cóncava debido al cambio de dirección abrupto.")
+    st.warning("El flujo central de succión experimenta un desprendimiento de capa límite en ambas esquinas vivas simultáneamente, generando un par de vórtices simétricos de recirculación.")
 else:
-    st.success("La combinación de parámetros permite un paso suave del gas, minimizando las pérdidas energéticas en el tiro del ventilador.")
+    st.success("La campana simétrica guía el flujo de aire central de forma perfecta hacia ambos extremos, eliminando los remolinos y equilibrando la carga aerodinámica en el rodete.")
