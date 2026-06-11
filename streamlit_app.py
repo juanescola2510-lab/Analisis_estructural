@@ -143,7 +143,7 @@ Vel_magnitud = np.sqrt(U_final**2 + V_final**2)
 # DESPLIEGUE GRÁFICO FRONTAL COMPACTO OPTIMIZADO
 # ==============================================================================
 plt.style.use('dark_background')
-fig, ax = plt.subplots(figsize=(9, 4.8), dpi=100)  
+fig, ax = plt.subplots(figsize=(12, 6.5), dpi=100)  
 
 strm = ax.streamplot(
     X, Y, U_final, V_final, 
