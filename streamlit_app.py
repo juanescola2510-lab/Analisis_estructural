@@ -61,9 +61,9 @@ except Exception:
     st.sidebar.subheader("🏢 UNACEM - Área Técnica")
 
 # ==============================================================================
-# NÚCLEO MATEMÁTICO: MODELADO SIMÉTRICO CON APERTURA EXPANSIBLE REAL
+# NÚCLEO MATEMÁTICO: MODELADO SIMÉTRICO CON CAMPANA DIVERGENTE CORREGIDA
 # ==============================================================================
-nx, ny = 200, 180  
+nx, ny = 190, 180  
 x = np.linspace(0.1, 4.9, nx)
 y = np.linspace(0.1, 4.9, ny)
 X, Y = np.meshgrid(x, y)
@@ -71,46 +71,40 @@ X, Y = np.meshgrid(x, y)
 factor_angulo = (angulo_deg - 90) / 90.0
 factor_radio = radio_mm / 250.0
 
-# Lógica de escala base central
 x_centro = 2.5
-ancho_boca_visual = 3.6 * (d_entrada / diametro)
+ancho_boca_visual = 3.4 * (d_entrada / diametro)
 
 x_izq_entrada = x_centro - ancho_boca_visual / 2  
 x_der_entrada = x_centro + ancho_boca_visual / 2  
-y_quiebre = 2.5 - (1.1 * factor_angulo)  
+y_quiebre = 2.8  # Altura fija de inicio de la campana
 
+# Ángulo de giro efectivo de la campana (90° = horizontal, mayor ángulo = más abierta hacia abajo)
 angulo_rad = np.radians(angulo_deg)
+alpha_giro = np.pi - angulo_rad  # Ángulo complementario real de apertura
 
-# --- CORRECCIÓN CLAVE DE SIGNOS EN EXTENSIÓN GEOMÉTRICA (APERTURA HACIA AFUERA) ---
-# A mayor ángulo, el ala de salida se desplaza horizontalmente hacia los extremos exteriores (0.1 e izquierdo, 4.9 derecho)
-if angulo_deg == 90 or angulo_deg == 180:
-    y_fin = y_quiebre
-    x_fin_izq = 0.2
-    x_fin_der = 4.8
-else:
-    y_fin = y_quiebre - 0.8 * factor_angulo
-    if y_fin < 0.4: y_fin = 0.4
-    # Apertura proporcional progresiva hacia los bordes exteriores del lienzo
-    x_fin_izq = max(0.2, x_izq_entrada - (y_quiebre - y_fin) / np.tan(angulo_rad - np.pi/2))
-    x_fin_der = min(4.8, x_der_entrada + (y_quiebre - y_fin) / np.tan(angulo_rad - np.pi/2))
+# Determinar extremos de salida acoplados a la expansión
+y_fin = max(0.6, y_quiebre - 1.8 * np.sin(alpha_giro)) if angulo_deg > 90 else y_quiebre
+x_fin_izq = max(0.2, x_izq_entrada - 1.8 * np.cos(alpha_giro)) if angulo_deg > 90 else 0.2
+x_fin_der = min(4.8, x_der_entrada + 1.8 * np.cos(alpha_giro)) if angulo_deg > 90 else 4.8
 
-# Flujo base simétrico acoplado
-U_base = 2.5 * (X - x_centro) * (Y**0.1) * (1.5 / ancho_boca_visual)
-V_base = -2.2 * (Y**1.05)
+# --- FLUJO BASE EXPANSIVO RECALIBRADO ---
+# El aire se ensancha hacia afuera de forma paralela al bajar (Modificado para seguir la línea roja)
+U_base = 2.8 * (X - x_centro) / (Y + 0.3)
+V_base = -2.5 * (Y**0.95)
 
-# Reubicación adaptativa de los vórtices
-vortex_izq_x = x_izq_entrada - 0.35 * (ancho_boca_visual / 1.6)
-vortex_izq_y = y_quiebre - 0.55
+# Ubicación dinámica de los núcleos de los remolinos (debajo de las faldas de la campana si no hay radio)
+vortex_izq_x = x_izq_entrada - 0.45 * (1.0 + factor_angulo)
+vortex_izq_y = y_quiebre - 0.60
 r_izq_sq = (X - vortex_izq_x)**2 + (Y - vortex_izq_y)**2
 
-vortex_der_x = x_der_entrada + 0.35 * (ancho_boca_visual / 1.6)
-vortex_der_y = y_quiebre - 0.55
+vortex_der_x = x_der_entrada + 0.45 * (1.0 + factor_angulo)
+vortex_der_y = y_quiebre - 0.60
 r_der_sq = (X - vortex_der_x)**2 + (Y - vortex_der_y)**2
 
-intensidad_vortex = 8.5 * (1.0 + 1.5 * factor_angulo) * (1.0 - factor_radio)
+intensidad_vortex = 9.0 * (1.0 - factor_radio)
 if intensidad_vortex < 0: intensidad_vortex = 0
 
-core = 0.15  
+core = 0.16  
 eps = 1e-5
 
 U_v_izq = -intensidad_vortex * (Y - vortex_izq_y) / (r_izq_sq + core + eps)
@@ -119,8 +113,8 @@ V_v_izq =  intensidad_vortex * (X - vortex_izq_x) / (r_izq_sq + core + eps)
 U_v_der =  intensidad_vortex * (Y - vortex_der_y) / (r_der_sq + core + eps)
 V_v_der = -intensidad_vortex * (X - vortex_der_x) / (r_der_sq + core + eps)
 
-zona_turb_izq = np.exp(-((X - vortex_izq_x)**2 + (Y - vortex_izq_y)**2) / 0.7)
-zona_turb_der = np.exp(-((X - vortex_der_x)**2 + (Y - vortex_der_y)**2) / 0.7)
+zona_turb_izq = np.exp(-((X - vortex_izq_x)**2 + (Y - vortex_izq_y)**2) / 0.8)
+zona_turb_der = np.exp(-((X - vortex_der_x)**2 + (Y - vortex_der_y)**2) / 0.8)
 
 U_final = U_base * (1.0 - 0.95 * (zona_turb_izq + zona_turb_der) * (1.0 - factor_radio)) + U_v_izq * zona_turb_izq + U_v_der * zona_turb_der
 V_final = V_base * (1.0 - 0.95 * (zona_turb_izq + zona_turb_der) * (1.0 - factor_radio)) + V_v_izq * zona_turb_izq + V_v_der * zona_turb_der
@@ -128,51 +122,62 @@ V_final = V_base * (1.0 - 0.95 * (zona_turb_izq + zona_turb_der) * (1.0 - factor
 Vel_magnitud = np.sqrt(U_final**2 + V_final**2)
 
 # ==============================================================================
-# DESPLIEGUE GRÁFICO FRONTAL COMPACTO
+# DESPLIEGUE GRÁFICO FRONTAL COMPACTO (EVITA SCROLL)
 # ==============================================================================
 plt.style.use('dark_background')
-fig, ax = plt.subplots(figsize=(10, 4.8), dpi=110)  
+fig, ax = plt.subplots(figsize=(9, 4.8), dpi=100)  
 
 strm = ax.streamplot(
     X, Y, U_final, V_final, 
     color=Vel_magnitud, 
     cmap='turbo', 
     linewidth=1.1, 
-    density=2.0, 
+    density=1.9, 
     arrowsize=0.9
 )
 
-# --- DIBUJO GEOMÉTRICO ADAPTATIVO CON APERTURA EXTERNA ---
+# --- DIBUJO DE LA GEOMETRÍA CON ARCOS EXPANSIVOS (CONTRARROTATORIOS CORREGIDOS) ---
 if radio_mm == 0:
-    # Lado Izquierdo
+    # Lado Izquierdo Abierto
     ax.plot([x_izq_entrada, x_izq_entrada, x_fin_izq], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=5)
     ax.plot(x_izq_entrada, y_quiebre, 'ro', markersize=6)
-    # Lado Derecho
+    # Lado Derecho Abierto (Espejo)
     ax.plot([x_der_entrada, x_der_entrada, x_fin_der], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=5)
     ax.plot(x_der_entrada, y_quiebre, 'ro', markersize=6)
 else:
-    r_diseno = 0.15 + 1.0 * factor_radio
-    alfa = angulo_rad - np.pi/2
+    r_diseno = 0.05 + 0.65 * factor_radio
     
-    # 1. Curva Lado Izquierdo
-    theta_izq = np.linspace(np.pi, np.pi + alfa, 40)
-    x_c_izq = (x_izq_entrada + r_diseno) + r_diseno * np.cos(theta_izq)
-    y_c_izq = (y_quiebre + r_diseno) + r_diseno * np.sin(theta_izq)
-    if angulo_deg == 180: y_c_izq = np.ones_like(x_c_izq) * y_quiebre
+    # 1. Curva Lado Izquierdo: Gira hacia afuera (sentido horario negativo)
+    # Centro desplazado a la izquierda de la chapa de entrada
+    x_centro_izq = x_izq_entrada - r_diseno
+    y_centro_izq = y_quiebre
+    theta_izq = np.linspace(0, -alpha_giro if angulo_deg > 90 else -np.pi/2, 40)
     
-    # Sincronizar el enganche del tramo final expansivo
-    x_pared_izq = np.concatenate(([x_entrada_fix_izq := x_izq_entrada], x_c_izq, [x_fin_izq]))
-    y_pared_izq = np.concatenate(([5.0], y_c_izq, [y_fin]))
+    x_c_izq = x_centro_izq + r_diseno * np.cos(theta_izq)
+    y_c_izq = y_centro_izq + r_diseno * np.sin(theta_izq)
+    
+    # Puntos de tangencia corregidos
+    x_t_izq = x_centro_izq + r_diseno * np.cos(theta_izq[-1])
+    y_t_izq = y_centro_izq + r_diseno * np.sin(theta_izq[-1])
+    
+    x_pared_izq = np.concatenate(([x_izq_entrada, x_izq_entrada], x_c_izq, [x_fin_izq]))
+    y_pared_izq = np.concatenate(([5.0, y_quiebre + r_diseno], y_c_izq, [y_fin]))
     ax.plot(x_pared_izq, y_pared_izq, color='#df00ff', linewidth=5)
     
-    # 2. Curva Lado Derecho (Espejo)
-    theta_der = np.linspace(2.0 * np.pi, 2.0 * np.pi - alfa, 40)
-    x_c_der = (x_der_entrada - r_diseno) + r_diseno * np.cos(theta_der)
-    y_c_der = (y_quiebre + r_diseno) + r_diseno * np.sin(theta_der)
-    if angulo_deg == 180: y_c_der = np.ones_like(x_c_der) * y_quiebre
+    # 2. Curva Lado Derecho: Gira hacia afuera (sentido antihorario positivo)
+    # Centro de arco desplazado a la derecha de la chapa de entrada
+    x_centro_der = x_der_entrada + r_diseno
+    y_centro_der = y_quiebre
+    theta_der = np.linspace(np.pi, np.pi + alpha_giro if angulo_deg > 90 else np.pi + np.pi/2, 40)
     
-    x_pared_der = np.concatenate(([x_entrada_fix_der := x_der_entrada], x_c_der, [x_fin_der]))
-    y_pared_der = np.concatenate(([5.0], y_c_der, [y_fin]))
+    x_c_der = x_centro_der + r_diseno * np.cos(theta_der)
+    y_c_der = y_centro_der + r_diseno * np.sin(theta_der)
+    
+    x_t_der = x_centro_der + r_diseno * np.cos(theta_der[-1])
+    y_t_der = y_centro_der + r_diseno * np.sin(theta_der[-1])
+    
+    x_pared_der = np.concatenate(([x_der_entrada, x_der_entrada], x_c_der, [x_fin_der]))
+    y_pared_der = np.concatenate(([5.0, y_quiebre + r_diseno], y_c_der, [y_fin]))
     ax.plot(x_pared_der, y_pared_der, color='#df00ff', linewidth=5)
 
 # Indicadores fijos en el lienzo
@@ -200,7 +205,10 @@ ax.set_ylim(0.2, 4.8)
 ax.axis('off')
 fig.colorbar(strm.lines, ax=ax, label='Velocidad del Fluido (m/s)', pad=0.02)
 
-st.pyplot(fig)
+# Despliegue en 3 columnas para conservar el tamaño compacto perfecto sin scroll
+col_izq, col_centro, col_der = st.columns(3)
+with col_centro:
+    st.pyplot(fig)
 
 # ==============================================================================
 # DIAGNÓSTICO TÉCNICO INFERIOR 
@@ -211,4 +219,4 @@ st.write(f"**Configuración Frontal**: Ángulo de {angulo_deg}° con un Radio de
 if intensidad_vortex > 0.6:
     st.warning("El estrechamiento del flujo central incrementa la velocidad de succión. Al chocar contra las esquinas ortogonales, se induce una severa recirculación bifásica simétrica.")
 else:
-    st.success("La transición geométrica suavizada encauza eficientemente el volumen central hacia los álabes periféricos sin caídas de presión por choque.")
+    st.success("La campana simétrica se expande hacia los extremos de manera divergente, encauzando y distribuyendo el aire en paralelo a las paredes cóncavas moradas.")
