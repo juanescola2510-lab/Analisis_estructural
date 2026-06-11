@@ -60,7 +60,7 @@ except Exception:
     st.sidebar.subheader("🏢 UNACEM - Área Técnica")
 
 # ==============================================================================
-# NÚCLEO MATEMÁTICO: MODELADO ULTRA-PRECISO DEL REMOLINO (SIN CAMBIOS)
+# NÚCLEO MATEMÁTICO: MODELADO ULTRA-PRECISO DEL REMOLINO
 # ==============================================================================
 nx, ny = 180, 180  
 x = np.linspace(0.1, 4.9, nx)
@@ -106,7 +106,7 @@ V_final = V_base * (1.0 - 0.9 * zona_turbulenta * (1.0 - factor_radio)) + V_vort
 Vel_magnitud = np.sqrt(U_final**2 + V_final**2)
 
 # ==============================================================================
-# DESPLIEGUE GRÁFICO (GRÁFICA AMPLIADA CON DOBLE CAPA GEOMÉTRICA)
+# DESPLIEGUE GRÁFICO (GRÁFICA GRANDE CON UNA SOLA LÍNEA DE CHAPA CONTINUA)
 # ==============================================================================
 plt.style.use('dark_background')
 fig, ax = plt.subplots(figsize=(12, 8), dpi=140)
@@ -120,15 +120,16 @@ strm = ax.streamplot(
     arrowsize=0.9
 )
 
-# --- CAPA 1: DIBUJAR SIEMPRE LA ESTRUCTURA METÁLICA BASE (LÍNEA CELESTE) ---
-ax.plot([x_entrada, x_entrada, x_fin], [5.0, y_quiebre, y_fin], color='#00ffcc', linewidth=4, alpha=0.8, label='Chapa Base Estructural')
-ax.plot(x_entrada, y_quiebre, 'ro', markersize=6)
-
-# --- CAPA 2: SUPERPONER EL RELLENO DE SOLDADURA (LÍNEA ROJA) SI EL RADIO ES MAYOR A 0 ---
-if radio_mm > 0:
-    r_diseno = 0.05 + 0.5 * factor_radio
+# --- DIBUJO DE UNA SOLA LÍNEA DE CHAPA CONTINUA CORREGIDA ---
+if radio_mm == 0:
+    # Una sola línea quebrada continua en color naranja/amarillo técnico si el radio es cero
+    ax.plot([x_entrada, x_entrada, x_fin], [5.0, y_quiebre, y_fin], color='#ffaa00', linewidth=5)
+    ax.plot(x_entrada, y_quiebre, 'ro', markersize=8)
+else:
+    # Calcular el arco de transición suave adaptado dinámicamente al ángulo
+    r_diseno = 0.05 + 0.6 * factor_radio
     alfa = angulo_rad - np.pi/2
-    theta_curva = np.linspace(np.pi, np.pi + alfa, 30)
+    theta_curva = np.linspace(np.pi, np.pi + alfa, 40)
     
     x_centro_r = x_entrada + r_diseno
     y_centro_r = y_quiebre + r_diseno
@@ -138,12 +139,15 @@ if radio_mm > 0:
     
     if angulo_deg == 180:
         y_c = np.ones_like(x_c) * y_quiebre
-        
-    x_soldadura = np.concatenate(([x_entrada], x_c, [x_fin]))
-    y_soldadura = np.concatenate(([5.0], y_c, [y_fin]))
     
-    # Dibujar el filete de recargue duro en un rojo vivo/naranja técnico tal como tu boceto
-    ax.plot(x_soldadura, y_soldadura, color='#ff3344', linewidth=5, linestyle='-', label='Recargue Duro de Sacrificio')
+    # PUNTOS DE ACOPLE EXÁCTOS: Une el inicio vertical, el arco central y el ala de salida en un solo trazo
+    # Esto evita que aparezcan dos líneas o espacios en blanco
+    x_linea_unica = np.hstack(([x_entrada, x_entrada], x_c, [x_fin]))
+    y_linea_unica = np.hstack(([5.0, y_c[0]], y_c, [y_fin]))
+    
+    # Cambiar de color automáticamente (Verde si el radio es óptimo, Naranja si es bajo)
+    color_linea = '#00ffcc' if radio_mm >= 150 else '#ffaa00'
+    ax.plot(x_linea_unica, y_linea_unica, color=color_linea, linewidth=5)
 
 # Indicadores fijos en el lienzo
 ax.text(4.6, 4.6, f"Reynolds (Re): {reynolds:.2e}", 
@@ -168,13 +172,13 @@ ax.set_ylim(0.2, 4.8)
 ax.axis('off')
 fig.colorbar(strm.lines, ax=ax, label='Velocidad del Fluido (m/s)', pad=0.02)
 
-# Corrección explícita de proporciones en st.columns para evitar el TypeError
-col_izq, col_centro, col_der = st.columns([1, 10, 1])
+# Despliegue centrado seguro en Streamlit (con lista de proporciones corregida)
+col_izq, col_centro, col_der = st.columns([1, 4, 1])
 with col_centro:
     st.pyplot(fig)
 
 # ==============================================================================
-# DIAGNÓSTICO TÉCNICO INFERIOR (SIN CAMBIOS)
+# DIAGNÓSTICO TÉCNICO INFERIOR 
 # ==============================================================================
 st.markdown("---")
 st.header("📋 Evaluación de Ingeniería en Tiempo Real")
