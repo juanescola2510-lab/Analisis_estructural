@@ -210,7 +210,7 @@ with col_grafico_izq:
     ax_vel.text(0.4, 0.4, estado_flujo_izq, color=color_caja_izq, fontsize=8, weight='bold', ha='left', va='bottom', bbox=dict(facecolor='#0e1117', alpha=0.8, edgecolor=color_caja_izq, boxstyle='round,pad=0.5'))
     ax_vel.text(2.5, 4.6, f"↔️ Diámetro Real: {d_entrada} mm", color='#ff3344', fontsize=8, weight='bold', ha='center', va='top', bbox=dict(facecolor='#0e1117', alpha=0.8, edgecolor='#ff3344', boxstyle='round,pad=0.4'))
     
-    x_vel.set_xlim(0.1, 4.9)
+    ax_vel.set_xlim(0.1, 4.9)
     ax_vel.set_ylim(0.2, 4.8)
     ax_vel.axis('off')
     fig_vel.colorbar(strm_vel.lines, ax=ax_vel, label='Velocidad del Fluido (m/s)', pad=0.02, orientation='horizontal')
