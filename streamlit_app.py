@@ -72,19 +72,19 @@ factor_radio = radio_mm / 250.0
 U_base = 2.4 * X * (Y**0.15) * (1.0 - 0.3 * factor_angulo)
 V_base = -1.8 * (Y**1.05)
 
-# --- GEOMETRÍA DE LA PARED REAL ---
-x_entrada = 2.0  # Posición del conducto vertical de entrada
-y_quiebre = 2.5  # Altura de la junta soldada o esquina interna
+# Coordenadas base de la transición
+x_entrada = 2.0  
+y_quiebre = 2.5  
 
-# Calcular el punto final de la chapa según el ángulo del slider
+# Calcular la dirección del tramo inclinado de la chapa
 angulo_rad = np.radians(angulo_deg)
-l_ala = 2.5  # Longitud del tramo inclinado de la chapa
+l_ala = 2.5  
 x_fin = x_entrada + l_ala * np.sin(angulo_rad - np.pi/2) if angulo_deg > 90 else 5.0
 y_fin = y_quiebre - l_ala * np.cos(angulo_rad - np.pi/2) if angulo_deg > 90 else y_quiebre
 
-# Ubicación del centro del vórtice (justo debajo del quiebre de la chapa)
-vortex_x = x_entrada + 0.3 * (1.0 + factor_angulo)
-vortex_y = y_quiebre - 0.4 * (1.0 + factor_angulo)
+# Ubicación dinámica del centro del vórtice (disminuye con el radio de redondeo)
+vortex_x = x_entrada + 0.3 * (1.0 + factor_angulo) + (0.3 * factor_radio)
+vortex_y = y_quiebre - 0.4 * (1.0 + factor_angulo) - (0.2 * factor_radio)
 
 r1_sq = (X - vortex_x)**2 + (Y - vortex_y)**2
 intensidad_vortex = 4.5 * (1.0 + 1.5 * factor_angulo) * (1.0 - 0.9 * factor_radio)
@@ -102,7 +102,7 @@ V_final = V_base + V_vortex * zona_turbulenta
 Vel_magnitud = np.sqrt(U_final**2 + V_final**2)
 
 # ==============================================================================
-# DESPLIEGUE GRÁFICO CORREGIDO
+# DESPLIEGUE GRÁFICO (RECALIBRADO PARA DIBUJO CONTINUO)
 # ==============================================================================
 plt.style.use('dark_background')
 fig, ax = plt.subplots(figsize=(8, 6), dpi=150)
@@ -116,24 +116,33 @@ strm = ax.streamplot(
     arrowsize=0.9
 )
 
-# --- DIBUJO DE LA CHAPA RECALIBRADO (SIN LÍNEAS ROJAS NI DEFORMACIONES) ---
-if radio_mm == 0 or angulo_deg == 180:
-    # Caso plano/recto sin transiciones redondeadas artificiales
+# --- DIBUJO GEOMÉTRICO ADAPTATIVO SIN BLOQUEOS (SOLUCIÓN AL ERROR VISUAL) ---
+if radio_mm == 0:
+    # Esquina viva pura en cualquier ángulo
     ax.plot([x_entrada, x_entrada, x_fin], [5.0, y_quiebre, y_fin], color='#ffaa00', linewidth=5)
-    if angulo_deg > 90:
-        ax.plot(x_entrada, y_quiebre, 'ro', markersize=8)
+    ax.plot(x_entrada, y_quiebre, 'ro', markersize=8)
 else:
-    # Dibujar la esquina suavizada dinámicamente por el radio de soldadura
-    r_diseno = 0.1 + 0.6 * factor_radio
-    # Puntos de tangencia de la curva
-    theta_curva = np.linspace(np.pi, np.pi + (angulo_rad - np.pi/2), 50)
-    x_c = x_entrada + r_diseno + r_diseno * np.cos(theta_curva)
-    y_c = y_quiebre + r_diseno + r_diseno * np.sin(theta_curva)
+    # El radio se calcula vectorialmente para que funcione SIEMPRE, incluso a 180°
+    r_diseno = 0.05 + 0.8 * factor_radio
     
-    # Unir las secciones de la chapa de forma continua
-    x_pared = np.concatenate(([x_entrada], x_c, [x_fin]))
-    y_pared = np.concatenate(([5.0], y_c, [y_fin]))
-    ax.plot(x_pared, y_pared, color='#00ffcc', linewidth=5)
+    # Calcular ángulo de barrido para el arco de transición
+    alfa = angulo_rad - np.pi/2
+    theta_curva = np.linspace(np.pi, np.pi + alfa, 50)
+    
+    # Ajustar centro del radio según la apertura de la chapa
+    x_centro_r = x_entrada + r_diseno
+    y_centro_r = y_quiebre + r_diseno
+    
+    x_c = x_centro_r + r_diseno * np.cos(theta_curva)
+    y_c = y_centro_r + r_diseno * np.sin(theta_curva)
+    
+    # Puntos de acople limpios para evitar deformaciones
+    x_pared = np.concatenate(([x_entrada, x_entrada], x_c, [x_fin]))
+    y_pared = np.concatenate(([5.0, y_c[0]], y_c, [y_fin]))
+    
+    # Cambiar color según optimización técnica
+    color_perfil = '#00ffcc' if radio_mm >= 150 else '#ffaa00'
+    ax.plot(x_pared, y_pared, color=color_perfil, linewidth=5)
 
 # Indicadores de texto en pantalla
 if intensidad_vortex > 0.5:
