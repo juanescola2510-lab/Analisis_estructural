@@ -77,22 +77,17 @@ V_base = -1.8 * (Y**1.05)
 # Coordenadas base fijas de la transición interna
 x_entrada = 2.0  
 y_quiebre = 2.5  
-
-# --- CORRECCIÓN GEOMÉTRICA DE EXTREMO ACOTRADO ---
-# El final de la chapa siempre debe terminar horizontalmente en el borde de salida del gráfico (x = 4.8)
 x_fin = 4.8
-angulo_rad = np.radians(angulo_deg)
 
-if angulo_deg == 90:
+# --- CORRECCIÓN DE PENDIENTE FÍSICA PARA 180 GRADOS ---
+# En 90° es completamente horizontal. Conforme sube, se inclina, pero al llegar a 180°
+# vuelve a ser una línea perfectamente recta horizontal (paralela a la base).
+if angulo_deg == 90 or angulo_deg == 180:
     y_fin = y_quiebre
-elif angulo_deg == 180:
-    y_fin = 0.5
 else:
-    # Calcular caída real adaptada a la pendiente real del slider sin desbordar el lienzo
-    pendiente = -np.tan(np.pi - angulo_rad) if angulo_deg > 90 else 0
-    y_fin = y_quiebre + pendiente * (x_fin - x_entrada)
-    # Evitar que los valores negativos perforen el fondo del gráfico
-    if y_fin < 0.5: y_fin = 0.5
+    angulo_rad = np.radians(angulo_deg)
+    # Factor de corrección geométrica para suavizar el comportamiento intermedio
+    y_fin = y_quiebre - (1.5 * np.sin(np.pi * factor_angulo))
 
 # Ubicación dinámica del centro del vórtice
 vortex_x = x_entrada + 0.3 * (1.0 + factor_angulo) + (0.3 * factor_radio)
@@ -128,20 +123,30 @@ strm = ax.streamplot(
     arrowsize=0.9
 )
 
-# --- DIBUJO GEOMÉTRICO CON LÍMITES PARAMÉTRICOS ---
+# --- DIBUJO GEOMÉTRICO CON RECALIBRACIÓN HORIZONTAL ---
 if radio_mm == 0:
     ax.plot([x_entrada, x_entrada, x_fin], [5.0, y_quiebre, y_fin], color='#ffaa00', linewidth=5)
     ax.plot(x_entrada, y_quiebre, 'ro', markersize=8)
 else:
     r_diseno = 0.05 + 0.8 * factor_radio
-    alfa = angulo_rad - np.pi/2
-    theta_curva = np.linspace(np.pi, np.pi + alfa, 50)
+    
+    # Interpolar dinámicamente el arco para que acompañe la nueva altura horizontal corregida
+    if angulo_deg == 180:
+        theta_curva = np.linspace(np.pi, 2.0 * np.pi, 50)
+    else:
+        angulo_rad = np.radians(angulo_deg)
+        alfa = angulo_rad - np.pi/2
+        theta_curva = np.linspace(np.pi, np.pi + alfa, 50)
     
     x_centro_r = x_entrada + r_diseno
     y_centro_r = y_quiebre + r_diseno
     
     x_c = x_centro_r + r_diseno * np.cos(theta_curva)
     y_c = y_centro_r + r_diseno * np.sin(theta_curva)
+    
+    # Ajustar el tramo final para que enganche con la altura y_fin corregida
+    if angulo_deg == 180:
+        y_c = np.ones_like(x_c) * y_quiebre
     
     x_pared = np.hstack(([x_entrada], x_c, [x_fin]))
     y_pared = np.hstack(([5.0], y_c, [y_fin]))
