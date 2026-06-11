@@ -30,7 +30,7 @@ st.markdown("""
 # ==============================================================================
 # PANEL DE CONTROL (BARRA LATERAL)
 # ==============================================================================
-st.sidebar.image("https://unacem.com.pe", width=180, errors='ignore')
+st.sidebar.image("https://unacem.com.pe", width=180)
 st.sidebar.header("🛠️ Parámetros de Operación")
 
 rpm = st.sidebar.slider("Velocidad de Rotación (RPM)", 500, 1200, 1040, step=10)
