@@ -60,7 +60,7 @@ except Exception:
     st.sidebar.subheader("🏢 UNACEM - Área Técnica")
 
 # ==============================================================================
-# NÚCLEO MATEMÁTICO: MODELADO GEOMÉTRICO DINÁMICO RECALIBRADO
+# NÚCLEO MATEMÁTICO: MODELADO DE TURBULENCIA RECALIBRADO (MÁXIMA A 90°)
 # ==============================================================================
 nx, ny = 150, 150
 x = np.linspace(0.1, 4.9, nx)
@@ -70,37 +70,41 @@ X, Y = np.meshgrid(x, y)
 factor_angulo = (angulo_deg - 90) / 90.0
 factor_radio = radio_mm / 250.0
 
-# --- CORRECCIÓN CLAVE: El punto de quiebre BAJA a medida que abres el ángulo ---
+# Coordenadas dinámicas de la placa superior
 x_entrada = 2.0  
-y_quiebre = 2.5 - (1.3 * factor_angulo)  # Pasa de 2.5 (a 90°) bajando progresivamente hasta 1.2 (a 180°)
+y_quiebre = 2.5 - (1.3 * factor_angulo)  
 x_fin = 4.8
 
-# Calcular la inclinación real del ala
 angulo_rad = np.radians(angulo_deg)
 if angulo_deg == 90 or angulo_deg == 180:
     y_fin = y_quiebre
 else:
-    # La chapa se inclina dinámicamente desde el nuevo punto de quiebre que ya bajó
     y_fin = y_quiebre - (x_fin - x_entrada) * np.tan(angulo_rad - np.pi/2)
-    if y_fin < 0.4: y_fin = 0.4 # Límite de seguridad física para no perforar el fondo
+    if y_fin < 0.4: y_fin = 0.4 
 
-# Ajuste del flujo base según la posición real de la placa
+# Flujo base
 U_base = 2.4 * X * (Y**0.15) * (1.0 + 0.4 * factor_angulo)
 V_base = -1.8 * (Y**(1.05 - 0.3 * factor_angulo))
 
-# Ubicación dinámica del centro del vórtice (persigue a la placa conforme desciende)
-vortex_x = x_entrada + 0.4 * (1.0 + factor_angulo)
-vortex_y = y_quiebre - 0.4 * (1.0 - 0.5 * factor_angulo)
+# --- CORRECCIÓN DE LA FÍSICA DEL VÓRTICE ---
+# La turbulencia se posiciona justo debajo del punto de quiebre (la esquina)
+vortex_x = x_entrada + 0.5 * (1.0 + factor_angulo)
+vortex_y = y_quiebre - 0.5 * (1.0 - 0.3 * factor_angulo)
 
-eps = 1e-5
 r1_sq = (X - vortex_x)**2 + (Y - vortex_y)**2
-intensidad_vortex = 5.0 * factor_angulo * (1.0 - 0.9 * factor_radio) if angulo_deg > 90 else 0.0
 
-core = 0.4
+# REGLA: A 90° con 0 radio la intensidad es MÁXIMA (4.8). Solo disminuye si factor_radio sube.
+# Si el ángulo sube hacia 180°, la severidad del desprendimiento aumenta aún más.
+intensidad_vortex = 4.8 * (1.0 + 1.2 * factor_angulo) * (1.0 - factor_radio)
+if intensidad_vortex < 0: intensidad_vortex = 0
+
+core = 0.35
+eps = 1e-5
 U_vortex = -intensidad_vortex * (Y - vortex_y) / (r1_sq + core + eps)
 V_vortex =  intensidad_vortex * (X - vortex_x) / (r1_sq + core + eps)
 
-zona_turbulenta = np.exp(-((X - vortex_x)**2 + (Y - vortex_y)**2) / (0.8 + 1.0 * factor_angulo))
+# Ampliar la zona de recirculación en esquinas vivas
+zona_turbulenta = np.exp(-((X - vortex_x)**2 + (Y - vortex_y)**2) / (1.1 + 0.9 * factor_angulo))
 
 U_final = U_base + U_vortex * zona_turbulenta
 V_final = V_base + V_vortex * zona_turbulenta
@@ -118,13 +122,12 @@ strm = ax.streamplot(
     color=Vel_magnitud, 
     cmap='plasma', 
     linewidth=1.1, 
-    density=1.5, 
+    density=1.6, 
     arrowsize=0.9
 )
 
-# --- DIBUJO GEOMÉTRICO ADAPTATIVO CON DESCENSO REAL ---
+# --- DIBUJO GEOMÉTRICO ADAPTATIVO ---
 if radio_mm == 0:
-    # La línea amarilla vertical ahora se alarga hacia abajo porque y_quiebre disminuye
     ax.plot([x_entrada, x_entrada, x_fin], [5.0, y_quiebre, y_fin], color='#ffaa00', linewidth=5)
     ax.plot(x_entrada, y_quiebre, 'ro', markersize=8)
 else:
@@ -153,7 +156,8 @@ ax.text(4.6, 4.6, f"Reynolds (Re): {reynolds:.2e}",
         ha='right', va='top',
         bbox=dict(facecolor='#1e293b', alpha=0.7, edgecolor='#3b82f6', boxstyle='round,pad=0.5'))
 
-if intensidad_vortex > 0.5:
+# Condición de letrero calibrada según la intensidad real del vórtice mapeado
+if intensidad_vortex > 0.6:
     estado_flujo = "🔴 FLUX: TURBULENTO (RECIRCULACIÓN)"
     color_caja = '#ff3333'
 else:
@@ -180,7 +184,7 @@ with col_centro:
 st.markdown("---")
 st.header("📋 Evaluación de Ingeniería en Tiempo Real")
 st.write(f"**Configuración Actual**: Ángulo de {angulo_deg}° con un Radio de {radio_mm} mm.")
-if intensidad_vortex > 0.5:
+if intensidad_vortex > 0.6:
     st.warning("El aire experimenta un desprendimiento al pasar el quiebre de la chapa. Se forman remolinos en la zona inferior cóncava debido al cambio de dirección abrupto.")
 else:
     st.success("La combinación de parámetros permite un paso suave del gas, minimizando las pérdidas energéticas en el tiro del ventilador.")
