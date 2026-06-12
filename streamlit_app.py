@@ -6,7 +6,7 @@ import pandas as pd
 st.set_page_config(page_title="Simulador Match-by-Match Mundial 2026", page_icon="⚽", layout="wide")
 
 st.title("⚽ Simulador Profesional Partido por Partido - Mundial 2026")
-st.write("Modelo predictivo basado en convocatorias reales, nivel de jugadores, fatiga acumulada y racha histórica.")
+st.write("Modelo predictivo basado en convocatorias, nivel de jugadores, fatiga acumulada y racha histórica.")
 
 # --- MODELO DE DATOS DEPORTIVOS ---
 class Jugador:
@@ -56,7 +56,6 @@ class Seleccion:
 # --- BASE DE DATOS ESTRUCTURADA DE SELECCIONES ---
 @st.cache_data
 def cargar_base_datos():
-    # Jugadores de ejemplo (puedes ampliar las listas con más nombres y posiciones oficiales)
     convocados_ecuador = [
         Jugador("Piero Hincapié", "DEF", "Elite"),
         Jugador("Moises Caicedo", "MED", "Elite"),
@@ -141,16 +140,16 @@ if st.button("🏟️ Simular Partido Individual", type="primary", use_container
         goles2 = max(0, int(random.gammavariate(lambda2, 1.15)))
         
         # --- PRESENTACIÓN VISUAL MARCADOR ---
-        st.markdown("<h2 style='text-align: center;'>🏆 MARCADOR FINAL 🏆</h2>", unsafe_style=True)
+        st.markdown("<h2 style='text-align: center;'>🏆 MARCADOR FINAL 🏆</h2>", unsafe_allow_html=True)
         
-        m_col1, m_col2, m_col3 = st.columns([2, 1, 2])
+        m_col1, m_col2, m_col3 = st.columns(3)
         with m_col1:
-            st.markdown(f"<h1 style='text-align: right;'>{eq1_nombre}</h1>", unsafe_style=True)
+            st.markdown(f"<h1 style='text-align: right;'>{eq1_nombre}</h1>", unsafe_allow_html=True)
             st.caption(f"Rating de campo calculado: **{r1:.1f}**")
         with m_col2:
-            st.markdown(f"<h1 style='text-align: center; color: #ff4b4b;'>{goles1} - {goles2}</h1>", unsafe_style=True)
+            st.markdown(f"<h1 style='text-align: center; color: #ff4b4b;'>{goles1} - {goles2}</h1>", unsafe_allow_html=True)
         with m_col3:
-            st.markdown(f"<h1 style='text-align: left;'>{eq2_nombre}</h1>", unsafe_style=True)
+            st.markdown(f"<h1 style='text-align: left;'>{eq2_nombre}</h1>", unsafe_allow_html=True)
             st.caption(f"Rating de campo calculado: **{r2:.1f}**")
             
         # Desempate de Fase Eliminatoria Directa
