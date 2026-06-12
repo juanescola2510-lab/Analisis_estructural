@@ -11,7 +11,6 @@ st.markdown("### Análisis probabilístico del torneo completo (Formatos de Grup
 # --- 1. BASE DE DATOS MEJORADA (GF, GC, Racha, Factor_Motivacion) ---
 @st.cache_data
 def cargar_base_datos_mundial():
-    # CORREGIDO: Nombres alineados de forma idéntica con el diccionario de grupos
     return {
         # UEFA
         "Francia": (2.8, 0.8, 12, 4.5), "España": (2.7, 0.7, 13, 4.0), "Inglaterra": (2.6, 0.9, 11, 4.0), "Alemania": (2.4, 1.0, 10, 3.5),
@@ -112,11 +111,16 @@ if st.button("🚀 Lanzar Simulaciones Completas", type="primary", use_container
                     
             for eq in equipos:
                 tabla[eq]["dg"] = tabla[eq]["gf"] - tabla[eq]["gc"]
+                
+            # Ordenamos la lista de diccionarios
             ordenados = sorted(tabla.values(), key=lambda x: (x["pts"], x["dg"], x["gf"]), reverse=True)
-            clasificados_por_grupo.append(ordenados["eq"])
-            clasificados_por_grupo.append(ordenados["eq"])
-            mejores_terceros_pool.append(ordenados)
             
+            # CORRECCIÓN DE LA LÍNEA 116 (Uso de índices enteros correctos de la lista ordenadora):
+            clasificados_por_grupo.append(ordenados[0]["eq"])
+            clasificados_por_grupo.append(ordenados[1]["eq"])
+            mejores_terceros_pool.append(ordenados[2])
+            
+        # Filtrar mejores terceros
         mejores_terceros_ordenados = sorted(mejores_terceros_pool, key=lambda x: (x["pts"], x["dg"], x["gf"]), reverse=True)
         for k in range(8):
             clasificados_por_grupo.append(mejores_terceros_ordenados[k]["eq"])
@@ -153,12 +157,11 @@ if st.button("🚀 Lanzar Simulaciones Completas", type="primary", use_container
     st.subheader("📊 Reporte Consolidado de Probabilidades del Campeonato")
     
     top_uno_goles = conteo_general_goles.most_common(1)
-    
-    # SECCIÓN FINAL PROTEGIDA COMPLETA:
     total_partidos_mundiales = int(num_simulaciones) * 104
     
-    marcador_texto = top_uno_goles
-    cantidad_veces = top_uno_goles
+    # SECCIÓN FINAL PROTEGIDA COMPLETA (Sintaxis exacta con corchetes dobles):
+    marcador_texto = top_uno_goles[0][0]
+    cantidad_veces = top_uno_goles[0][1]
     
     porcentaje_marcador_global = (cantidad_veces / total_partidos_mundiales) * 100
 
@@ -186,9 +189,5 @@ if st.button("🚀 Lanzar Simulaciones Completas", type="primary", use_container
                 "3° Lugar": conteos_podio[pais]["3° Lugar"],
                 "4° Lugar": conteos_podio[pais]["4° Lugar"]
             }
-            
-        df_podios = pd.DataFrame.from_dict(podios_completos, orient="index")
-        df_podios = df_podios.sort_values(by="1° Lugar (Títulos)", ascending=False)
-        st.dataframe(df_podios, use_container_width=True)
-        
-    st.balloons()
+        st.dataframe(pd.DataFrame.from_dict(podios_completos, orient="index").sort_values(by="1° Lugar (Títulos)", ascending=False), use_container_width=True)
+    st.balloons()  
