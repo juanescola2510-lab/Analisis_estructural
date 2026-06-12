@@ -10,7 +10,7 @@ st.set_page_config(page_title="Simulador Completo Mundial 2026", page_icon="🏆
 st.title("🏆 Simulador de Alta Velocidad: 50,000 Mundiales Completos")
 st.markdown("### Análisis probabilístico individual y general (Formato Oficial FIFA 2026)")
 
-# --- 2. BASE DE DATOS MEJORADA CON LOS 48 EQUIPOS (COMPLETAMENTE VERIFICADA) ---
+# --- 2. BASE DE DATOS MEJORADA CON LOS 48 EQUIPOS OFICIALES ---
 @st.cache_data
 def cargar_base_datos_mundial():
     return {
@@ -34,7 +34,7 @@ def cargar_base_datos_mundial():
         "Japón": (2.4, 1.0, 11, 3.5), "Corea del Sur": (2.2, 1.1, 10, 3.0), "Irán": (1.9, 1.2, 9, 2.0), "Australia": (1.8, 1.3, 9, 2.0),
         "Arabia Saudita": (1.7, 1.4, 8, 1.5), "Catar": (1.6, 1.5, 7, 1.5), "Jordania": (1.4, 1.5, 7, 1.0), "Uzbekistán": (1.5, 1.3, 8, 1.5),
         "Nueva Zelanda": (1.4, 1.7, 6, 1.0),
-        "Irak": (1.5, 1.4, 7, 1.5) # VERIFICADO: Aquí está Irak incorporado
+        "Irak": (1.5, 1.4, 7, 1.5)
     }
 
 db_mundial = cargar_base_datos_mundial()
@@ -49,7 +49,7 @@ GRUPOS_2026 = {
     "Grupo F": ["Países Bajos", "Japón", "Suecia", "Túnez"],
     "Grupo G": ["Bélgica", "Irán", "Egipto", "Nueva Zelanda"],
     "Grupo H": ["España", "Uruguay", "Arabia Saudita", "Cabo Verde"],
-    "Grupo I": ["Francia", "Senegal", "Noruega", "Irak"], # VERIFICADO: Coincide perfectamente con el diccionario superior
+    "Grupo I": ["Francia", "Senegal", "Noruega", "Irak"],
     "Grupo J": ["Argentina", "Argelia", "Austria", "Jordania"],
     "Grupo K": ["Portugal", "Colombia", "Congo", "Uzbekistán"],
     "Grupo L": ["Inglaterra", "Croacia", "Panamá", "Ghana"]
@@ -62,19 +62,28 @@ def calcular_rating_dinamico(nombre_equipo):
     bono_localia = 4.5 if nombre_equipo in ["Estados Unidos", "México", "Canadá"] else 0.0
     return max(50.0, base_poder + bono_localia + (factor_motivacion * 1.2) + random.uniform(-4.0, 4.0))
 
-# --- 5. FUNCIÓN INTERNA DE SIMULACIÓN DE PARTIDOS ---
+# --- 5. FUNCIÓN INTERNA DE SIMULACIÓN DE PARTIDOS (CORREGIDA) ---
 def simular_partido_torneo(eq1, eq2, knockout=False, contador_goles=None):
     r1 = calcular_rating_dinamico(eq1)
     r2 = calcular_rating_dinamico(eq2)
     diff = r1 - r2
-    g1 = max(0, int(random.gammavariate(max(0.9, 1.75 + (diff * 0.05)), 1.35 + (max(0.0, diff) * 0.02))))
-    g2 = max(0, int(random.gammavariate(max(0.9, 1.75 - (diff * 0.05)), 1.15)))
+    lambda1 = max(0.9, 1.75 + (diff * 0.05))
+    lambda2 = max(0.9, 1.75 - (diff * 0.05))
+    escala_goles1 = 1.35 + (max(0.0, diff) * 0.02)
+    escala_goles2 = 1.15
+    
+    g1 = max(0, int(random.gammavariate(lambda1, escala_goles1)))
+    g2 = max(0, int(random.gammavariate(lambda2, escala_goles2)))
     
     if contador_goles is not None:
         contador_goles[f"{g1} - {g2}"] += 1
         
-    if goles1 > goles2: return eq1
-    elif goles2 > goles1: return eq2
+    if g1 > g2: 
+        return eq1
+    elif g2 > g1: 
+        return eq2
+    
+    # Manejo del empate en llaves directas
     return eq1 if random.random() > 0.5 else eq2
 
 # --- 6. INTERFAZ DE CONFIGURACIÓN ---
@@ -84,7 +93,7 @@ num_simulaciones = st.sidebar.number_input("Mundiales a Simular", min_value=1, m
 # --- 7. EJECUCIÓN PRINCIPAL DEL SIMULADOR ---
 if st.button("🚀 Lanzar Simulaciones Completas", type="primary", use_container_width=True):
     status_text = st.empty()
-    status_text.info(f"⏳ Procesando {num_simulaciones:,} torneos completos (más de 5.2 millones de partidos)... Por favor, espera.")
+    status_text.info(f"⏳ Procesando {num_simulaciones:,} torneos completos... Por favor, espera.")
     
     conteos_campeon = Counter()
     conteos_podio = {pais: {"2° Lugar": 0, "3° Lugar": 0, "4° Lugar": 0} for pais in db_mundial}
@@ -97,7 +106,7 @@ if st.button("🚀 Lanzar Simulaciones Completas", type="primary", use_container
         clasificados_por_grupo = []
         mejores_terceros_pool = []
         
-        # FASE DE GRUPOS
+        # FASE DE GRUPOS INDIVIDUALIZADA
         for grupo, equipos in grupos_items:
             tabla = {eq: {"eq": eq, "pts": 0, "dg": 0, "gf": 0, "gc": 0} for eq in equipos}
             for i in range(4):
@@ -140,7 +149,6 @@ if st.button("🚀 Lanzar Simulaciones Completas", type="primary", use_container
                 tabla[eq]["dg"] = tabla[eq]["gf"] - tabla[eq]["gc"]
             ordenados = sorted(tabla.values(), key=lambda x: (x["pts"], x["dg"], x["gf"]), reverse=True)
             
-            # VERIFICADO: Acceso con índices numéricos correctos de la lista ordenadora
             clasificados_por_grupo.append(ordenados[0]["eq"])
             clasificados_por_grupo.append(ordenados[1]["eq"])
             mejores_terceros_pool.append(ordenados[2])
@@ -159,9 +167,9 @@ if st.button("🚀 Lanzar Simulaciones Completas", type="primary", use_container
             equipos_activos = prox
             
         s1_e1, s1_e2, s2_e1, s2_e2 = equipos_activos
-        sem1_g = simular_partido_torneo(s1_e1, s1_e2, knockout=True)
+        sem1_g = simular_partido_torneo(s1_e1, s1_e2, knockout=True, contador_goles=conteo_general_goles)
         sem1_p = s1_e2 if sem1_g == s1_e1 else s1_e1
-        sem2_g = simular_partido_torneo(s2_e1, s2_e2, knockout=True)
+        sem2_g = simular_partido_torneo(s2_e1, s2_e2, knockout=True, contador_goles=conteo_general_goles)
         sem2_p = s2_e2 if sem2_g == s2_e1 else s2_e1
         
         tercero = simular_partido_torneo(sem1_p, sem2_p, knockout=True, contador_goles=conteo_general_goles)
@@ -182,7 +190,7 @@ if st.button("🚀 Lanzar Simulaciones Completas", type="primary", use_container
     
     # --- 8. INTERFAZ DINÁMICA: AUDITORÍA PARTIDO POR PARTIDO ---
     st.header("📈 Reporte Particular Partido por Partido (Fase de Grupos)")
-    st.write("Explora las estadísticas de cada uno de los partidos de la fase inicial:")
+    st.write("Explora las estadísticas e histogramas de cada encuentro del fixture oficial:")
     
     for grupo, equipos in grupos_items:
         with st.expander(f"📁 Desplegar Fixture Completo - {grupo}"):
