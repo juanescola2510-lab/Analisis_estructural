@@ -10,7 +10,7 @@ st.set_page_config(page_title="Simulador Masivo Mundial 2026", page_icon="🏆",
 st.title("🏆 Simulador de Alta Velocidad: 50,000 Mundiales Completos")
 st.write("Análisis probabilístico masivo del torneo completo (Formatos de Grupos y Eliminatorias Oficiales).")
 
-# --- BASE DE DATOS MEJORADA (GF, GC, Racha, Factor_Motivacion) ---
+# --- 1. BASE DE DATOS MEJORADA (GF, GC, Racha, Factor_Motivacion) ---
 @st.cache_data
 def cargar_base_datos_mundial():
     ratings_48 = {
@@ -39,6 +39,7 @@ def cargar_base_datos_mundial():
 
 db_mundial = cargar_base_datos_mundial()
 
+# --- 2. CONFIGURACIÓN ESTRUCTURAL DE GRUPOS ---
 GRUPOS_2026 = {
     "Grupo A": ["México", "Sudáfrica", "Corea del Sur", "República Checa"],
     "Grupo B": ["Suiza", "Canadá", "Catar", "Bosnia y Herz."],
@@ -54,7 +55,7 @@ GRUPOS_2026 = {
     "Grupo L": ["Inglaterra", "Croacia", "Panamá", "Ghana"]
 }
 
-# --- MOTOR DE SIMULACIÓN MATEMÁTICA ---
+# --- 3. MOTOR DE RATINGS DINÁMICOS ---
 def calcular_rating_dinamico(nombre_equipo):
     gf, gc, racha, factor_motivacion = db_mundial[nombre_equipo]
     base_poder = 78.0 + (gf * 6.5) - (gc * 4) + ((racha - 8) * 0.5)
@@ -63,6 +64,7 @@ def calcular_rating_dinamico(nombre_equipo):
     factor_inspiracion = random.uniform(-4.0, 4.0)
     return max(50.0, base_poder + bono_localia + bono_estrellas + factor_inspiracion)
 
+# --- 4. FUNCIÓN INTERNA DE SIMULACIÓN ---
 def simular_partido_torneo(eq1, eq2, knockout=False, contador_goles=None):
     r1 = calcular_rating_dinamico(eq1)
     r2 = calcular_rating_dinamico(eq2)
@@ -91,11 +93,11 @@ def simular_partido_torneo(eq1, eq2, knockout=False, contador_goles=None):
             
     return ganador
 
-# --- INTERFAZ ---
+# --- 5. INTERFAZ Y CONTROL LATERAL ---
 st.sidebar.header("⚙️ Configuración Masiva")
 num_simulaciones = st.sidebar.number_input("Mundiales a Simular", min_value=1, max_value=100000, value=50000, step=5000)
 
-if st.button("🚀 Lanzar 50,000 Simulaciones Completas", type="primary", use_container_width=True):
+if st.button("🚀 Lanzar Simulaciones Completas", type="primary", use_container_width=True):
     status_text = st.empty()
     status_text.info(f"⏳ Procesando {num_simulaciones:,} torneos completos (más de 5.2 millones de partidos)... Por favor, espera.")
     
@@ -110,14 +112,13 @@ if st.button("🚀 Lanzar 50,000 Simulaciones Completas", type="primary", use_co
         clasificados_por_grupo = []
         mejores_terceros_pool = []
         
-        # 1. FASE DE GRUPOS NATIVA
+        # FASE DE GRUPOS NATIVA
         for grupo, equipos in grupos_items:
             tabla = {eq: {"eq": eq, "pts": 0, "dg": 0, "gf": 0, "gc": 0} for eq in equipos}
             for i in range(4):
                 for j in range(i + 1, 4):
                     eq1, eq2 = equipos[i], equipos[j]
                     
-                    # Simular partido y acumular marcador global
                     r1 = calcular_rating_dinamico(eq1)
                     r2 = calcular_rating_dinamico(eq2)
                     diff = r1 - r2
@@ -141,6 +142,8 @@ if st.button("🚀 Lanzar 50,000 Simulaciones Completas", type="primary", use_co
             ordenados = sorted(tabla.values(), key=lambda x: (x["pts"], x["dg"], x["gf"]), reverse=True)
             clasificados_por_grupo.append(ordenados[0]["eq"])
             clasificados_por_grupo.append(ordenados[1]["eq"])
+            
+            # Guardar estructura limpia del tercero para el repechaje
             mejores_terceros_pool.append(ordenados[2])
             
         # Filtrar mejores terceros
@@ -148,7 +151,7 @@ if st.button("🚀 Lanzar 50,000 Simulaciones Completas", type="primary", use_co
         for k in range(8):
             clasificados_por_grupo.append(mejores_terceros_ordenados[k]["eq"])
             
-        # 2. LLAVES DE ELIMINACIÓN DIRECTA (Knockout)
+        # LLAVES DE ELIMINACIÓN DIRECTA (Knockout)
         equipos_activos = clasificados_por_grupo
         for r_partidos in (16, 8, 4):
             prox = []
@@ -160,7 +163,6 @@ if st.button("🚀 Lanzar 50,000 Simulaciones Completas", type="primary", use_co
         # Semifinales, Tercer Puesto y Gran Final
         s1_e1, s1_e2, s2_e1, s2_e2 = equipos_activos
         
-        # Conseguir de forma explícita ganadores y perdedores de semis
         r1_s1, r2_s1 = calcular_rating_dinamico(s1_e1), calcular_rating_dinamico(s1_e2)
         sem1_g = s1_e1 if random.gammavariate(max(0.9, 1.75 + ((r1_s1 - r2_s1) * 0.05)), 1.2) > random.gammavariate(max(0.9, 1.75 - ((r1_s1 - r2_s1) * 0.05)), 1.15) else s1_e2
         sem1_p = s1_e2 if sem1_g == s1_e1 else s1_e1
@@ -169,14 +171,12 @@ if st.button("🚀 Lanzar 50,000 Simulaciones Completas", type="primary", use_co
         sem2_g = s2_e1 if random.gammavariate(max(0.9, 1.75 + ((r1_s2 - r2_s2) * 0.05)), 1.2) > random.gammavariate(max(0.9, 1.75 - ((r1_s2 - r2_s2) * 0.05)), 1.15) else s2_e2
         sem2_p = s2_e2 if sem2_g == s2_e1 else s2_e1
         
-        # Definiciones
         tercero = simular_partido_torneo(sem1_p, sem2_p, knockout=True, contador_goles=conteo_general_goles)
         cuarto = sem2_p if tercero == sem1_p else sem1_p
         
         campeon = simular_partido_torneo(sem1_g, sem2_g, knockout=True, contador_goles=conteo_general_goles)
         subcampeon = sem2_g if campeon == sem1_g else sem1_g
         
-        # Almacenar en contadores
         conteos_campeon[campeon] += 1
         conteos_podio[subcampeon]["2° Lugar"] += 1
         conteos_podio[tercero]["3° Lugar"] += 1
@@ -187,18 +187,14 @@ if st.button("🚀 Lanzar 50,000 Simulaciones Completas", type="primary", use_co
 
     status_text.empty()
     
-    # --- PROCESAMIENTO Y RENDERIZADO ---
+    # --- PROCESAMIENTO Y RENDERIZADO FINAL ---
     st.divider()
     st.subheader(f"📊 Reporte Consolidado de Probabilidades del Campeonato")
     
-    # Marcador general más común de todo el torneo
-    top_uno_goles = conteo_general_goles.most_common(1)[0]
+    top_uno_goles = conteo_general_goles.most_common(1)
+    marcador_texto = top_uno_goles[0][0]
+    cantidad_veces = top_uno_goles[0][1]
     
-    # Extraer el string del marcador ("2 - 1") y la cantidad de veces que ocurrió
-    marcador_texto = top_uno_goles[0]
-    cantidad_veces = top_uno_goles[1]
-    
-    # Calcular el total de partidos jugados en todas las simulaciones (104 partidos por mundial)
     total_partidos_mundiales = int(num_simulaciones) * 104
     porcentaje_marcador_global = (cantidad_veces / total_partidos_mundiales) * 100
 
@@ -207,7 +203,7 @@ if st.button("🚀 Lanzar 50,000 Simulaciones Completas", type="primary", use_co
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown("### Pie Probabilidad del Campeón del Mundo (Top 10)")
+        st.markdown("### 🥧 Probabilidad del Campeón del Mundo (Top 10)")
         top_campeones = conteos_campeon.most_common(10)
         total_top = sum([c for _, c in top_campeones])
         otros = int(num_simulaciones) - total_top
