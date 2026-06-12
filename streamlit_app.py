@@ -10,10 +10,9 @@ st.set_page_config(page_title="Simulador de Marcadores Pro 2026", page_icon="⚽
 st.title("⚽ Simulador de Alta Velocidad Partido por Partido - Mundial 2026")
 st.write("Análisis probabilístico masivo con Gráfico de Pastel interactivo.")
 
-# --- BASE DE DATOS MUNDIAL DE 48 EQUIPOS (Calibración Competitiva) ---
+# --- BASE DE DATOS MUNDIAL DE 48 EQUIPOS ---
 @st.cache_data
 def cargar_base_datos_mundial():
-    # Estructura: (Goles a Favor promedio, Goles en Contra promedio, Puntos Racha)
     ratings_48 = {
         # UEFA
         "Francia": (2.4, 0.8, 12), "España": (2.3, 0.7, 13), "Inglaterra": (2.2, 0.9, 11), "Alemania": (2.1, 1.0, 10),
@@ -43,18 +42,10 @@ db_mundial = cargar_base_datos_mundial()
 # --- LÓGICA DE RATINGS DINÁMICOS ---
 def calcular_rating_dinamico(nombre_equipo, fatiga, lesionados):
     gf, gc, racha = db_mundial[nombre_equipo]
-    
-    # 1. Poder Base según estadísticas actuales
     base_poder = 75.0 + (gf * 5) - (gc * 4) + ((racha - 8) * 0.5)
-    
-    # 2. Factor Localía ÚNICAMENTE para los tres organizadores oficiales
     bono_localia = 4.5 if nombre_equipo in ["Estados Unidos", "México", "Canadá"] else 0.0
-    
-    # 3. Penalizadores físicos
     penalizacion_fatiga = fatiga * 6.0
     penalizacion_lesiones = lesionados * 3.0
-    
-    # 4. Factor Sorpresa e Inspiración del día (Fluctuación aleatoria por partido)
     factor_inspiracion = random.uniform(-4.0, 4.0)
     
     return max(50.0, base_poder + bono_localia - penalizacion_fatiga - penalizacion_lesiones + factor_inspiracion)
@@ -63,13 +54,13 @@ def calcular_rating_dinamico(nombre_equipo, fatiga, lesionados):
 col_ui1, col_ui2 = st.columns(2)
 with col_ui1:
     st.subheader("🏠 Selección 1 / Local")
-    eq1_nombre = st.selectbox("Equipo 1", sorted(list(db_mundial.keys())), index=11) # Ecuador por defecto
+    eq1_nombre = st.selectbox("Equipo 1", sorted(list(db_mundial.keys())), index=11) # Ecuador
     fatiga_1 = st.slider("Fatiga Acumulada (Eq 1)", 0.0, 1.0, 0.10, step=0.05)
     lesiones_1 = st.number_input("Lesiones (Eq 1)", min_value=0, max_value=4, value=0)
 
 with col_ui2:
     st.subheader("🚀 Selección 2 / Visitante")
-    eq2_nombre = st.selectbox("Equipo 2", sorted(list(db_mundial.keys())), index=19) # Francia por defecto
+    eq2_nombre = st.selectbox("Equipo 2", sorted(list(db_mundial.keys())), index=19) # Francia
     fatiga_2 = st.slider("Fatiga Acumulada (Eq 2)", 0.0, 1.0, 0.15, step=0.05)
     lesiones_2 = st.number_input("Lesiones (Eq 2)", min_value=0, max_value=4, value=0)
 
@@ -84,13 +75,11 @@ if st.button("🏟️ Iniciar Simulación de Alta Velocidad", type="primary", us
         status_text = st.empty()
         status_text.info(f"⏳ Procesando {num_ejecuciones:,} partidos simulados en segundo plano... Por favor, espera.")
         
-        # Contadores rápidos en Python nativo para evitar saturar memoria RAM
         conteo_marcadores = Counter()
         victorias_eq1 = 0
         victorias_eq2 = 0
         empates = 0
         
-        # Ejecución a nivel de microprocesador
         for _ in range(int(num_ejecuciones)):
             r1 = calcular_rating_dinamico(eq1_nombre, fatiga_1, lesiones_1)
             r2 = calcular_rating_dinamico(eq2_nombre, fatiga_2, lesiones_2)
@@ -117,7 +106,6 @@ if st.button("🏟️ Iniciar Simulación de Alta Velocidad", type="primary", us
         st.divider()
         st.subheader(f"📊 Reporte de Probabilidades Acumuladas ({num_ejecuciones:,} partidos)")
         
-        # KPIs Principales de Tendencia
         kpi1, kpi2, kpi3 = st.columns(3)
         with kpi1:
             st.metric(f"Probabilidad de {eq1_nombre}", f"{(victorias_eq1 / num_ejecuciones * 100):.2f}%")
@@ -126,14 +114,12 @@ if st.button("🏟️ Iniciar Simulación de Alta Velocidad", type="primary", us
         with kpi3:
             st.metric(f"Probabilidad de {eq2_nombre}", f"{(victorias_eq2 / num_ejecuciones * 100):.2f}%")
             
-        # Marcador más probable
         marcador_comun, total_comun = conteo_marcadores.most_common(1)[0]
         st.success(f"🎯 El marcador más probable según el modelo es **{marcador_comun}** con un **{(total_comun / num_ejecuciones * 100):.2f}%** de coincidencia.")
         
-        # --- CONSTRUCCIÓN DEL GRÁFICO DE PASTEL INTERACTIVO ---
+        # --- CONSTRUCCIÓN DEL GRÁFICO DE PASTEL ---
         st.markdown("### 🥧 Distribución Porcentual de Marcadores Más Frecuentes")
         
-        # Extraemos los 8 marcadores más repetidos y agrupamos el resto en "Otros"
         top_marcadores = conteo_marcadores.most_common(8)
         total_top_goles = sum([cant for _, cant in top_marcadores])
         otros_goles = num_ejecuciones - total_top_goles
@@ -145,7 +131,6 @@ if st.button("🏟️ Iniciar Simulación de Alta Velocidad", type="primary", us
             
         df_pastel = pd.DataFrame(datos_pastel)
         
-        # Renderizado de Plotly Express
         fig = px.pie(
             df_pastel, 
             values="Cantidad", 
@@ -154,12 +139,13 @@ if st.button("🏟️ Iniciar Simulación de Alta Velocidad", type="primary", us
             color_discrete_sequence=px.colors.sequential.RdBu
         )
         fig.update_traces(textposition='inside', textinfo='percent+label')
-        fig.update_layout(use_container_width=True, margin=dict(t=10, b=10, l=10, r=10))
         
-        # Mostrar el pastel en Streamlit
+        # CORRECCIÓN AQUÍ: Se eliminó 'use_container_width' de fig.update_layout
+        fig.update_layout(margin=dict(t=10, b=10, l=10, r=10))
+        
+        # CORRECCIÓN AQUÍ: Se asignó correctamente a la función de Streamlit
         st.plotly_chart(fig, use_container_width=True)
         
-        # Tabla detallada complementaria
         with st.expander("📋 Ver lista completa de frecuencias"):
             df_ranking = pd.DataFrame(conteo_marcadores.items(), columns=["Marcador", "Casos Registrados"]).sort_values(by="Casos Registrados", ascending=False)
             df_ranking["Porcentaje Absoluto"] = (df_ranking["Casos Registrados"] / num_ejecuciones) * 100
