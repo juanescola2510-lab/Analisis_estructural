@@ -101,7 +101,6 @@ if st.button("🚀 Lanzar Simulaciones Completas", type="primary", use_container
     status_text = st.empty()
     status_text.info(f"⏳ Procesando {num_simulaciones:,} torneos completos (más de 5.2 millones de partidos)... Por favor, espera.")
     
-    # Contadores nativos de alta velocidad
     conteos_campeon = Counter()
     conteos_podio = {pais: {"2° Lugar": 0, "3° Lugar": 0, "4° Lugar": 0} for pais in db_mundial}
     conteo_general_goles = Counter()
@@ -143,15 +142,13 @@ if st.button("🚀 Lanzar Simulaciones Completas", type="primary", use_container
             clasificados_por_grupo.append(ordenados[0]["eq"])
             clasificados_por_grupo.append(ordenados[1]["eq"])
             
-            # Guardar estructura limpia del tercero para el repechaje
             mejores_terceros_pool.append(ordenados[2])
             
-        # Filtrar mejores terceros
         mejores_terceros_ordenados = sorted(mejores_terceros_pool, key=lambda x: (x["pts"], x["dg"], x["gf"]), reverse=True)
         for k in range(8):
             clasificados_por_grupo.append(mejores_terceros_ordenados[k]["eq"])
             
-        # LLAVES DE ELIMINACIÓN DIRECTA (Knockout)
+        # LLAVES DE ELIMINACIÓN DIRECTA
         equipos_activos = clasificados_por_grupo
         for r_partidos in (16, 8, 4):
             prox = []
@@ -160,7 +157,6 @@ if st.button("🚀 Lanzar Simulaciones Completas", type="primary", use_container
                 prox.append(g)
             equipos_activos = prox
             
-        # Semifinales, Tercer Puesto y Gran Final
         s1_e1, s1_e2, s2_e1, s2_e2 = equipos_activos
         
         r1_s1, r2_s1 = calcular_rating_dinamico(s1_e1), calcular_rating_dinamico(s1_e2)
@@ -191,16 +187,14 @@ if st.button("🚀 Lanzar Simulaciones Completas", type="primary", use_container
     st.divider()
     st.subheader(f"📊 Reporte Consolidado de Probabilidades del Campeonato")
     
-    top_uno_goles = conteo_general_goles.most_common(1)[0]
-    marcador_texto = top_uno_goles[0]
-    cantidad_veces = top_uno_goles[1]
+    top_uno_goles = conteo_general_goles.most_common(1)
     
+    # LINEA SOLICITADA EXACTA DESDE AQUÍ:
     total_partidos_mundiales = int(num_simulaciones) * 104
     
     # EXTRACCIÓN SEGURA DE TUPLA DENTRO DE LISTA
-    # most_common(1) devuelve algo como: [("2 - 1", 521430)]
-    marcador_texto = top_uno_goles[0][0]
-    cantidad_veces = top_uno_goles[0][1]
+    marcador_texto = top_uno_goles
+    cantidad_veces = top_uno_goles
     
     porcentaje_marcador_global = (cantidad_veces / total_partidos_mundiales) * 100
 
@@ -212,12 +206,12 @@ if st.button("🚀 Lanzar Simulaciones Completas", type="primary", use_container
         st.markdown("### 🥧 Probabilidad del Campeón del Mundo (Top 10)")
         top_campeones = conteos_campeon.most_common(10)
         total_top = sum([c for _, c in top_campeones])
-        otros = int(num_simulaciones) - total_top
+        grid_otros = int(num_simulaciones) - total_top
         
         datos_campeon = {"Selección": [p for p, _ in top_campeones], "Títulos": [c for _, c in top_campeones]}
-        if otros > 0:
+        if grid_otros > 0:
             datos_campeon["Selección"].append("Otros")
-            datos_campeon["Títulos"].append(otros)
+            datos_campeon["Títulos"].append(grid_otros)
             
         df_fig = pd.DataFrame(datos_campeon)
         
@@ -242,4 +236,3 @@ if st.button("🚀 Lanzar Simulaciones Completas", type="primary", use_container
         st.dataframe(df_podios, use_container_width=True)
         
     st.balloons()
-   
