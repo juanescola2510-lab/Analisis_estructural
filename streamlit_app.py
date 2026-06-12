@@ -8,21 +8,28 @@ st.set_page_config(page_title="Simulador Masivo Mundial 2026", page_icon="🏆",
 st.title("🏆 Simulador de Alta Velocidad: 50,000 Mundiales Completos")
 st.markdown("### Análisis probabilístico del torneo completo (Formatos de Grupos y Eliminatorias Oficiales)")
 
+# --- 1. BASE DE DATOS MEJORADA (GF, GC, Racha, Factor_Motivacion) ---
 @st.cache_data
 def cargar_base_datos_mundial():
+    # CORREGIDO: Nombres alineados de forma idéntica con el diccionario de grupos
     return {
+        # UEFA
         "Francia": (2.8, 0.8, 12, 4.5), "España": (2.7, 0.7, 13, 4.0), "Inglaterra": (2.6, 0.9, 11, 4.0), "Alemania": (2.4, 1.0, 10, 3.5),
         "Portugal": (2.5, 0.9, 12, 3.5), "Países Bajos": (2.2, 1.0, 10, 3.0), "Bélgica": (1.8, 1.1, 9, 2.5), "Italia": (1.9, 1.1, 8, 2.0),
         "Croacia": (1.8, 1.0, 9, 2.5), "Dinamarca": (1.8, 1.2, 8, 2.0), "Suiza": (1.8, 1.1, 9, 2.0), "Austria": (1.9, 1.2, 8, 2.0),
         "Noruega": (2.1, 1.3, 8, 3.5), "Ucrania": (1.7, 1.2, 8, 2.0), "Polonia": (1.6, 1.4, 7, 1.5), "Suecia": (1.9, 1.3, 8, 2.0),
         "Turquía": (1.9, 1.3, 9, 2.5), "República Checa": (1.7, 1.3, 8, 1.5), "Escocia": (1.5, 1.5, 7, 1.0), "Bosnia y Herz.": (1.4, 1.6, 6, 1.0),
+        # CONMEBOL
         "Argentina": (2.9, 0.6, 14, 4.5), "Brasil": (2.6, 0.9, 11, 4.0), "Uruguay": (2.5, 1.0, 11, 4.0), "Colombia": (2.4, 0.9, 12, 4.2),
         "Ecuador": (2.2, 0.9, 10, 3.5), "Paraguay": (1.5, 1.1, 8, 1.5), "Bolivia": (1.2, 2.1, 5, 0.5),
-        "Estados Unidos": (2.1, 1.1, 10, 3.0), "México": (1.9, 1.2, 8, 2.5), "Canadá": (2.0, 1.2, 9, 2.5), "Panamá": (1.5, 1.3, 8, 1.5),
+        # CONCACAF
+        "Estados Unidos": (2.1, 1.1, 10, 3.0), "México": (1.9, 1.2, 8, 2.5), "Canadá": (2.0, 1.2, 9, 2.5), "Panamá": (1.7, 1.3, 8, 1.5),
         "Haití": (1.4, 1.7, 6, 1.0), "Curazao": (1.3, 1.9, 5, 0.5), "Jamaica": (1.6, 1.5, 7, 1.5),
+        # CAF
         "Marruecos": (2.3, 0.9, 12, 4.0), "Senegal": (2.2, 1.0, 11, 3.5), "Egipto": (2.1, 1.1, 10, 3.0), "Argelia": (2.0, 1.2, 9, 2.5),
         "Túnez": (1.6, 1.3, 8, 1.5), "Nigeria": (2.2, 1.2, 8, 3.0), "Costa de Marfil": (2.1, 1.1, 10, 3.0), "Ghana": (1.8, 1.3, 8, 2.0),
         "Sudáfrica": (1.6, 1.4, 7, 1.5), "Cabo Verde": (1.6, 1.3, 8, 1.5), "Congo": (1.3, 1.7, 6, 1.0),
+        # AFC + OFC
         "Japón": (2.4, 1.0, 11, 3.5), "Corea del Sur": (2.2, 1.1, 10, 3.0), "Irán": (1.9, 1.2, 9, 2.0), "Australia": (1.8, 1.3, 9, 2.0),
         "Arabia Saudita": (1.7, 1.4, 8, 1.5), "Catar": (1.6, 1.5, 7, 1.5), "Jordania": (1.4, 1.5, 7, 1.0), "Uzbekistán": (1.5, 1.3, 8, 1.5),
         "Nueva Zelanda": (1.4, 1.7, 6, 1.0)
@@ -30,6 +37,7 @@ def cargar_base_datos_mundial():
 
 db_mundial = cargar_base_datos_mundial()
 
+# --- 2. CONFIGURACIÓN ESTRUCTURAL DE GRUPOS ---
 GRUPOS_2026 = {
     "Grupo A": ["México", "Sudáfrica", "Corea del Sur", "República Checa"],
     "Grupo B": ["Suiza", "Canadá", "Catar", "Bosnia y Herz."],
@@ -83,7 +91,6 @@ if st.button("🚀 Lanzar Simulaciones Completas", type="primary", use_container
             tabla = {eq: {"eq": eq, "pts": 0, "dg": 0, "gf": 0, "gc": 0} for eq in equipos}
             for i in range(4):
                 for j in range(i + 1, 4):
-                    # AQUÍ SE CORRIGIÓ TOTALMENTE EL ERROR DE LAS VARIABLES FANTASMA
                     team_a = equipos[i]
                     team_b = equipos[j]
                     
@@ -106,9 +113,9 @@ if st.button("🚀 Lanzar Simulaciones Completas", type="primary", use_container
             for eq in equipos:
                 tabla[eq]["dg"] = tabla[eq]["gf"] - tabla[eq]["gc"]
             ordenados = sorted(tabla.values(), key=lambda x: (x["pts"], x["dg"], x["gf"]), reverse=True)
-            clasificados_por_grupo.append(ordenados[0]["eq"])
-            clasificados_por_grupo.append(ordenados[1]["eq"])
-            mejores_terceros_pool.append(ordenados[2])
+            clasificados_por_grupo.append(ordenados["eq"])
+            clasificados_por_grupo.append(ordenados["eq"])
+            mejores_terceros_pool.append(ordenados)
             
         mejores_terceros_ordenados = sorted(mejores_terceros_pool, key=lambda x: (x["pts"], x["dg"], x["gf"]), reverse=True)
         for k in range(8):
@@ -150,8 +157,8 @@ if st.button("🚀 Lanzar Simulaciones Completas", type="primary", use_container
     # SECCIÓN FINAL PROTEGIDA COMPLETA:
     total_partidos_mundiales = int(num_simulaciones) * 104
     
-    marcador_texto = top_uno_goles[0][0]
-    cantidad_veces = top_uno_goles[0][1]
+    marcador_texto = top_uno_goles
+    cantidad_veces = top_uno_goles
     
     porcentaje_marcador_global = (cantidad_veces / total_partidos_mundiales) * 100
 
