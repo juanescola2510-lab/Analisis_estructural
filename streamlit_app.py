@@ -31,7 +31,8 @@ def cargar_base_datos_mundial():
         # AFC + OFC
         "Japón": (2.4, 1.0, 11, 3.5), "Corea del Sur": (2.2, 1.1, 10, 3.0), "Irán": (1.9, 1.2, 9, 2.0), "Australia": (1.8, 1.3, 9, 2.0),
         "Arabia Saudita": (1.7, 1.4, 8, 1.5), "Catar": (1.6, 1.5, 7, 1.5), "Jordania": (1.4, 1.5, 7, 1.0), "Uzbekistán": (1.5, 1.3, 8, 1.5),
-        "Nueva Zelanda": (1.4, 1.7, 6, 1.0)
+        "Nueva Zelanda": (1.4, 1.7, 6, 1.0),
+        "Irak": (1.5, 1.4, 7, 1.5)  # <--- AGREGADO AQUÍ DE FORMA CORRECTA
     }
 
 db_mundial = cargar_base_datos_mundial()
