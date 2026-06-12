@@ -64,7 +64,7 @@ def calcular_rating_dinamico(nombre_equipo):
     factor_inspiracion = random.uniform(-4.0, 4.0)
     return max(50.0, base_poder + bono_localia + bono_estrellas + factor_inspiracion)
 
-# --- 4. FUNCIÓN INTERNA DE SIMULACIÓN ---
+# --- 4. FUNCIÓN INTERNA DE SIMULACIÓN DE PARTIDOS ---
 def simular_partido_torneo(eq1, eq2, knockout=False, contador_goles=None):
     r1 = calcular_rating_dinamico(eq1)
     r2 = calcular_rating_dinamico(eq2)
@@ -93,7 +93,7 @@ def simular_partido_torneo(eq1, eq2, knockout=False, contador_goles=None):
             
     return ganador
 
-# --- 5. INTERFAZ Y CONTROL LATERAL ---
+# --- 5. INTERFAZ DE USUARIO ---
 st.sidebar.header("⚙️ Configuración Masiva")
 num_simulaciones = st.sidebar.number_input("Mundiales a Simular", min_value=1, max_value=100000, value=50000, step=5000)
 
@@ -112,7 +112,7 @@ if st.button("🚀 Lanzar Simulaciones Completas", type="primary", use_container
         clasificados_por_grupo = []
         mejores_terceros_pool = []
         
-        # FASE DE GRUPOS NATIVA
+        # FASE DE GRUPOS
         for grupo, equipos in grupos_items:
             tabla = {eq: {"eq": eq, "pts": 0, "dg": 0, "gf": 0, "gc": 0} for eq in equipos}
             for i in range(4):
@@ -191,11 +191,17 @@ if st.button("🚀 Lanzar Simulaciones Completas", type="primary", use_container
     st.divider()
     st.subheader(f"📊 Reporte Consolidado de Probabilidades del Campeonato")
     
-    top_uno_goles = conteo_general_goles.most_common(1)
+    top_uno_goles = conteo_general_goles.most_common(1)[0]
+    marcador_texto = top_uno_goles[0]
+    cantidad_veces = top_uno_goles[1]
+    
+    total_partidos_mundiales = int(num_simulaciones) * 104
+    
+    # EXTRACCIÓN SEGURA DE TUPLA DENTRO DE LISTA
+    # most_common(1) devuelve algo como: [("2 - 1", 521430)]
     marcador_texto = top_uno_goles[0][0]
     cantidad_veces = top_uno_goles[0][1]
     
-    total_partidos_mundiales = int(num_simulaciones) * 104
     porcentaje_marcador_global = (cantidad_veces / total_partidos_mundiales) * 100
 
     st.success(f"🎯 El marcador más repetido a nivel global en todo el torneo es **{marcador_texto}** (Ocurrió el {porcentaje_marcador_global:.2f}% de las veces en {cantidad_veces:,} partidos).")
@@ -236,3 +242,4 @@ if st.button("🚀 Lanzar Simulaciones Completas", type="primary", use_container
         st.dataframe(df_podios, use_container_width=True)
         
     st.balloons()
+   
