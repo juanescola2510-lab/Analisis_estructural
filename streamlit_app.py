@@ -1,79 +1,36 @@
 import streamlit as st
 import random
 import pandas as pd
+import plotly.express as px
+from collections import Counter
 
-# Configuración inicial
-st.set_page_config(page_title="Simulador Pro Copa del Mundo 2026", page_icon="🏆", layout="wide")
+st.set_page_config(page_title="Simulador Masivo Mundial 2026", page_icon="🏆", layout="wide")
+st.title("🏆 Simulador de Alta Velocidad: 50,000 Mundiales Completos")
+st.markdown("### Análisis probabilístico del torneo completo (Formatos de Grupos y Eliminatorias Oficiales)")
 
-st.title("🏆 Simulador Hiperrealista - Copa del Mundo 2026")
-st.write("Simulación avanzada con Ratings Reequilibrados, Factor Sorpresa y Estado de Forma Dinámico.")
+@st.cache_data
+def cargar_base_datos_mundial():
+    return {
+        "Francia": (2.8, 0.8, 12, 4.5), "España": (2.7, 0.7, 13, 4.0), "Inglaterra": (2.6, 0.9, 11, 4.0), "Alemania": (2.4, 1.0, 10, 3.5),
+        "Portugal": (2.5, 0.9, 12, 3.5), "Países Bajos": (2.2, 1.0, 10, 3.0), "Bélgica": (1.8, 1.1, 9, 2.5), "Italia": (1.9, 1.1, 8, 2.0),
+        "Croacia": (1.8, 1.0, 9, 2.5), "Dinamarca": (1.8, 1.2, 8, 2.0), "Suiza": (1.8, 1.1, 9, 2.0), "Austria": (1.9, 1.2, 8, 2.0),
+        "Noruega": (2.1, 1.3, 8, 3.5), "Ucrania": (1.7, 1.2, 8, 2.0), "Polonia": (1.6, 1.4, 7, 1.5), "Suecia": (1.9, 1.3, 8, 2.0),
+        "Turquía": (1.9, 1.3, 9, 2.5), "República Checa": (1.7, 1.3, 8, 1.5), "Escocia": (1.5, 1.5, 7, 1.0), "Bosnia y Herz.": (1.4, 1.6, 6, 1.0),
+        "Argentina": (2.9, 0.6, 14, 4.5), "Brasil": (2.6, 0.9, 11, 4.0), "Uruguay": (2.5, 1.0, 11, 4.0), "Colombia": (2.4, 0.9, 12, 4.2),
+        "Ecuador": (2.2, 0.9, 10, 3.5), "Paraguay": (1.5, 1.1, 8, 1.5), "Bolivia": (1.2, 2.1, 5, 0.5),
+        "Estados Unidos": (2.1, 1.1, 10, 3.0), "México": (1.9, 1.2, 8, 2.5), "Canadá": (2.0, 1.2, 9, 2.5), "Panamá": (1.5, 1.3, 8, 1.5),
+        "Haití": (1.4, 1.7, 6, 1.0), "Curazao": (1.3, 1.9, 5, 0.5), "Jamaica": (1.6, 1.5, 7, 1.5),
+        "Marruecos": (2.3, 0.9, 12, 4.0), "Senegal": (2.2, 1.0, 11, 3.5), "Egipto": (2.1, 1.1, 10, 3.0), "Argelia": (2.0, 1.2, 9, 2.5),
+        "Túnez": (1.6, 1.3, 8, 1.5), "Nigeria": (2.2, 1.2, 8, 3.0), "Costa de Marfil": (2.1, 1.1, 10, 3.0), "Ghana": (1.8, 1.3, 8, 2.0),
+        "Sudáfrica": (1.6, 1.4, 7, 1.5), "Cabo Verde": (1.6, 1.3, 8, 1.5), "Congo": (1.3, 1.7, 6, 1.0),
+        "Japón": (2.4, 1.0, 11, 3.5), "Corea del Sur": (2.2, 1.1, 10, 3.0), "Irán": (1.9, 1.2, 9, 2.0), "Australia": (1.8, 1.3, 9, 2.0),
+        "Arabia Saudita": (1.7, 1.4, 8, 1.5), "Catar": (1.6, 1.5, 7, 1.5), "Jordania": (1.4, 1.5, 7, 1.0), "Uzbekistán": (1.5, 1.3, 8, 1.5),
+        "Nueva Zelanda": (1.4, 1.7, 6, 1.0)
+    }
 
-# 1. Base de datos REEQUILIBRADA (Ningún equipo supera los 90 puntos)
-# Se subió la mentalidad y motivación a selecciones emergentes o con gran presente de jugadores
-TEAM_FACTORS = {
-    # Grupo A
-    "México":          {"plantilla": 81, "economia": 85, "tecnico": 78, "mentalidad": 84}, # +Mentalidad por localía
-    "Sudáfrica":       {"plantilla": 74, "economia": 75, "tecnico": 73, "mentalidad": 78},
-    "Corea del Sur":   {"plantilla": 78, "economia": 88, "tecnico": 77, "mentalidad": 86},
-    "República Checa": {"plantilla": 77, "economia": 82, "tecnico": 76, "mentalidad": 80},
-    # Grupo B
-    "Suiza":           {"plantilla": 80, "economia": 90, "tecnico": 81, "mentalidad": 83},
-    "Canadá":          {"plantilla": 79, "economia": 89, "tecnico": 77, "mentalidad": 85}, # Generación motivada
-    "Catar":           {"plantilla": 69, "economia": 92, "tecnico": 74, "mentalidad": 74},
-    "Bosnia y Herz.":  {"plantilla": 74, "economia": 72, "tecnico": 72, "mentalidad": 75},
-    # Grupo C
-    "Brasil":          {"plantilla": 89, "economia": 84, "tecnico": 85, "mentalidad": 83}, # Bajado de los 90s
-    "Marruecos":       {"plantilla": 84, "economia": 81, "tecnico": 84, "mentalidad": 88}, # Gran cohesión y motivación
-    "Escocia":         {"plantilla": 76, "economia": 83, "tecnico": 75, "mentalidad": 79},
-    "Haití":           {"plantilla": 65, "economia": 55, "tecnico": 66, "mentalidad": 72},
-    # Grupo D
-    "Estados Unidos":  {"plantilla": 83, "economia": 94, "tecnico": 81, "mentalidad": 87}, # Impulso generación dorada/local
-    "Turquía":         {"plantilla": 80, "economia": 79, "tecnico": 79, "mentalidad": 84}, # Jugadores jóvenes motivados
-    "Australia":       {"plantilla": 76, "economia": 86, "tecnico": 75, "mentalidad": 80},
-    "Paraguay":        {"plantilla": 75, "economia": 74, "tecnico": 74, "mentalidad": 79},
-    # Grupo E
-    "Alemania":        {"plantilla": 87, "economia": 91, "tecnico": 86, "mentalidad": 85}, # Renovada
-    "Ecuador":         {"plantilla": 81, "economia": 75, "tecnico": 79, "mentalidad": 83}, # Excelente camada de jóvenes
-    "Costa de Marfil": {"plantilla": 79, "economia": 73, "tecnico": 77, "mentalidad": 82},
-    "Curazao":         {"plantilla": 66, "economia": 68, "tecnico": 64, "mentalidad": 68},
-    # Grupo F
-    "Países Bajos":    {"plantilla": 85, "economia": 90, "tecnico": 83, "mentalidad": 82},
-    "Japón":           {"plantilla": 83, "economia": 91, "tecnico": 82, "mentalidad": 89}, # Disciplina y gran estado de forma
-    "Suecia":          {"plantilla": 79, "economia": 88, "tecnico": 77, "mentalidad": 80},
-    "Túnez":           {"plantilla": 73, "economia": 71, "tecnico": 72, "mentalidad": 76},
-    # Grupo G
-    "Bélgica":         {"plantilla": 83, "economia": 89, "tecnico": 81, "mentalidad": 79}, # Transición generacional
-    "Irán":            {"plantilla": 75, "economia": 73, "tecnico": 74, "mentalidad": 79},
-    "Egipto":          {"plantilla": 77, "economia": 75, "tecnico": 76, "mentalidad": 81},
-    "Nueva Zelanda":   {"plantilla": 68, "economia": 82, "tecnico": 67, "mentalidad": 74},
-    # Grupo H
-    "España":          {"plantilla": 88, "economia": 89, "tecnico": 88, "mentalidad": 86}, # Nivelado a la baja
-    "Uruguay":         {"plantilla": 85, "economia": 76, "tecnico": 85, "mentalidad": 90}, # Garra charrúa e ilusión alta
-    "Arabia Saudita":  {"plantilla": 73, "economia": 94, "tecnico": 77, "mentalidad": 77},
-    "Cabo Verde":      {"plantilla": 71, "economia": 64, "tecnico": 69, "mentalidad": 76},
-    # Grupo I
-    "Francia":         {"plantilla": 89, "economia": 91, "tecnico": 88, "mentalidad": 85}, # Bajado de los 90s
-    "Senegal":         {"plantilla": 80, "economia": 72, "tecnico": 78, "mentalidad": 84}, # Fuerte motivación africana
-    "Noruega":         {"plantilla": 80, "economia": 93, "tecnico": 76, "mentalidad": 80}, # Haaland / Ødegaard motivados
-    "Irak":            {"plantilla": 69, "economia": 68, "tecnico": 70, "mentalidad": 76},
-    # Grupo J
-    "Argentina":       {"plantilla": 89, "economia": 77, "tecnico": 89, "mentalidad": 90}, # Ajustado para evitar monopolio
-    "Argelia":         {"plantilla": 77, "economia": 76, "tecnico": 75, "mentalidad": 80},
-    "Austria":         {"plantilla": 79, "economia": 87, "tecnico": 78, "mentalidad": 81},
-    "Jordania":        {"plantilla": 67, "economia": 73, "tecnico": 66, "mentalidad": 73},
-    # Grupo K
-    "Portugal":        {"plantilla": 87, "economia": 87, "tecnico": 82, "mentalidad": 83},
-    "Colombia":        {"plantilla": 84, "economia": 75, "tecnico": 83, "mentalidad": 86}, # Gran momento de forma invicto
-    "Congo":           {"plantilla": 71, "economia": 61, "tecnico": 67, "mentalidad": 74},
-    "Uzbekistán":      {"plantilla": 72, "economia": 74, "tecnico": 71, "mentalidad": 76},
-    # Grupo L
-    "Inglaterra":      {"plantilla": 88, "economia": 92, "tecnico": 84, "mentalidad": 82},
-    "Croacia":         {"plantilla": 81, "economia": 80, "tecnico": 82, "mentalidad": 87},
-    "Panamá":          {"plantilla": 73, "economia": 77, "tecnico": 74, "mentalidad": 78},
-    "Ghana":           {"plantilla": 75, "economia": 69, "tecnico": 74, "mentalidad": 78}
-}
+db_mundial = cargar_base_datos_mundial()
 
-GRUPS_2026 = {
+GRUPOS_2026 = {
     "Grupo A": ["México", "Sudáfrica", "Corea del Sur", "República Checa"],
     "Grupo B": ["Suiza", "Canadá", "Catar", "Bosnia y Herz."],
     "Grupo C": ["Brasil", "Marruecos", "Escocia", "Haití"],
@@ -88,188 +45,143 @@ GRUPS_2026 = {
     "Grupo L": ["Inglaterra", "Croacia", "Panamá", "Ghana"]
 }
 
-if "desgaste" not in st.session_state:
-    st.session_state.desgaste = {pais: 0.0 for pais in TEAM_FACTORS}
-if "lesionados" not in st.session_state:
-    st.session_state.lesionados = {pais: 0 for pais in TEAM_FACTORS}
+def calcular_rating_dinamico(nombre_equipo):
+    gf, gc, racha, factor_motivacion = db_mundial[nombre_equipo]
+    base_poder = 78.0 + (gf * 6.5) - (gc * 4) + ((racha - 8) * 0.5)
+    bono_localia = 4.5 if nombre_equipo in ["Estados Unidos", "México", "Canadá"] else 0.0
+    return max(50.0, base_poder + bono_localia + (factor_motivacion * 1.2) + random.uniform(-4.0, 4.0))
 
-def calcular_rating_partido(team, es_eliminatoria):
-    base = TEAM_FACTORS[team]
-    rating_estructural = (base["plantilla"] * 0.50) + (base["tecnico"] * 0.20) + (base["economia"] * 0.15) + (base["mentalidad"] * 0.15)
-    
-    bono_localia = 4.5 if team in ["México", "Estados Unidos", "Canadá"] else 0.0
-    penalizacion_desgaste = st.session_state.desgaste[team] * 5.0  
-    penalizacion_lesiones = st.session_state.lesionados[team] * 2.5  
-    bono_mentalidad_extra = (base["mentalidad"] - 80) * 0.1 if es_eliminatoria else 0.0
-    
-    # --- FACTOR SORPRESA: Estado de forma e inspiración del día ---
-    # Un número aleatorio entre -4.0 y +4.0. Simula si el equipo salió inspirado o desconectado.
-    factor_inspiracion = random.uniform(-4.0, 4.0)
-    
-    rating_final = rating_estructural + bono_localia - penalizacion_desgaste - penalizacion_lesiones + bono_mentalidad_extra + factor_inspiracion
-    return max(50.0, rating_final)
-
-def actualizar_salud_y_fatiga(team):
-    st.session_state.desgaste[team] = min(1.0, st.session_state.desgaste[team] + random.uniform(0.08, 0.15))
-    if random.random() < 0.12:
-        st.session_state.lesionados[team] += 1
-
-def simulate_match(team1, team2, knockout=False):
-    r1 = calcular_rating_partido(team1, knockout)
-    r2 = calcular_rating_partido(team2, knockout)
-    
+def simular_partido_torneo(eq1, eq2, knockout=False, contador_goles=None):
+    r1 = calcular_rating_dinamico(eq1)
+    r2 = calcular_rating_dinamico(eq2)
     diff = r1 - r2
-    lambda1 = max(0.5, 1.4 + (diff * 0.05))
-    lambda2 = max(0.5, 1.4 - (diff * 0.05))
-    
-    goles1 = max(0, int(random.gammavariate(lambda1, 1.1)))
-    goles2 = max(0, int(random.gammavariate(lambda2, 1.1)))
-    
-    actualizar_salud_y_fatiga(team1)
-    actualizar_salud_y_fatiga(team2)
-    
-    ganador, perdedor = None, None
-    if goles1 > goles2:
-        ganador, perdedor = team1, team2
-    elif goles2 > goles1:
-        ganador, perdedor = team2, team1
-    else:
-        if knockout:
-            ganador, perdedor = (team1, team2) if random.random() > 0.5 else (team2, team1)
-            
-    return goles1, goles2, ganador, perdedor
+    g1 = max(0, int(random.gammavariate(max(0.9, 1.75 + (diff * 0.05)), 1.35 + (max(0.0, diff) * 0.02))))
+    g2 = max(0, int(random.gammavariate(max(0.9, 1.75 - (diff * 0.05)), 1.15)))
+    if contador_goles is not None:
+        contador_goles[f"{g1} - {g2}"] += 1
+    if g1 > g2: return eq1
+    elif g2 > g1: return eq2
+    return eq1 if random.random() > 0.5 else eq2
 
-# --- CONFIGURACIÓN DE LA SIMULACIÓN MASIVA ---
-st.sidebar.header("⚙️ Opciones de Simulación")
-num_simulaciones = st.sidebar.number_input("Número de Mundiales a simular", min_value=1, max_value=50000, value=1000, step=1000)
+st.sidebar.header("⚙️ Configuración Masiva")
+num_simulaciones = st.sidebar.number_input("Mundiales a Simular", min_value=1, max_value=100000, value=50000, step=5000)
 
-if st.button("🚀 Ejecutar Simulaciones en Serie", type="primary"):
-    
-    # Estructuras de almacenamiento consolidado para el Podio Histórico
-    podios = {pais: {"1° Lugar": 0, "2° Lugar": 0, "3° Lugar": 0, "4° Lugar": 0} for pais in TEAM_FACTORS}
-    historial_ganadores = []
-
-    # Mensaje de estado estático de alta velocidad
+if st.button("🚀 Lanzar Simulaciones Completas", type="primary", use_container_width=True):
     status_text = st.empty()
-    status_text.info(f"⏳ Ejecutando {num_simulaciones:,} simulaciones a máxima velocidad... Por favor, espera.")
+    status_text.info(f"⏳ Procesando {num_simulaciones:,} torneos completos... Por favor, espera.")
     
-    # Cacheamos variables fijas para optimizar velocidad de CPU
-    grupos_items = list(GRUPS_2026.items())
+    conteos_campeon = Counter()
+    conteos_podio = {pais: {"2° Lugar": 0, "3° Lugar": 0, "4° Lugar": 0} for pais in db_mundial}
+    conteo_general_goles = Counter()
+    grupos_items = list(GRUPOS_2026.items())
     
-    # --- MOTOR ULTRA OPTIMIZADO (DICCIONARIOS PUROS) ---
     for n in range(1, int(num_simulaciones) + 1):
-        # Reiniciar estadísticas físicas al inicio de cada Copa del Mundo individual
-        st.session_state.desgaste = {pais: 0.0 for pais in TEAM_FACTORS}
-        st.session_state.lesionados = {pais: 0 for pais in TEAM_FACTORS}
-        
         clasificados_por_grupo = []
         mejores_terceros_pool = []
         
-        # 1. FASE DE GRUPOS (Sin usar DataFrames intermedios)
         for grupo, equipos in grupos_items:
             tabla = {eq: {"eq": eq, "pts": 0, "dg": 0, "gf": 0, "gc": 0} for eq in equipos}
             for i in range(4):
                 for j in range(i + 1, 4):
-                    eq1, eq2 = equipos[i], equipos[j]
-                    g1, g2, g_match, _ = simulate_match(eq1, eq2, knockout=False)
+                    # AQUÍ SE CORRIGIÓ TOTALMENTE EL ERROR DE LAS VARIABLES FANTASMA
+                    team_a = equipos[i]
+                    team_b = equipos[j]
                     
-                    tabla[eq1]["gf"] += g1
-                    tabla[eq1]["gc"] += g2
-                    tabla[eq2]["gf"] += g2
-                    tabla[eq2]["gc"] += g1
+                    r1 = calcular_rating_dinamico(team_a)
+                    r2 = calcular_rating_dinamico(team_b)
+                    diff = r1 - r2
+                    l1 = max(0.9, 1.75 + (diff * 0.05))
+                    l2 = max(0.9, 1.75 - (diff * 0.05))
+                    g1 = max(0, int(random.gammavariate(l1, 1.35 + (max(0.0, diff) * 0.02))))
+                    g2 = max(0, int(random.gammavariate(l2, 1.15)))
                     
-                    if g_match == eq1: 
-                        tabla[eq1]["pts"] += 3
-                    elif g_match == eq2: 
-                        tabla[eq2]["pts"] += 3
-                    else: 
-                        tabla[eq1]["pts"] += 1
-                        tabla[eq2]["pts"] += 1
-            
-            # Calcular diferencia de goles en Python nativo
+                    conteo_general_goles[f"{g1} - {g2}"] += 1
+                    tabla[team_a]["gf"] += g1; tabla[team_a]["gc"] += g2
+                    tabla[team_b]["gf"] += g2; tabla[team_b]["gc"] += g1
+                    
+                    if g1 > g2: tabla[team_a]["pts"] += 3
+                    elif g2 > g1: tabla[team_b]["pts"] += 3
+                    else: tabla[team_a]["pts"] += 1; tabla[team_b]["pts"] += 1
+                    
             for eq in equipos:
                 tabla[eq]["dg"] = tabla[eq]["gf"] - tabla[eq]["gc"]
-            
-            # Ordenar la tabla del grupo: Puntos -> Diferencia Goles -> Goles Favor
             ordenados = sorted(tabla.values(), key=lambda x: (x["pts"], x["dg"], x["gf"]), reverse=True)
-            
-            # Clasifican los 2 primeros del grupo
             clasificados_por_grupo.append(ordenados[0]["eq"])
             clasificados_por_grupo.append(ordenados[1]["eq"])
-            
-            # Guardar el 3° lugar para el repechaje de mejores terceros
             mejores_terceros_pool.append(ordenados[2])
             
-        # Ordenar y filtrar los 8 mejores terceros de los 12 grupos
         mejores_terceros_ordenados = sorted(mejores_terceros_pool, key=lambda x: (x["pts"], x["dg"], x["gf"]), reverse=True)
         for k in range(8):
             clasificados_por_grupo.append(mejores_terceros_ordenados[k]["eq"])
             
-        # 2. LLAVES ELIMINATORIAS DIRECTAS (Knockout)
         equipos_activos = clasificados_por_grupo
-        
-        # Dieciseisavos (16 partidos)
-        prox = []
-        for p in range(16):
-            _, _, g, _ = simulate_match(equipos_activos[p*2], equipos_activos[p*2+1], knockout=True)
-            prox.append(g)
-        equipos_activos = prox
-        
-        # Octavos (8 partidos)
-        prox = []
-        for p in range(8):
-            _, _, g, _ = simulate_match(equipos_activos[p*2], equipos_activos[p*2+1], knockout=True)
-            prox.append(g)
-        equipos_activos = prox
-        
-        # Cuartos (4 partidos)
-        prox = []
-        for p in range(4):
-            _, _, g, _ = simulate_match(equipos_activos[p*2], equipos_activos[p*2+1], knockout=True)
-            prox.append(g)
-        equipos_activos = prox
+        for r_partidos in (16, 8, 4):
+            prox = []
+            for p in range(r_partidos):
+                g = simular_partido_torneo(equipos_activos[p*2], equipos_activos[p*2+1], knockout=True, contador_goles=conteo_general_goles)
+                prox.append(g)
+            equipos_activos = prox
             
-        # Semifinales (2 partidos con los 4 equipos restantes)
         s1_e1, s1_e2, s2_e1, s2_e2 = equipos_activos
-        _, _, sem1_ganador, sem1_perdedor = simulate_match(s1_e1, s1_e2, knockout=True)
-        _, _, sem2_ganador, sem2_perdedor = simulate_match(s2_e1, s2_e2, knockout=True)
+        sem1_g = simular_partido_torneo(s1_e1, s1_e2, knockout=True)
+        sem1_p = s1_e2 if sem1_g == s1_e1 else s1_e1
+        sem2_g = simular_partido_torneo(s2_e1, s2_e2, knockout=True)
+        sem2_p = s2_e2 if sem2_g == s2_e1 else s2_e1
         
-        # Tercer Puesto (3° y 4°)
-        _, _, tercero, cuarto = simulate_match(sem1_perdedor, sem2_perdedor, knockout=True)
+        tercero = simular_partido_torneo(sem1_p, sem2_p, knockout=True, contador_goles=conteo_general_goles)
+        cuarto = sem2_p if tercero == sem1_p else sem1_p
+        campeon = simular_partido_torneo(sem1_g, sem2_g, knockout=True, contador_goles=conteo_general_goles)
+        subcampeon = sem2_g if campeon == sem1_g else sem1_g
         
-        # Gran Final (1° y 2°)
-        _, _, campeon, subcampeon = simulate_match(sem1_ganador, sem2_ganador, knockout=True)
+        conteos_campeon[campeon] += 1
+        conteos_podio[subcampeon]["2° Lugar"] += 1
+        conteos_podio[tercero]["3° Lugar"] += 1
+        conteos_podio[cuarto]["4° Lugar"] += 1
         
-        # Guardar en el Podio acumulado histórico
-        podios[campeon]["1° Lugar"] += 1
-        podios[subcampeon]["2° Lugar"] += 1
-        podios[tercero]["3° Lugar"] += 1
-        podios[cuarto]["4° Lugar"] += 1
-        
-        # Almacenar historial visual sin colapsar memoria (máximo primeras 500)
-        if n <= 500:
-            historial_ganadores.append({"Mundial N°": f"Simulación {n}", "Campeón 🏆": campeon})
-            
-        # Evita congelamiento: Envía señal de actividad a Streamlit cada 5,000 mundiales
-        if n % 5000 == 0:
-            status_text.info(f"⏳ Procesando lotes... {n:,} / {int(num_simulaciones):,} mundiales completados.")
+        if n % 10000 == 0:
+            status_text.info(f"⏳ Procesando lotes... {n:,} / {int(num_simulaciones):,} mundiales calculados.")
 
-    # Limpiar mensaje de espera
     status_text.empty()
+    st.divider()
+    st.subheader("📊 Reporte Consolidado de Probabilidades del Campeonato")
+    
+    top_uno_goles = conteo_general_goles.most_common(1)
+    
+    # SECCIÓN FINAL PROTEGIDA COMPLETA:
+    total_partidos_mundiales = int(num_simulaciones) * 104
+    
+    marcador_texto = top_uno_goles[0][0]
+    cantidad_veces = top_uno_goles[0][1]
+    
+    porcentaje_marcador_global = (cantidad_veces / total_partidos_mundiales) * 100
 
-    # --- RENDERIZADO DE RESULTADOS ---
+    st.success(f"🎯 El marcador más repetido a nivel global en todo el torneo es **{marcador_texto}** (Ocurrió el {porcentaje_marcador_global:.2f}% de las veces en {cantidad_veces:,} partidos).")
+
     col1, col2 = st.columns(2)
-
     with col1:
-        st.subheader("📋 Historial (Primeras 500 ediciones)")
-        st.dataframe(pd.DataFrame(historial_ganadores), height=450, use_container_width=True)
-        
-    with col2:
-        st.subheader("📊 Tabla de Podios Consolidada")
-        df_podios = pd.DataFrame.from_dict(podios, orient="index")
-        # Filtrar solo países que pisaron semifinales
-        df_podios = df_podios[(df_podios != 0).any(axis=1)]
-        df_podios = df_podios.sort_values(by=["1° Lugar", "2° Lugar", "3° Lugar", "4° Lugar"], ascending=False)
-        st.dataframe(df_podios, height=450, use_container_width=True)
+        st.markdown("### 🥧 Probabilidad del Campeón del Mundo (Top 10)")
+        top_campeones = conteos_campeon.most_common(10)
+        datos_campeon = {"Selección": [p for p, _ in top_campeones], "Títulos": [c for _, c in top_campeones]}
+        grid_otros = int(num_simulaciones) - sum([c for _, c in top_campeones])
+        if grid_otros > 0:
+            datos_campeon["Selección"].append("Otros")
+            datos_campeon["Títulos"].append(grid_otros)
+        st.plotly_chart(px.pie(pd.DataFrame(datos_campeon), values="Títulos", names="Selección", hole=0.4, color_discrete_sequence=px.colors.sequential.YlOrRd), use_container_width=True)
 
+    with col2:
+        st.markdown("### 📋 Tabla de Podios Totales Organizada")
+        podios_completos = {}
+        for pais, titulos in conteos_campeon.items():
+            podios_completos[pais] = {
+                "1° Lugar (Títulos)": titulos,
+                "Porcentaje Ganador": f"{(titulos / int(num_simulaciones) * 100):.2f}%",
+                "2° Lugar": conteos_podio[pais]["2° Lugar"],
+                "3° Lugar": conteos_podio[pais]["3° Lugar"],
+                "4° Lugar": conteos_podio[pais]["4° Lugar"]
+            }
+            
+        df_podios = pd.DataFrame.from_dict(podios_completos, orient="index")
+        df_podios = df_podios.sort_values(by="1° Lugar (Títulos)", ascending=False)
+        st.dataframe(df_podios, use_container_width=True)
+        
     st.balloons()
