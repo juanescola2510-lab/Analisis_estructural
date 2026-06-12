@@ -8,7 +8,7 @@ from collections import Counter
 st.set_page_config(page_title="Simulador de Marcadores Ofensivo 2026", page_icon="⚽", layout="wide")
 
 st.title("⚽ Simulador Ofensivo de Alta Velocidad - Mundial 2026")
-st.write("Modelo calibrado para fútbol moderno: más goles, impacto de cracks mundiales y motivación extrema.")
+st.write("Modelo calibrado con escala adaptativa: goles dinámicos, impacto de cracks y motivación extrema.")
 
 # --- BASE DE DATOS MEJORADA (GF_promedio, GC_promedio, Racha, Factor_Motivacion_O_Cracks) ---
 @st.cache_data
@@ -55,13 +55,13 @@ def calcular_rating_dinamico(nombre_equipo, fatiga, lesionados):
 col_ui1, col_ui2 = st.columns(2)
 with col_ui1:
     st.subheader("🏠 Selección 1 / Local")
-    eq1_nombre = st.selectbox("Equipo 1", sorted(list(db_mundial.keys())), index=26) # México
+    eq1_nombre = st.selectbox("Equipo 1", sorted(list(db_mundial.keys())), index=3) # Alemania por defecto
     fatiga_1 = st.slider("Fatiga Acumulada (Eq 1)", 0.0, 1.0, 0.10, step=0.05)
     lesiones_1 = st.number_input("Lesiones (Eq 1)", min_value=0, max_value=4, value=0)
 
 with col_ui2:
     st.subheader("🚀 Selección 2 / Visitante")
-    eq2_nombre = st.selectbox("Equipo 2", sorted(list(db_mundial.keys())), index=38) # Sudáfrica
+    eq2_nombre = st.selectbox("Equipo 2", sorted(list(db_mundial.keys())), index=12) # Curazao por defecto
     fatiga_2 = st.slider("Fatiga Acumulada (Eq 2)", 0.0, 1.0, 0.15, step=0.05)
     lesiones_2 = st.number_input("Lesiones (Eq 2)", min_value=0, max_value=4, value=0)
 
@@ -74,7 +74,7 @@ if st.button("🏟️ Iniciar Simulación de Alta Velocidad", type="primary", us
         st.warning("⚠️ Selecciona dos países distintos para jugar el encuentro.")
     else:
         status_text = st.empty()
-        status_text.info(f"⏳ Procesando {num_ejecuciones:,} partidos simulados con motor de alta efectividad...")
+        status_text.info(f"⏳ Procesando {num_ejecuciones:,} partidos simulados en segundo plano... Por favor, espera.")
         
         conteo_marcadores = Counter()
         victorias_eq1 = 0
@@ -86,11 +86,18 @@ if st.button("🏟️ Iniciar Simulación de Alta Velocidad", type="primary", us
             r2 = calcular_rating_dinamico(eq2_nombre, fatiga_2, lesiones_2)
             
             diff = r1 - r2
+            
+            # Límites de Poisson base elevados para empujar marcadores reales
             lambda1 = max(0.9, 1.75 + (diff * 0.05))
             lambda2 = max(0.9, 1.75 - (diff * 0.05))
             
-            goles1 = max(0, int(random.gammavariate(lambda1, 1.2)))
-            goles2 = max(0, int(random.gammavariate(lambda2, 1.2)))
+            # MOTOR CORREGIDO: Escala de dispersión adaptativa dinámica
+            # Si un equipo es muy superior (diff > 0), abre la ventana para goleadas contundentes
+            escala_goles1 = 1.35 + (max(0.0, diff) * 0.02)
+            escala_goles2 = 1.15
+            
+            goles1 = max(0, int(random.gammavariate(lambda1, escala_goles1)))
+            goles2 = max(0, int(random.gammavariate(lambda2, escala_goles2)))
             
             conteo_marcadores[f"{goles1} - {goles2}"] += 1
             
@@ -115,7 +122,6 @@ if st.button("🏟️ Iniciar Simulación de Alta Velocidad", type="primary", us
         with kpi3:
             st.metric(f"Probabilidad de {eq2_nombre}", f"{(victorias_eq2 / num_ejecuciones * 100):.2f}%")
             
-        # SOLUCIÓN DEL ERROR AQUÍ: Extracción segura del elemento de la lista
         top_uno = conteo_marcadores.most_common(1)
         marcador_comun = top_uno[0][0]
         total_comun = top_uno[0][1]
@@ -123,7 +129,7 @@ if st.button("🏟️ Iniciar Simulación de Alta Velocidad", type="primary", us
         st.success(f"🎯 El marcador más probable según el modelo es **{marcador_comun}** con un **{(total_comun / num_ejecuciones * 100):.2f}%** de coincidencia.")
         
         # --- GRÁFICO DE PASTEL ---
-        st.markdown("### 🥧 Distribución Porcentual de Marcadores Más Frecuentes")
+        st.markdown("### Pie Distribución Porcentual de Marcadores Más Frecuentes")
         
         top_marcadores = conteo_marcadores.most_common(8)
         total_top_goles = sum([cant for _, cant in top_marcadores])
