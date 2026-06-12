@@ -4,13 +4,13 @@ import pandas as pd
 import plotly.express as px
 from collections import Counter
 
-# Configuración de la página
+# 1. Configuración de la página de Streamlit
 st.set_page_config(page_title="Simulador Masivo Mundial 2026", page_icon="🏆", layout="wide")
 
 st.title("🏆 Simulador de Alta Velocidad: 50,000 Mundiales Completos")
-st.write("Análisis probabilístico masivo del torneo completo (Formatos de Grupos y Eliminatorias Oficiales).")
+st.markdown("### Análisis probabilístico masivo del torneo completo (Formatos de Grupos y Eliminatorias Oficiales)")
 
-# --- 1. BASE DE DATOS MEJORADA (GF, GC, Racha, Factor_Motivacion) ---
+# 2. Base de datos con los 48 equipos oficiales calibrados (Ataque, Defensa, Racha, Cracks)
 @st.cache_data
 def cargar_base_datos_mundial():
     ratings_48 = {
@@ -39,7 +39,7 @@ def cargar_base_datos_mundial():
 
 db_mundial = cargar_base_datos_mundial()
 
-# --- 2. CONFIGURACIÓN ESTRUCTURAL DE GRUPOS ---
+# 3. Configuración estructural de los 12 grupos del Mundial 2026
 GRUPOS_2026 = {
     "Grupo A": ["México", "Sudáfrica", "Corea del Sur", "República Checa"],
     "Grupo B": ["Suiza", "Canadá", "Catar", "Bosnia y Herz."],
@@ -55,7 +55,7 @@ GRUPOS_2026 = {
     "Grupo L": ["Inglaterra", "Croacia", "Panamá", "Ghana"]
 }
 
-# --- 3. MOTOR DE RATINGS DINÁMICOS ---
+# 4. Función de cálculo de potencia en tiempo real (Incluye bono estricto de localía)
 def calcular_rating_dinamico(nombre_equipo):
     gf, gc, racha, factor_motivacion = db_mundial[nombre_equipo]
     base_poder = 78.0 + (gf * 6.5) - (gc * 4) + ((racha - 8) * 0.5)
@@ -64,7 +64,7 @@ def calcular_rating_dinamico(nombre_equipo):
     factor_inspiracion = random.uniform(-4.0, 4.0)
     return max(50.0, base_poder + bono_localia + bono_estrellas + factor_inspiracion)
 
-# --- 4. FUNCIÓN INTERNA DE SIMULACIÓN DE PARTIDOS ---
+# 5. Función de simulación con escala ofensiva adaptativa para evitar el bucle del 1-0
 def simular_partido_torneo(eq1, eq2, knockout=False, contador_goles=None):
     r1 = calcular_rating_dinamico(eq1)
     r2 = calcular_rating_dinamico(eq2)
@@ -93,10 +93,11 @@ def simular_partido_torneo(eq1, eq2, knockout=False, contador_goles=None):
             
     return ganador
 
-# --- 5. INTERFAZ DE USUARIO ---
+# 6. Interfaz del menú lateral de Streamlit
 st.sidebar.header("⚙️ Configuración Masiva")
 num_simulaciones = st.sidebar.number_input("Mundiales a Simular", min_value=1, max_value=100000, value=50000, step=5000)
 
+# 7. Ejecución principal del Torneo al presionar el botón
 if st.button("🚀 Lanzar Simulaciones Completas", type="primary", use_container_width=True):
     status_text = st.empty()
     status_text.info(f"⏳ Procesando {num_simulaciones:,} torneos completos (más de 5.2 millones de partidos)... Por favor, espera.")
@@ -183,18 +184,17 @@ if st.button("🚀 Lanzar Simulaciones Completas", type="primary", use_container
 
     status_text.empty()
     
-    # --- PROCESAMIENTO Y RENDERIZADO FINAL ---
+    # --- RENDERIZADO FINAL DE RESULTADOS GRÁFICOS Y TABLAS ---
     st.divider()
-    st.subheader(f"📊 Reporte Consolidado de Probabilidades del Campeonato")
+    st.subheader("📊 Reporte Consolidado de Probabilidades del Campeonato")
     
     top_uno_goles = conteo_general_goles.most_common(1)
     
-    # LINEA SOLICITADA EXACTA DESDE AQUÍ:
     total_partidos_mundiales = int(num_simulaciones) * 104
     
-    # EXTRACCIÓN SEGURA DE TUPLA DENTRO DE LISTA
-    marcador_texto = top_uno_goles
-    cantidad_veces = top_uno_goles
+    # Separación por corchetes limpia e idéntica a la anterior
+    marcador_texto = top_uno_goles[0][0]
+    cantidad_veces = top_uno_goles[0][1]
     
     porcentaje_marcador_global = (cantidad_veces / total_partidos_mundiales) * 100
 
