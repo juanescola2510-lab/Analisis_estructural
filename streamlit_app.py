@@ -1,261 +1,186 @@
 import streamlit as st
-import numpy as np
-import matplotlib.pyplot as plt
+import random
+import pandas as pd
 
-# ==============================================================================
-# CONFIGURACIÓN DE LA INTERFAZ DE INGENIERÍA
-# ==============================================================================
-st.set_page_config(
-    page_title="Simulador CFD Dual - UNACEM", 
-    layout="wide", 
-    initial_sidebar_state="expanded"
-)
+# Configuración de página
+st.set_page_config(page_title="Simulador Match-by-Match Mundial 2026", page_icon="⚽", layout="wide")
 
-st.markdown("""
-    <style>
-    .reportview-container { background: #0e1117; }
-    h1 { color: #f0f2f6; font-family: 'Helvetica Neue', sans-serif; font-weight: 700; }
-    h2, h3 { color: #1f77b4; font-family: 'Helvetica Neue', sans-serif; }
-    .stAlert { background-color: #1e293b; border-left: 5px solid #3b82f6; }
-    </style>
-    """, unsafe_allow_html=True)
+st.title("⚽ Simulador Profesional Partido por Partido - Mundial 2026")
+st.write("Modelo predictivo basado en convocatorias reales, nivel de jugadores, fatiga acumulada y racha histórica.")
 
-st.title("⚙️ Simulador CFD Co-axial: Análisis Dual del Ingreso")
-st.markdown("""
-**Evaluación Simultánea de Dinámica de Fluidos: Campos de Velocidad y Gradientes de Presión Estática**  
-Modifica la geometría en la barra lateral para observar en paralelo cómo se disipan los microvórtices y cómo se homogenizan las presiones en la campana.
-""")
-
-# ==============================================================================
-# PANEL DE CONTROL INTERACTIVO (BARRA LATERAL)
-# ==============================================================================
-st.sidebar.header("🛠️ Variables de Diseño Geométrico")
-
-# CONTROL 1: El ángulo de la chapa de la campana
-angulo_deg = st.sidebar.slider("Ángulo de la Transición Externa (Grados)", 90, 180, 90, step=5)
-
-# CONTROL 2: El radio de curvatura o suavizado de la campana
-radio_mm = st.sidebar.slider("Radio de Suavizado de la Campana (mm)", 0, 250, 0, step=25)
-
-st.sidebar.markdown("---")
-st.sidebar.header("📋 Parámetros de Operación")
-rpm = st.sidebar.slider("Velocidad de Rotación (RPM)", 500, 1200, 1040, step=10)
-d_entrada = st.sidebar.slider("Diámetro Boca Aspiración / Cuello (mm)", 400, 1400, 950, step=50)
-diametro = st.sidebar.number_input("Diámetro Exterior Placa (mm)", value=1800)
-ancho_perif = st.sidebar.slider("Ancho de Periferia / Salida (mm)", 100, 300, 200, step=10)
-densidad_gas = st.sidebar.number_input("Densidad del Gas (kg/m³)", value=0.95, step=0.05)
-
-# Cálculos mecánicos y fluidodinámicos rápidos
-radio_ext = diametro / 2000 
-omega = (2 * np.pi * rpm) / 60
-v_periferica = omega * radio_ext
-reynolds = (densidad_gas * v_periferica * (ancho_perif / 1000)) / 1.81e-5
-
-st.sidebar.markdown("---")
-st.sidebar.header("📈 Telemetría Calculada")
-st.sidebar.metric(label="Velocidad en la Punta del Álabe", value=f"{v_periferica:.2f} m/s", delta=f"{v_periferica*3.6:.1f} km/h")
-
-try:
-    st.sidebar.image("https://unacem.com.pe", width=180)
-except Exception:
-    st.sidebar.subheader("🏢 UNACEM - Área Técnica")
-
-# ==============================================================================
-# NÚCLEO MATEMÁTICO: MODELADO CFD MULTIVÓRTICE Y BERNOULLI REAL
-# ==============================================================================
-nx, ny = 160, 150  
-x = np.linspace(0.1, 4.9, nx)
-y = np.linspace(0.1, 4.9, ny)
-X, Y = np.meshgrid(x, y)
-
-factor_angulo = (angulo_deg - 90) / 90.0
-factor_radio = radio_mm / 250.0
-
-x_centro = 2.5
-ancho_boca_visual = 3.4 * (d_entrada / diametro)
-
-x_izq_entrada = x_centro - ancho_boca_visual / 2  
-x_der_entrada = x_centro + ancho_boca_visual / 2  
-y_quiebre = 2.8 - (1.3 * factor_angulo)  
-
-angulo_rad = np.radians(angulo_deg)
-alpha_giro = np.pi - angulo_rad  
-
-if angulo_deg == 90 or angulo_deg == 180:
-    y_fin = y_quiebre
-    x_fin_izq = 0.2
-    x_fin_der = 4.8
-else:
-    y_fin = max(0.6, y_quiebre - 1.8 * np.sin(alpha_giro))
-    x_fin_izq = max(0.2, x_izq_entrada - 1.8 * np.cos(alpha_giro))
-    x_fin_der = min(4.8, x_der_entrada + 1.8 * np.cos(alpha_giro))
-
-# Flujo base simétrico descendente
-U_final = 2.8 * (X - x_centro) / (Y + 0.3)
-V_final = -2.5 * (Y**0.95)
-
-factor_rpm = 1040.0 / float(rpm)
-core_dinamico = 0.15 * factor_rpm  
-radio_dispersion = 0.6 * factor_rpm 
-
-intensidad_vortex = 8.5 * (1.0 - factor_radio) * (float(rpm) / 1040.0)
-if intensidad_vortex < 0: 
-    intensidad_vortex = 0.0
-
-eps = 1e-5
-
-# LADO IZQUIERDO TRASLADABLE (Vórtices internos)
-v_izq_centros = [
-    (x_izq_entrada + 0.42, y_quiebre - 0.60, 1.0),      
-    (x_izq_entrada + 0.22, y_quiebre - 0.95, 0.45),     
-    (x_izq_entrada + 0.65, y_quiebre - 0.40, 0.35)      
-]
-
-for vx, vy, peso in v_izq_centros:
-    r_sq = (X - vx)**2 + (Y - vy)**2
-    U_v = (intensidad_vortex * peso) * (Y - vy) / (r_sq + core_dinamico + eps)
-    V_v = -(intensidad_vortex * peso) * (X - vx) / (r_sq + core_dinamico + eps)
-    
-    zona_turb = np.exp(-(r_sq) / (radio_dispersion * peso))
-    U_final = U_final * (1.0 - 0.95 * zona_turb * (1.0 - factor_radio)) + U_v * zona_turb
-    V_final = V_final * (1.0 - 0.95 * zona_turb * (1.0 - factor_radio)) + V_v * zona_turb
-
-# LADO DERECHO TRASLADABLE (Vórtices internos en espejo)
-v_der_centros = [
-    (x_der_entrada - 0.42, y_quiebre - 0.60, 1.0),      
-    (x_der_entrada - 0.22, y_quiebre - 0.95, 0.45),     
-    (x_der_entrada - 0.65, y_quiebre - 0.40, 0.35)      
-]
-
-for vx, vy, peso in v_der_centros:
-    r_sq = (X - vx)**2 + (Y - vy)**2
-    U_v = -(intensidad_vortex * peso) * (Y - vy) / (r_sq + core_dinamico + eps)
-    V_v = (intensidad_vortex * peso) * (X - vx) / (r_sq + core_dinamico + eps)
-    
-    zona_turb = np.exp(-(r_sq) / (radio_dispersion * peso))
-    U_final = U_final * (1.0 - 0.95 * zona_turb * (1.0 - factor_radio)) + U_v * zona_turb
-    V_final = V_final * (1.0 - 0.95 * zona_turb * (1.0 - factor_radio)) + V_v * zona_turb
-
-Vel_magnitud = np.sqrt(U_final**2 + V_final**2)
-
-# --- CORRECCIÓN MATEMÁTICA DEFINITIVA DE LA PRESIÓN DE SUCESIÓN ---
-# Presión de succión base (Arriba es Vacío/Presión Negativa. Cae conforme acelera el fluido)
-Presion_Relativa = -3500.0 * (Y / 4.8) - 0.5 * densidad_gas * (Vel_magnitud**2)
-
-# Añadir picos de Alta Presión Estática por impacto real CONTRA la chapa de choque morada
-# Y caídas drásticas de presión (vacío de ojo) en los centros de los vórtices turbulentos
-for vx, vy, peso in v_izq_centros + v_der_centros:
-    r_sq = (X - vx)**2 + (Y - vy)**2
-    # Zona de estancamiento / desaceleración contra la chapa (Sube la presión)
-    Presion_Relativa += 4500.0 * np.exp(-r_sq / 0.4) * (1.0 - factor_radio)
-    # Centro rotacional del remolino (Efecto sumidero ciclónico: Cae la presión en el eje)
-    Presion_Relativa -= 3000.0 * np.exp(-r_sq / 0.08) * (1.0 - factor_radio)
-
-# Normalizar escala para que los Pascales muestren valores lógicos de un tiro inducido (-4500 a +1500 Pa)
-Presion_Relativa = np.clip(Presion_Relativa, -4500, 2000)
-
-# ==============================================================================
-# PROCESAMIENTO GEOMÉTRICO ADAPTATIVO DE LA CHAPA MORADA
-# ==============================================================================
-r_diseno = 0.15 + 1.1 * factor_radio
-alfa = angulo_rad - np.pi/2
-
-# Coordenadas lado izquierdo redondeado
-theta_izq = np.linspace(0, -np.pi/2 * factor_angulo if angulo_deg > 90 else -np.pi/2, 40)
-x_c_izq = (x_izq_entrada - r_diseno) + r_diseno * np.cos(theta_izq)
-y_c_izq = (y_quiebre + r_diseno) + r_diseno * np.sin(theta_izq) - (r_diseno * factor_angulo)
-if angulo_deg == 180: y_c_izq = np.ones_like(x_c_izq) * y_quiebre
-x_pared_izq = np.hstack(([x_izq_entrada, x_izq_entrada], x_c_izq, [x_fin_izq]))
-y_pared_izq = np.hstack(([5.0, y_quiebre], y_c_izq, [y_fin]))
-
-# Coordenadas lado derecho redondeado
-theta_der = np.linspace(np.pi, np.pi + np.pi/2 * factor_angulo if angulo_deg > 90 else np.pi + np.pi/2, 40)
-x_centro_der = x_der_entrada + r_diseno
-y_centro_der = y_quiebre + r_diseno
-x_c_der = x_centro_der + r_diseno * np.cos(theta_der)
-y_c_der = y_centro_der + r_diseno * np.sin(theta_der) - (r_diseno * factor_angulo)
-if angulo_deg == 180: y_c_der = np.ones_like(x_c_der) * y_quiebre
-x_pared_der = np.hstack(([x_der_entrada, x_der_entrada], x_c_der, [x_fin_der]))
-y_pared_der = np.hstack(([5.0, y_quiebre], y_c_der, [y_fin]))
-
-# ==============================================================================
-# DESPLIEGUE EN DOS COLUMNAS PARALELAS UNIFICADAS DE STREAMLIT
-# ==============================================================================
-plt.style.use('dark_background')
-
-col_grafico_izq, col_grafico_der = st.columns(2)
-
-with col_grafico_izq:
-    st.subheader("📊 1. Líneas de Flujo (Campos de Velocidad)")
-    fig_vel, ax_vel = plt.subplots(figsize=(7, 5.2), dpi=110)
-    
-    strm_vel = ax_vel.streamplot(X, Y, U_final, V_final, color=Vel_magnitud, cmap='turbo', linewidth=1.1, density=1.8, arrowsize=0.8)
-    
-    if radio_mm == 0:
-        ax_vel.plot([x_izq_entrada, x_izq_entrada, x_fin_izq], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=4)
-        ax_vel.plot([x_der_entrada, x_der_entrada, x_fin_der], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=4)
-    else:
-        ax_vel.plot(x_pared_izq, y_pared_izq, color='#df00ff', linewidth=4)
-        ax_vel.plot(x_pared_der, y_pared_der, color='#df00ff', linewidth=4)
+# --- MODELO DE DATOS DEPORTIVOS ---
+class Jugador:
+    def __init__(self, nombre, posicion, nivel):
+        self.nombre = nombre
+        self.posicion = posicion  # 'DEL', 'MED', 'DEF', 'POR'
+        self.nivel = nivel        # 'Elite' (90), 'Bueno' (80), 'Regular' (70)
         
-    ax_vel.text(4.6, 4.6, f"Reynolds (Re): {reynolds:.2e}", color='#ffffff', fontsize=8, weight='bold', ha='right', va='top', bbox=dict(facecolor='#1e293b', alpha=0.7, edgecolor='#3b82f6', boxstyle='round,pad=0.4'))
-    
-    if intensidad_vortex > 0.6:
-        estado_flujo_izq = "🔴 FLUX: TURBULENTO (CASCADA)"
-        color_caja_izq = '#ff3333'
-    else:
-        estado_flujo_izq = "🟢 FLUX: LAMINAR / GUIADO"
-        color_caja_izq = '#00ffcc'
-        
-    ax_vel.text(0.4, 0.4, estado_flujo_izq, color=color_caja_izq, fontsize=8, weight='bold', ha='left', va='bottom', bbox=dict(facecolor='#0e1117', alpha=0.8, edgecolor=color_caja_izq, boxstyle='round,pad=0.5'))
-    ax_vel.text(2.5, 4.6, f"↔️ Diámetro Real: {d_entrada} mm", color='#ff3344', fontsize=8, weight='bold', ha='center', va='top', bbox=dict(facecolor='#0e1117', alpha=0.8, edgecolor='#ff3344', boxstyle='round,pad=0.4'))
-    
-    ax_vel.set_xlim(0.1, 4.9)
-    ax_vel.set_ylim(0.2, 4.8)
-    ax_vel.axis('off')
-    fig_vel.colorbar(strm_vel.lines, ax=ax_vel, label='Velocidad del Fluido (m/s)', pad=0.02, orientation='horizontal')
-    st.pyplot(fig_vel)
+        # Asignar rating según calidad
+        if nivel == "Elite":
+            self.rating = 90
+        elif nivel == "Bueno":
+            self.rating = 80
+        else:
+            self.rating = 70
 
-with col_grafico_der:
-    st.subheader("🌡️ 2. Gradientes de Presión Estática Relativa")
-    fig_pres, ax_pres = plt.subplots(figsize=(7, 5.2), dpi=110)
-    
-    # Renderizar el mapa de presiones corregido en paleta coolwarm
-    cont_pres = ax_pres.contourf(X, Y, Presion_Relativa, levels=40, cmap='coolwarm')
-    
-    if radio_mm == 0:
-        ax_pres.plot([x_izq_entrada, x_izq_entrada, x_fin_izq], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=4)
-        ax_pres.plot([x_der_entrada, x_der_entrada, x_fin_der], [5.0, y_quiebre, y_fin], color='#df00ff', linewidth=4)
-    else:
-        ax_pres.plot(x_pared_izq, y_pared_izq, color='#df00ff', linewidth=4)
-        ax_pres.plot(x_pared_der, y_pared_der, color='#df00ff', linewidth=4)
+class Seleccion:
+    def __init__(self, nombre, es_local, gf_ultimos, gc_ultimos, racha_puntos, lista_jugadores):
+        self.nombre = nombre
+        self.es_local = es_local
+        self.gf_promedio = gf_ultimos / 5.0  # Métrica de ataque histórico
+        self.gc_promedio = gc_ultimos / 5.0  # Métrica de defensa histórica
+        self.racha_bono = (racha_puntos - 7) * 0.5  # Bono si viene ganando mucho
+        self.jugadores = lista_jugadores
         
-    ax_pres.text(4.6, 4.6, f"Reynolds (Re): {reynolds:.2e}", color='#ffffff', fontsize=8, weight='bold', ha='right', va='top', bbox=dict(facecolor='#1e293b', alpha=0.7, edgecolor='#3b82f6', boxstyle='round,pad=0.4'))
-    
-    if intensidad_vortex > 0.6:
-        estado_flujo_der = "🔴 FLUX: TURBULENTO (CASCADA)"
-        color_caja_der = '#ff3333'
-    else:
-        estado_flujo_der = "🟢 FLUX: LAMINAR / GUIADO"
-        color_caja_der = '#00ffcc'
+        # Calcular poder de la plantilla basado en sus jugadores
+        total_rating = sum([j.rating for j in lista_jugadores])
+        self.rating_plantilla = total_rating / len(lista_jugadores) if lista_jugadores else 70.0
+
+    def obtener_rating_dinamico(self, fatiga, lesionados):
+        # 1. Poder Base (Plantilla + Historial de goles)
+        base = (self.rating_plantilla * 0.6) + (self.gf_promedio * 20) - (self.gc_promedio * 15) + self.racha_bono
         
-    ax_pres.text(0.4, 0.4, estado_flujo_der, color=color_caja_der, fontsize=8, weight='bold', ha='left', va='bottom', bbox=dict(facecolor='#0e1117', alpha=0.8, edgecolor=color_caja_der, boxstyle='round,pad=0.5'))
-    ax_pres.text(2.5, 4.6, f"↔️ Diámetro Real: {d_entrada} mm", color='#ff3344', fontsize=8, weight='bold', ha='center', va='top', bbox=dict(facecolor='#0e1117', alpha=0.8, edgecolor='#ff3344', boxstyle='round,pad=0.4'))
+        # 2. Factor Localía
+        bono_casa = 4.5 if self.es_local else 0.0
+        
+        # 3. Penalizadores físicos y bajas
+        penalizacion_fatiga = fatiga * 6.0  # Hasta -6 puntos por fatiga crítica
+        penalizacion_lesiones = lesionados * 3.0
+        
+        # Contar cuántos jugadores de alto nivel ('Elite') tiene disponibles en el campo
+        bono_elite = sum([1.5 for j in self.jugadores if j.nivel == "Elite"]) - (lesionados * 0.5)
+        
+        rating_final = base + bono_casa + bono_elite - penalizacion_fatiga - penalizacion_lesiones
+        return max(50.0, rating_final)
+
+# --- BASE DE DATOS ESTRUCTURADA DE SELECCIONES ---
+@st.cache_data
+def cargar_base_datos():
+    # Jugadores de ejemplo (puedes ampliar las listas con más nombres y posiciones oficiales)
+    convocados_ecuador = [
+        Jugador("Piero Hincapié", "DEF", "Elite"),
+        Jugador("Moises Caicedo", "MED", "Elite"),
+        Jugador("Enner Valencia", "DEL", "Bueno"),
+        Jugador("Willian Pacho", "DEF", "Bueno"),
+        Jugador("Kendry Páez", "MED", "Bueno"),
+        Jugador("Hernán Galíndez", "POR", "Regular")
+    ]
     
-    ax_pres.set_xlim(0.1, 4.9)
-    ax_pres.set_ylim(0.2, 4.8)
-    ax_pres.axis('off')
-    fig_pres.colorbar(cont_pres, ax=ax_pres, label='Presión Estática Relativa (Pa)', pad=0.02, orientation='horizontal')
-    st.pyplot(fig_pres)
+    convocados_argentina = [
+        Jugador("Lionel Messi", "DEL", "Elite"),
+        Jugador("Emiliano Martínez", "POR", "Elite"),
+        Jugador("Rodrigo de Paul", "MED", "Bueno"),
+        Jugador("Cristian Romero", "DEF", "Elite"),
+        Jugador("Lautaro Martínez", "DEL", "Bueno"),
+        Jugador("Enzo Fernández", "MED", "Bueno")
+    ]
+    
+    convocados_francia = [
+        Jugador("Kylian Mbappé", "DEL", "Elite"),
+        Jugador("Antoine Griezmann", "MED", "Elite"),
+        Jugador("William Saliba", "DEF", "Elite"),
+        Jugador("Aurélien Tchouaméni", "MED", "Bueno"),
+        Jugador("Ousmane Dembélé", "DEL", "Bueno"),
+        Jugador("Mike Maignan", "POR", "Bueno")
+    ]
 
-# ==============================================================================
-# DIAGNÓSTICO TÉCNICO INFERIOR 
-# ==============================================================================
-st.markdown("---")
-st.header("📋 Evaluación de Ingeniería en Tiempo Real")
-st.write(f"**Configuración Frontal**: Ángulo de {angulo_deg}° con un Radio de {radio_mm} mm, Boca de {d_entrada} mm a {rpm} RPM.")
+    convocados_mexico = [
+        Jugador("Santiago Giménez", "DEL", "Bueno"),
+        Jugador("Edson Álvarez", "MED", "Elite"),
+        Jugador("César Montes", "DEF", "Bueno"),
+        Jugador("Luis Chávez", "MED", "Bueno"),
+        Jugador("Malagón", "POR", "Regular")
+    ]
 
-if intensidad_vortex > 0.6:
-    st.warning("El estrechamiento del flujo central incrementa la velocidad de succión. Al chocar contra las esquinas ortogonales, se induce una severa recirculación bifásica simétrica con formación de microvórtices secundarios.")
-else:
-    st.success("La campana simétrica se expande hacia los extremos de manera divergente, encauzando y distribuyendo el aire en paralelo a las paredes cóncavas moradas.")
+    db = {
+        "Ecuador": Seleccion("Ecuador", es_local=False, gf_ultimos=8, gc_ultimos=4, racha_puntos=11, lista_jugadores=convocados_ecuador),
+        "Argentina": Seleccion("Argentina", es_local=False, gf_ultimos=12, gc_ultimos=3, racha_puntos=13, lista_jugadores=convocados_argentina),
+        "Francia": Seleccion("Francia", es_local=False, gf_ultimos=11, gc_ultimos=5, racha_puntos=10, lista_jugadores=convocados_francia),
+        "México": Seleccion("México", es_local=True, gf_ultimos=7, gc_ultimos=6, racha_puntos=8, lista_jugadores=convocados_mexico)
+    }
+    return db
+
+db_equipos = cargar_base_datos()
+
+# --- INTERFAZ DINÁMICA DE SELECCIÓN DE PARTIDO ---
+col_ui1, col_ui2 = st.columns(2)
+
+with col_ui1:
+    st.subheader("🏠 Equipo Local / Equipo 1")
+    eq1_nombre = st.selectbox("Selecciona Selección 1", list(db_equipos.keys()), index=3)
+    fatiga_1 = st.slider("Desgaste Físico Acumulado (Eq 1)", 0.0, 1.0, 0.15, step=0.05, help="0.0 es fresco, 1.0 es fatiga extrema")
+    lesiones_1 = st.number_input("Jugadores Clave Lesionados / Bajas (Eq 1)", min_value=0, max_value=4, value=0)
+
+with col_ui2:
+    st.subheader("🚀 Equipo Visitante / Equipo 2")
+    eq2_nombre = st.selectbox("Selecciona Selección 2", list(db_equipos.keys()), index=0)
+    fatiga_2 = st.slider("Desgaste Físico Acumulado (Eq 2)", 0.0, 1.0, 0.20, step=0.05)
+    lesiones_2 = st.number_input("Jugadores Clave Lesionados / Bajas (Eq 2)", min_value=0, max_value=4, value=0)
+
+st.divider()
+
+# --- MOTOR DE CÁLCULO Y SIMULACIÓN DE GOLES ---
+if st.button("🏟️ Simular Partido Individual", type="primary", use_container_width=True):
+    
+    if eq1_nombre == eq2_nombre:
+        st.warning("⚠️ Debes seleccionar dos equipos diferentes para simular un partido.")
+    else:
+        obj_eq1 = db_equipos[eq1_nombre]
+        obj_eq2 = db_equipos[eq2_nombre]
+        
+        # Obtener ratings con penalizadores aplicados
+        r1 = obj_eq1.obtener_rating_dinamico(fatiga_1, lesiones_1)
+        r2 = obj_eq2.obtener_rating_dinamico(fatiga_2, lesiones_2)
+        
+        # Distribución de Poisson basada en diferencias de rendimiento
+        diff = r1 - r2
+        lambda1 = max(0.4, 1.35 + (diff * 0.045))
+        lambda2 = max(0.4, 1.35 - (diff * 0.045))
+        
+        goles1 = max(0, int(random.gammavariate(lambda1, 1.15)))
+        goles2 = max(0, int(random.gammavariate(lambda2, 1.15)))
+        
+        # --- PRESENTACIÓN VISUAL MARCADOR ---
+        st.markdown("<h2 style='text-align: center;'>🏆 MARCADOR FINAL 🏆</h2>", unsafe_style=True)
+        
+        m_col1, m_col2, m_col3 = st.columns([2, 1, 2])
+        with m_col1:
+            st.markdown(f"<h1 style='text-align: right;'>{eq1_nombre}</h1>", unsafe_style=True)
+            st.caption(f"Rating de campo calculado: **{r1:.1f}**")
+        with m_col2:
+            st.markdown(f"<h1 style='text-align: center; color: #ff4b4b;'>{goles1} - {goles2}</h1>", unsafe_style=True)
+        with m_col3:
+            st.markdown(f"<h1 style='text-align: left;'>{eq2_nombre}</h1>", unsafe_style=True)
+            st.caption(f"Rating de campo calculado: **{r2:.1f}**")
+            
+        # Desempate de Fase Eliminatoria Directa
+        if goles1 == goles2:
+            st.info("👔 ¡Empate en tiempo reglamentario! Se define por tanda de penaltis.")
+            p1, p2 = 0, 0
+            while p1 == p2:
+                p1 = random.randint(3, 5) + random.randint(0, 2)
+                p2 = random.randint(3, 5) + random.randint(0, 2)
+            st.subheader(f"🎯 Definición por Penales: {eq1_nombre} ({p1}) - ({p2}) {eq2_nombre}")
+            ganador_final = eq1_nombre if p1 > p2 else eq2_nombre
+            st.success(f"🎉 Avanza de ronda: **{ganador_final}**")
+        elif goles1 > goles2:
+            st.success(f"🎉 Ganador del encuentro: **{eq1_nombre}**")
+        else:
+            st.success(f"🎉 Ganador del encuentro: **{eq2_nombre}**")
+            
+        # --- DESGLOSE DE ANÁLISIS DE CAMPO ---
+        with st.expander("🔍 Ver reporte técnico detallado del partido"):
+            st.write("### Ficha de Plantillas e Impacto de Jugadores de Alto Nivel:")
+            
+            c_p1, c_p2 = st.columns(2)
+            with c_p1:
+                st.write(f"**Convocados de {eq1_nombre}:**")
+                df1 = pd.DataFrame([{"Jugador": j.nombre, "Posición": j.posicion, "Calidad": j.nivel, "Rating": j.rating} for j in obj_eq1.jugadores])
+                st.dataframe(df1, use_container_width=True)
+                st.metric("Promedio Ataque Histórico", f"{obj_eq1.gf_promedio:.2f} goles/partido")
+                
+            with c_p2:
+                st.write(f"**Convocados de {eq2_nombre}:**")
+                df2 = pd.DataFrame([{"Jugador": j.nombre, "Posición": j.posicion, "Calidad": j.nivel, "Rating": j.rating} for j in obj_eq2.jugadores])
+                st.dataframe(df2, use_container_width=True)
+                st.metric("Promedio Ataque Histórico", f"{obj_eq2.gf_promedio:.2f} goles/partido")
