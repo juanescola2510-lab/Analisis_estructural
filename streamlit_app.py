@@ -78,21 +78,30 @@ if st.button("🚀 Lanzar Simulaciones Completas", type="primary", use_container
         clasificados_por_grupo = []
         mejores_terceros_pool = []
         
+        # FASE DE GRUPOS CORREGIDA
         for grupo, equipos in grupos_items:
             tabla = {eq: {"eq": eq, "pts": 0, "dg": 0, "gf": 0, "gc": 0} for eq in equipos}
             for i in range(4):
                 for j in range(i + 1, 4):
                     eq1, eq2 = equipos[i], equipos[j]
-                    r1, r2 = calcular_rating_dinamico(eq1), calcular_rating_dinamico(eq2)
+                    
+                    r1 = calcular_rating_dinamico(eq1)
+                    r2 = calcular_rating_dinamico(eq2)
                     diff = r1 - r2
                     g1 = max(0, int(random.gammavariate(max(0.9, 1.75 + (diff * 0.05)), 1.35 + (max(0.0, diff) * 0.02))))
                     g2 = max(0, int(random.gammavariate(max(0.9, 1.75 - (diff * 0.05)), 1.15)))
+                    
                     conteo_general_goles[f"{g1} - {g2}"] += 1
+                    
                     tabla[eq1]["gf"] += g1; tabla[eq1]["gc"] += g2
                     tabla[eq2]["gf"] += g2; tabla[eq2]["gc"] += g1
-                    if g1 > g2: tabla[eq1]["pts"] += 3
-                    elif g2 > g1: tabla[eq2]["pts"] += 3
-                    else: tabla[eq1]["pts"] += 1; tabla[eq2]["pts"] += 1
+                    
+                    if g1 > g2: 
+                        tabla[eq1]["pts"] += 3
+                    elif g2 > g1: 
+                        tabla[eq2]["pts"] += 3
+                    else: 
+                        tabla[eq1]["pts"] += 1; tabla[eq2]["pts"] += 1
             for eq in equipos:
                 tabla[eq]["dg"] = tabla[eq]["gf"] - tabla[eq]["gc"]
             ordenados = sorted(tabla.values(), key=lambda x: (x["pts"], x["dg"], x["gf"]), reverse=True)
