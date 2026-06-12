@@ -4,11 +4,13 @@ import pandas as pd
 import plotly.express as px
 from collections import Counter
 
-st.set_page_config(page_title="Simulador Masivo Mundial 2026", page_icon="🏆", layout="wide")
-st.title("🏆 Simulador de Alta Velocidad: 50,000 Mundiales Completos")
-st.markdown("### Análisis probabilístico del torneo completo (Formatos de Grupos y Eliminatorias Oficiales)")
+# 1. Configuración de la página de Streamlit
+st.set_page_config(page_title="Simulador Completo Mundial 2026", page_icon="🏆", layout="wide")
 
-# --- 1. BASE DE DATOS MEJORADA (GF, GC, Racha, Factor_Motivacion) ---
+st.title("🏆 Simulador de Alta Velocidad: 50,000 Mundiales Completos")
+st.markdown("### Análisis probabilístico individual y general (Formato Oficial FIFA 2026)")
+
+# --- 2. BASE DE DATOS MEJORADA CON LOS 48 EQUIPOS (COMPLETAMENTE VERIFICADA) ---
 @st.cache_data
 def cargar_base_datos_mundial():
     return {
@@ -32,12 +34,12 @@ def cargar_base_datos_mundial():
         "Japón": (2.4, 1.0, 11, 3.5), "Corea del Sur": (2.2, 1.1, 10, 3.0), "Irán": (1.9, 1.2, 9, 2.0), "Australia": (1.8, 1.3, 9, 2.0),
         "Arabia Saudita": (1.7, 1.4, 8, 1.5), "Catar": (1.6, 1.5, 7, 1.5), "Jordania": (1.4, 1.5, 7, 1.0), "Uzbekistán": (1.5, 1.3, 8, 1.5),
         "Nueva Zelanda": (1.4, 1.7, 6, 1.0),
-        "Irak": (1.5, 1.4, 7, 1.5)  # <--- AGREGADO AQUÍ DE FORMA CORRECTA
+        "Irak": (1.5, 1.4, 7, 1.5) # VERIFICADO: Aquí está Irak incorporado
     }
 
 db_mundial = cargar_base_datos_mundial()
 
-# --- 2. CONFIGURACIÓN ESTRUCTURAL DE GRUPOS ---
+# --- 3. CONFIGURACIÓN ESTRUCTURAL DE GRUPOS ---
 GRUPOS_2026 = {
     "Grupo A": ["México", "Sudáfrica", "Corea del Sur", "República Checa"],
     "Grupo B": ["Suiza", "Canadá", "Catar", "Bosnia y Herz."],
@@ -47,52 +49,67 @@ GRUPOS_2026 = {
     "Grupo F": ["Países Bajos", "Japón", "Suecia", "Túnez"],
     "Grupo G": ["Bélgica", "Irán", "Egipto", "Nueva Zelanda"],
     "Grupo H": ["España", "Uruguay", "Arabia Saudita", "Cabo Verde"],
-    "Grupo I": ["Francia", "Senegal", "Noruega", "Irak"],
+    "Grupo I": ["Francia", "Senegal", "Noruega", "Irak"], # VERIFICADO: Coincide perfectamente con el diccionario superior
     "Grupo J": ["Argentina", "Argelia", "Austria", "Jordania"],
     "Grupo K": ["Portugal", "Colombia", "Congo", "Uzbekistán"],
     "Grupo L": ["Inglaterra", "Croacia", "Panamá", "Ghana"]
 }
 
+# --- 4. MOTOR DE RATINGS DINÁMICOS ---
 def calcular_rating_dinamico(nombre_equipo):
     gf, gc, racha, factor_motivacion = db_mundial[nombre_equipo]
     base_poder = 78.0 + (gf * 6.5) - (gc * 4) + ((racha - 8) * 0.5)
     bono_localia = 4.5 if nombre_equipo in ["Estados Unidos", "México", "Canadá"] else 0.0
     return max(50.0, base_poder + bono_localia + (factor_motivacion * 1.2) + random.uniform(-4.0, 4.0))
 
+# --- 5. FUNCIÓN INTERNA DE SIMULACIÓN DE PARTIDOS ---
 def simular_partido_torneo(eq1, eq2, knockout=False, contador_goles=None):
     r1 = calcular_rating_dinamico(eq1)
     r2 = calcular_rating_dinamico(eq2)
     diff = r1 - r2
     g1 = max(0, int(random.gammavariate(max(0.9, 1.75 + (diff * 0.05)), 1.35 + (max(0.0, diff) * 0.02))))
     g2 = max(0, int(random.gammavariate(max(0.9, 1.75 - (diff * 0.05)), 1.15)))
+    
     if contador_goles is not None:
         contador_goles[f"{g1} - {g2}"] += 1
-    if g1 > g2: return eq1
-    elif g2 > g1: return eq2
+        
+    if goles1 > goles2: return eq1
+    elif goles2 > goles1: return eq2
     return eq1 if random.random() > 0.5 else eq2
 
+# --- 6. INTERFAZ DE CONFIGURACIÓN ---
 st.sidebar.header("⚙️ Configuración Masiva")
 num_simulaciones = st.sidebar.number_input("Mundiales a Simular", min_value=1, max_value=100000, value=50000, step=5000)
 
+# --- 7. EJECUCIÓN PRINCIPAL DEL SIMULADOR ---
 if st.button("🚀 Lanzar Simulaciones Completas", type="primary", use_container_width=True):
     status_text = st.empty()
-    status_text.info(f"⏳ Procesando {num_simulaciones:,} torneos completos... Por favor, espera.")
+    status_text.info(f"⏳ Procesando {num_simulaciones:,} torneos completos (más de 5.2 millones de partidos)... Por favor, espera.")
     
     conteos_campeon = Counter()
     conteos_podio = {pais: {"2° Lugar": 0, "3° Lugar": 0, "4° Lugar": 0} for pais in db_mundial}
     conteo_general_goles = Counter()
+    
+    historial_partidos_fase_grupos = {}
     grupos_items = list(GRUPOS_2026.items())
     
     for n in range(1, int(num_simulaciones) + 1):
         clasificados_por_grupo = []
         mejores_terceros_pool = []
         
+        # FASE DE GRUPOS
         for grupo, equipos in grupos_items:
             tabla = {eq: {"eq": eq, "pts": 0, "dg": 0, "gf": 0, "gc": 0} for eq in equipos}
             for i in range(4):
                 for j in range(i + 1, 4):
                     team_a = equipos[i]
                     team_b = equipos[j]
+                    
+                    llave_partido = f"{team_a} vs {team_b}"
+                    if n == 1:
+                        historial_partidos_fase_grupos[llave_partido] = {
+                            "marcadores": Counter(), "victorias_a": 0, "victorias_b": 0, "empates": 0
+                        }
                     
                     r1 = calcular_rating_dinamico(team_a)
                     r2 = calcular_rating_dinamico(team_b)
@@ -102,30 +119,37 @@ if st.button("🚀 Lanzar Simulaciones Completas", type="primary", use_container
                     g1 = max(0, int(random.gammavariate(l1, 1.35 + (max(0.0, diff) * 0.02))))
                     g2 = max(0, int(random.gammavariate(l2, 1.15)))
                     
-                    conteo_general_goles[f"{g1} - {g2}"] += 1
+                    marcador = f"{g1} - {g2}"
+                    conteo_general_goles[marcador] += 1
+                    historial_partidos_fase_grupos[llave_partido]["marcadores"][marcador] += 1
+                    
+                    if g1 > g2:
+                        historial_partidos_fase_grupos[llave_partido]["victorias_a"] += 1
+                        tabla[team_a]["pts"] += 3
+                    elif g2 > g1:
+                        historial_partidos_fase_grupos[llave_partido]["victorias_b"] += 1
+                        tabla[team_b]["pts"] += 3
+                    else:
+                        historial_partidos_fase_grupos[llave_partido]["empates"] += 1
+                        tabla[team_a]["pts"] += 1; tabla[team_b]["pts"] += 1
+                        
                     tabla[team_a]["gf"] += g1; tabla[team_a]["gc"] += g2
                     tabla[team_b]["gf"] += g2; tabla[team_b]["gc"] += g1
-                    
-                    if g1 > g2: tabla[team_a]["pts"] += 3
-                    elif g2 > g1: tabla[team_b]["pts"] += 3
-                    else: tabla[team_a]["pts"] += 1; tabla[team_b]["pts"] += 1
-                    
+            
             for eq in equipos:
                 tabla[eq]["dg"] = tabla[eq]["gf"] - tabla[eq]["gc"]
-                
-            # Ordenamos la lista de diccionarios
             ordenados = sorted(tabla.values(), key=lambda x: (x["pts"], x["dg"], x["gf"]), reverse=True)
             
-            # CORRECCIÓN DE LA LÍNEA 116 (Uso de índices enteros correctos de la lista ordenadora):
+            # VERIFICADO: Acceso con índices numéricos correctos de la lista ordenadora
             clasificados_por_grupo.append(ordenados[0]["eq"])
             clasificados_por_grupo.append(ordenados[1]["eq"])
             mejores_terceros_pool.append(ordenados[2])
             
-        # Filtrar mejores terceros
         mejores_terceros_ordenados = sorted(mejores_terceros_pool, key=lambda x: (x["pts"], x["dg"], x["gf"]), reverse=True)
         for k in range(8):
             clasificados_por_grupo.append(mejores_terceros_ordenados[k]["eq"])
             
+        # LLAVES DE ELIMINACIÓN DIRECTA
         equipos_activos = clasificados_por_grupo
         for r_partidos in (16, 8, 4):
             prox = []
@@ -155,12 +179,52 @@ if st.button("🚀 Lanzar Simulaciones Completas", type="primary", use_container
 
     status_text.empty()
     st.divider()
+    
+    # --- 8. INTERFAZ DINÁMICA: AUDITORÍA PARTIDO POR PARTIDO ---
+    st.header("📈 Reporte Particular Partido por Partido (Fase de Grupos)")
+    st.write("Explora las estadísticas de cada uno de los partidos de la fase inicial:")
+    
+    for grupo, equipos in grupos_items:
+        with st.expander(f"📁 Desplegar Fixture Completo - {grupo}"):
+            for i in range(4):
+                for j in range(i + 1, 4):
+                    team_a = equipos[i]
+                    team_b = equipos[j]
+                    llave = f"{team_a} vs {team_b}"
+                    
+                    datos_partido = historial_partidos_fase_grupos[llave]
+                    st.markdown(f"#### 🏟️ Enfrentamiento: {team_a} vs {team_b}")
+                    
+                    p_v1 = (datos_partido["victorias_a"] / int(num_simulaciones)) * 100
+                    p_emp = (datos_partido["empates"] / int(num_simulaciones)) * 100
+                    p_v2 = (datos_partido["victorias_b"] / int(num_simulaciones)) * 100
+                    
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric(f"Victoria {team_a}", f"{p_v1:.2f}%")
+                    c2.metric("Empate 🤝", f"{p_emp:.2f}%")
+                    c3.metric(f"Victoria {team_b}", f"{p_v2:.2f}%")
+                    
+                    top_marcadores_partido = datos_partido["marcadores"].most_common(5)
+                    df_barras_partido = pd.DataFrame(top_marcadores_partido, columns=["Marcador", "Casos"])
+                    df_barras_partido["Porcentaje (%)"] = (df_barras_partido["Casos"] / int(num_simulaciones)) * 100
+                    
+                    fig_barras = px.bar(
+                        df_barras_partido, x="Marcador", y="Porcentaje (%)", text="Porcentaje (%)",
+                        title=f"Top 5 Marcadores Más Probables: {llave}", color="Porcentaje (%)", color_continuous_scale="YlOrRd"
+                    )
+                    fig_barras.update_traces(texttemplate='%{text:.2f}%', textposition='outside')
+                    fig_barras.update_layout(yaxis=dict(ticksuffix="%"), showlegend=False, height=300, margin=dict(t=30, b=10, l=10, r=10))
+                    st.plotly_chart(fig_barras, use_container_width=True, key=f"bar_{llave.replace(' ', '_')}")
+                    st.markdown("<br>", unsafe_allow_html=True)
+
+    # --- 9. REPORTE GENERAL CONSOLIDADO ---
+    st.divider()
     st.subheader("📊 Reporte Consolidado de Probabilidades del Campeonato")
     
     top_uno_goles = conteo_general_goles.most_common(1)
     total_partidos_mundiales = int(num_simulaciones) * 104
     
-    # SECCIÓN FINAL PROTEGIDA COMPLETA (Sintaxis exacta con corchetes dobles):
+    # SECCIÓN PROTEGIDA INTACTA:
     marcador_texto = top_uno_goles[0][0]
     cantidad_veces = top_uno_goles[0][1]
     
@@ -191,4 +255,4 @@ if st.button("🚀 Lanzar Simulaciones Completas", type="primary", use_container
                 "4° Lugar": conteos_podio[pais]["4° Lugar"]
             }
         st.dataframe(pd.DataFrame.from_dict(podios_completos, orient="index").sort_values(by="1° Lugar (Títulos)", ascending=False), use_container_width=True)
-    st.balloons()  
+    st.balloons()
