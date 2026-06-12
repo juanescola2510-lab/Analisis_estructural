@@ -5,52 +5,66 @@ import plotly.express as px
 from collections import Counter
 
 # Configuración de página
-st.set_page_config(page_title="Simulador de Marcadores Pro 2026", page_icon="⚽", layout="wide")
+st.set_page_config(page_title="Simulador de Marcadores Ofensivo 2026", page_icon="⚽", layout="wide")
 
-st.title("⚽ Simulador de Alta Velocidad Partido por Partido - Mundial 2026")
-st.write("Análisis probabilístico masivo con Gráfico de Pastel interactivo.")
+st.title("⚽ Simulador Ofensivo de Alta Velocidad - Mundial 2026")
+st.write("Modelo calibrado para fútbol moderno: más goles, impacto de cracks mundiales y motivación extrema.")
 
-# --- BASE DE DATOS MUNDIAL DE 48 EQUIPOS ---
+# --- BASE DE DATOS MEJORADA (Goles a Favor, Goles en Contra, Racha, Factor Motivación) ---
 @st.cache_data
 def cargar_base_datos_mundial():
+    # Estructura: (GF_promedio, GC_promedio, Racha, Factor_Motivacion_O_Cracks)
+    # Se subieron los valores de ataque y se incluyó el peso de jugadores top en racha
     ratings_48 = {
         # UEFA
-        "Francia": (2.4, 0.8, 12), "España": (2.3, 0.7, 13), "Inglaterra": (2.2, 0.9, 11), "Alemania": (2.1, 1.0, 10),
-        "Portugal": (2.3, 0.9, 12), "Países Bajos": (2.0, 1.0, 10), "Bélgica": (1.8, 1.1, 9), "Italia": (1.7, 1.1, 8),
-        "Croacia": (1.6, 1.0, 9), "Dinamarca": (1.6, 1.2, 8), "Suiza": (1.6, 1.1, 9), "Austria": (1.7, 1.2, 8),
-        "Noruega": (1.8, 1.3, 8), "Ucrania": (1.5, 1.2, 8), "Polonia": (1.4, 1.4, 7), "Suecia": (1.7, 1.3, 8),
-        "Turquía": (1.7, 1.3, 9), "República Checa": (1.5, 1.3, 8), "Escocia": (1.3, 1.5, 7), "Bosnia y Herz.": (1.2, 1.6, 6),
+        "Francia": (2.8, 0.8, 12, 4.5), "España": (2.7, 0.7, 13, 4.0), "Inglaterra": (2.6, 0.9, 11, 4.0), "Alemania": (2.4, 1.0, 10, 3.5),
+        "Portugal": (2.5, 0.9, 12, 3.5), "Países Bajos": (2.2, 1.0, 10, 3.0), "Bélgica": (2.0, 1.1, 9, 2.5), "Italia": (1.9, 1.1, 8, 2.0),
+        "Croacia": (1.8, 1.0, 9, 2.5), "Dinamarca": (1.8, 1.2, 8, 2.0), "Suiza": (1.8, 1.1, 9, 2.0), "Austria": (1.9, 1.2, 8, 2.0),
+        "Noruega": (2.1, 1.3, 8, 3.5), "Ucrania": (1.7, 1.2, 8, 2.0), "Polonia": (1.6, 1.4, 7, 1.5), "Suecia": (1.9, 1.3, 8, 2.0),
+        "Turquía": (1.9, 1.3, 9, 2.5), "República Checa": (1.7, 1.3, 8, 1.5), "Escocia": (1.5, 1.5, 7, 1.0), "Bosnia y Herz.": (1.4, 1.6, 6, 1.0),
         # CONMEBOL
-        "Argentina": (2.5, 0.6, 14), "Brasil": (2.2, 0.9, 11), "Uruguay": (2.1, 1.0, 11), "Colombia": (2.0, 0.9, 12),
-        "Ecuador": (1.8, 0.9, 10), "Paraguay": (1.3, 1.1, 8), "Bolivia": (1.1, 2.1, 5),
+        "Argentina": (2.9, 0.6, 14, 4.5), "Brasil": (2.6, 0.9, 11, 4.0), "Uruguay": (2.5, 1.0, 11, 4.0), "Colombia": (2.4, 0.9, 12, 4.2),
+        "Ecuador": (2.2, 0.9, 10, 3.5), "Paraguay": (1.5, 1.1, 8, 1.5), "Bolivia": (1.2, 2.1, 5, 0.5),
         # CONCACAF
-        "Estados Unidos": (1.9, 1.1, 10), "México": (1.7, 1.2, 8), "Canadá": (1.8, 1.2, 9), "Panamá": (1.5, 1.3, 8),
-        "Haití": (1.2, 1.7, 6), "Curazao": (1.1, 1.9, 5), "Jamaica": (1.4, 1.5, 7),
+        "Estados Unidos": (2.1, 1.1, 10, 3.0), "México": (1.9, 1.2, 8, 2.5), "Canadá": (2.0, 1.2, 9, 2.5), "Panamá": (1.7, 1.3, 8, 1.5),
+        "Haití": (1.4, 1.7, 6, 1.0), "Curazao": (1.3, 1.9, 5, 0.5), "Jamaica": (1.6, 1.5, 7, 1.5),
         # CAF (África)
-        "Marruecos": (1.9, 0.9, 12), "Senegal": (1.8, 1.0, 11), "Egipto": (1.7, 1.1, 10), "Argelia": (1.7, 1.2, 9),
-        "Túnez": (1.4, 1.3, 8), "Nigeria": (1.8, 1.2, 8), "Costa de Marfil": (1.7, 1.1, 10), "Ghana": (1.5, 1.3, 8),
-        "Sudáfrica": (1.4, 1.4, 7), "Cabo Verde": (1.4, 1.3, 8), "Congo": (1.1, 1.7, 6),
+        "Marruecos": (2.3, 0.9, 12, 4.0), "Senegal": (2.2, 1.0, 11, 3.5), "Egipto": (2.1, 1.1, 10, 3.0), "Argelia": (2.0, 1.2, 9, 2.5),
+        "Túnez": (1.6, 1.3, 8, 1.5), "Nigeria": (2.2, 1.2, 8, 3.0), "Costa de Marfil": (2.1, 1.1, 10, 3.0), "Ghana": (1.8, 1.3, 8, 2.0),
+        "Sudáfrica": (1.6, 1.4, 7, 1.5), "Cabo Verde": (1.6, 1.3, 8, 1.5), "Congo": (1.3, 1.7, 6, 1.0),
         # AFC (Asia) + OFC (Oceanía)
-        "Japón": (2.1, 1.0, 11), "Corea del Sur": (1.9, 1.1, 10), "Irán": (1.7, 1.2, 9), "Australia": (1.6, 1.3, 9),
-        "Arabia Saudita": (1.5, 1.4, 8), "Catar": (1.4, 1.5, 7), "Jordania": (1.2, 1.5, 7), "Uzbekistán": (1.3, 1.3, 8),
-        "Nueva Zelanda": (1.2, 1.7, 6)
+        "Japón": (2.4, 1.0, 11, 3.5), "Corea del Sur": (2.2, 1.1, 10, 3.0), "Irán": (1.9, 1.2, 9, 2.0), "Australia": (1.8, 1.3, 9, 2.0),
+        "Arabia Saudita": (1.7, 1.4, 8, 1.5), "Catar": (1.6, 1.5, 7, 1.5), "Jordania": (1.4, 1.5, 7, 1.0), "Uzbekistán": (1.5, 1.3, 8, 1.5),
+        "Nueva Zelanda": (1.4, 1.7, 6, 1.0)
     }
     return ratings_48
 
 db_mundial = cargar_base_datos_mundial()
 
-# --- LÓGICA DE RATINGS DINÁMICOS ---
+# --- LÓGICA DE RATINGS DINÁMICOS OPTIMIZADOS ---
 def calcular_rating_dinamico(nombre_equipo, fatiga, lesionados):
-    gf, gc, racha = db_mundial[nombre_equipo]
-    base_poder = 75.0 + (gf * 5) - (gc * 4) + ((racha - 8) * 0.5)
+    gf, gc, racha, factor_motivacion = db_mundial[nombre_equipo]
+    
+    # 1. Poder Base considerando el aumento ofensivo global
+    base_poder = 78.0 + (gf * 6.5) - (gc * 4) + ((racha - 8) * 0.5)
+    
+    # 2. Factor Localía Oficial
     bono_localia = 4.5 if nombre_equipo in ["Estados Unidos", "México", "Canadá"] else 0.0
+    
+    # 3. Penalizadores físicos
     penalizacion_fatiga = fatiga * 6.0
-    penalizacion_lesiones = lesionados * 3.0
+    penalizacion_lesiones = lesionados * 3.5  # Las bajas restan más si el equipo depende de cracks
+    
+    # 4. Inyección del Factor Motivación y Jugadores Élite
+    # Mitiga el azar plano y premia el nivel de las superestrellas
+    bono_estrellas = factor_motivacion * 1.2
+    
+    # 5. Factor Inspiración aleatorio del partido
     factor_inspiracion = random.uniform(-4.0, 4.0)
     
-    return max(50.0, base_poder + bono_localia - penalizacion_fatiga - penalizacion_lesiones + factor_inspiracion)
+    return max(50.0, base_poder + bono_localia + bono_estrellas - penalizacion_fatiga - penalizacion_lesiones + factor_inspiracion)
 
-# --- INTERFAZ DE CONFIGURACIÓN DE EQUIPOS ---
+# --- INTERFAZ DE CONFIGURACIÓN ---
 col_ui1, col_ui2 = st.columns(2)
 with col_ui1:
     st.subheader("🏠 Selección 1 / Local")
@@ -67,13 +81,13 @@ with col_ui2:
 st.sidebar.header("⚙️ Control de Simulación Masiva")
 num_ejecuciones = st.sidebar.number_input("Volumen de simulaciones", min_value=1, max_value=100000, value=50000, step=5000)
 
-# --- EJECUCIÓN DEL MOTOR DE SIMULACIÓN ---
+# --- EJECUCIÓN DEL MOTOR ---
 if st.button("🏟️ Iniciar Simulación de Alta Velocidad", type="primary", use_container_width=True):
     if eq1_nombre == eq2_nombre:
         st.warning("⚠️ Selecciona dos países distintos para jugar el encuentro.")
     else:
         status_text = st.empty()
-        status_text.info(f"⏳ Procesando {num_ejecuciones:,} partidos simulados en segundo plano... Por favor, espera.")
+        status_text.info(f"⏳ Procesando {num_ejecuciones:,} partidos simulados con motor de alta efectividad...")
         
         conteo_marcadores = Counter()
         victorias_eq1 = 0
@@ -85,11 +99,13 @@ if st.button("🏟️ Iniciar Simulación de Alta Velocidad", type="primary", us
             r2 = calcular_rating_dinamico(eq2_nombre, fatiga_2, lesiones_2)
             
             diff = r1 - r2
-            lambda1 = max(0.4, 1.35 + (diff * 0.045))
-            lambda2 = max(0.4, 1.35 - (diff * 0.045))
             
-            goles1 = max(0, int(random.gammavariate(lambda1, 1.15)))
-            goles2 = max(0, int(random.gammavariate(lambda2, 1.15)))
+            # RECALIBRACIÓN REGLA DE POISSON: Se incrementó la media base de goles (de 1.35 a 1.75)
+            lambda1 = max(0.9, 1.75 + (diff * 0.05))
+            lambda2 = max(0.9, 1.75 - (diff * 0.05))
+            
+            goles1 = max(0, int(random.gammavariate(lambda1, 1.2)))
+            goles2 = max(0, int(random.gammavariate(lambda2, 1.2)))
             
             conteo_marcadores[f"{goles1} - {goles2}"] += 1
             
@@ -102,7 +118,7 @@ if st.button("🏟️ Iniciar Simulación de Alta Velocidad", type="primary", us
                 
         status_text.empty()
         
-        # --- DESPLIEGUE ESTADÍSTICO ---
+        # --- PRESENTACIÓN ---
         st.divider()
         st.subheader(f"📊 Reporte de Probabilidades Acumuladas ({num_ejecuciones:,} partidos)")
         
@@ -114,10 +130,10 @@ if st.button("🏟️ Iniciar Simulación de Alta Velocidad", type="primary", us
         with kpi3:
             st.metric(f"Probabilidad de {eq2_nombre}", f"{(victorias_eq2 / num_ejecuciones * 100):.2f}%")
             
-        marcador_comun, total_comun = conteo_marcadores.most_common(1)[0]
+        marcador_comun, total_comun = conteo_marcadores.most_common(1)
         st.success(f"🎯 El marcador más probable según el modelo es **{marcador_comun}** con un **{(total_comun / num_ejecuciones * 100):.2f}%** de coincidencia.")
         
-        # --- CONSTRUCCIÓN DEL GRÁFICO DE PASTEL ---
+        # --- GRÁFICO DE PASTEL ---
         st.markdown("### 🥧 Distribución Porcentual de Marcadores Más Frecuentes")
         
         top_marcadores = conteo_marcadores.most_common(8)
@@ -136,14 +152,11 @@ if st.button("🏟️ Iniciar Simulación de Alta Velocidad", type="primary", us
             values="Cantidad", 
             names="Marcador", 
             hole=0.4,
-            color_discrete_sequence=px.colors.sequential.RdBu
+            color_discrete_sequence=px.colors.sequential.YlOrRd  # Tonalidades vibrantes de ataque
         )
         fig.update_traces(textposition='inside', textinfo='percent+label')
-        
-        # CORRECCIÓN AQUÍ: Se eliminó 'use_container_width' de fig.update_layout
         fig.update_layout(margin=dict(t=10, b=10, l=10, r=10))
         
-        # CORRECCIÓN AQUÍ: Se asignó correctamente a la función de Streamlit
         st.plotly_chart(fig, use_container_width=True)
         
         with st.expander("📋 Ver lista completa de frecuencias"):
