@@ -169,28 +169,46 @@ if st.button("🚀 Iniciar Simulación en Tiempo Real", type="primary", use_cont
         for clasificado in clasificados_por_grupo:
             conteos_podio[clasificado]["Llegó a 16avos"] += 1
 
-        # --- KNOCKOUTS ---
+        # --- KNOCKOUTS (Con almacenamiento de llaves más frecuentes) ---
+        if n == 1:
+            # Inicializar contadores históricos de llaves en la primera corrida
+            conteos_llaves = {
+                "R32": Counter(), "R16": Counter(), "Cuartos": Counter(), 
+                "Semis": Counter(), "Tercero": Counter(), "Final": Counter()
+            }
+
         r32_ganadores = []
         random.shuffle(clasificados_por_grupo)
         for i in range(0, 32, 2):
-            ganador, _ = simular_partido_torneo(clasificados_por_grupo[i], clasificados_por_grupo[i+1])
+            eq_a, eq_b = clasificados_por_grupo[i], clasificados_por_grupo[i+1]
+            conteos_llaves["R32"][f"{eq_a} vs {eq_b}"] += 1
+            ganador, _ = simular_partido_torneo(eq_a, eq_b)
             r32_ganadores.append(ganador)
             
         r16_ganadores = []
         for i in range(0, 16, 2):
-            ganador, _ = simular_partido_torneo(r32_ganadores[i], r32_ganadores[i+1])
+            eq_a, eq_b = r32_ganadores[i], r32_ganadores[i+1]
+            conteos_llaves["R16"][f"{eq_a} vs {eq_b}"] += 1
+            ganador, _ = simular_partido_torneo(eq_a, eq_b)
             r16_ganadores.append(ganador)
             
         r8_ganadores = []
         for i in range(0, 8, 2):
-            ganador, _ = simular_partido_torneo(r16_ganadores[i], r16_ganadores[i+1])
+            eq_a, eq_b = r16_ganadores[i], r16_ganadores[i+1]
+            conteos_llaves["Cuartos"][f"{eq_a} vs {eq_b}"] += 1
+            ganador, _ = simular_partido_torneo(eq_a, eq_b)
             r8_ganadores.append(ganador)
             
-        # Semifinales indexadas correctamente
+        conteos_llaves["Semis"][f"{r8_ganadores[0]} vs {r8_ganadores[1]}"] += 1
         semi1_ganador, semi1_perdedor = simular_partido_torneo(r8_ganadores[0], r8_ganadores[1])
+        
+        conteos_llaves["Semis"][f"{r8_ganadores[2]} vs {r8_ganadores[3]}"] += 1
         semi2_ganador, semi2_perdedor = simular_partido_torneo(r8_ganadores[2], r8_ganadores[3])
         
+        conteos_llaves["Tercero"][f"{semi1_perdedor} vs {semi2_perdedor}"] += 1
         tercer_lugar, cuarto_lugar = simular_partido_torneo(semi1_perdedor, semi2_perdedor)
+        
+        conteos_llaves["Final"][f"{semi1_ganador} vs {semi2_ganador}"] += 1
         campeon, subcampeon = simular_partido_torneo(semi1_ganador, semi2_ganador)
         
         conteos_campeon[campeon] += 1
@@ -211,8 +229,7 @@ if st.button("🚀 Iniciar Simulación en Tiempo Real", type="primary", use_cont
     
     df_final = pd.merge(df_campeones, df_podio, on="Selección", how="left")
     
-    # Pestañas estructuradas para navegación rápida
-    tab1, tab2, tab3 = st.tabs(["🏆 Cuadro de Honor", "⚽ Análisis de Partidos (Grupos)", "📈 Gráficos de Tendencia"])
+    tab1, tab2, tab3 = st.tabs(["🏆 Cuadro de Honor", "⚽ Análisis de Partidos (Grupos)", "🌿 Árbol de Eliminación Más Probable"])
     
     with tab1:
         col1, col2 = st.columns(2)
@@ -223,7 +240,7 @@ if st.button("🚀 Iniciar Simulación en Tiempo Real", type="primary", use_cont
             st.subheader("🇪🇨 Situación de Ecuador")
             ecuador_data = df_final[df_final["Selección"] == "Ecuador"]
             if not ecuador_data.empty:
-                prob_pase = ecuador_data["% Clasificación a 16avos"].values[0]
+                prob_pase = ecuador_data["% Clasificación a 16avos"].values
                 st.metric(label="Opciones de avanzar a 16avos", value=prob_pase, delta="Obligado a vencer a Curazao")
                 st.markdown("**Nota metodológica:** El tropiezo real en el debut ante Costa de Marfil (1-0) reduce el margen de error para clasificar entre los mejores terceros.")
             else:
@@ -234,7 +251,6 @@ if st.button("🚀 Iniciar Simulación en Tiempo Real", type="primary", use_cont
         st.write("🟢 Partidos jugados en la realidad. 🔮 Predicciones basadas en la moda estadística de la simulación masiva.")
         
         datos_partidos = []
-        
         for grupo, equipos in GRUPOS_2026.items():
             for i in range(4):
                 for j in range(i + 1, 4):
@@ -242,17 +258,13 @@ if st.button("🚀 Iniciar Simulación en Tiempo Real", type="primary", use_cont
                     t_b = equipos[j]
                     llave_str = f"{t_a} vs {t_b}"
                     
-                    # Evaluar origen del marcador
                     if (t_a, t_b) in PARTIDOS_REALES:
-                        g1, g2 = PARTIDOS_REALES[(t_a, t_b)]
-                        marcador_final = f"{g1} - {g2}"
+                        marcador_final = f"{PARTIDOS_REALES[(t_a, t_b)][0]} - {PARTIDOS_REALES[(t_a, t_b)][1]}"
                         tipo = "🟢 Real (Fijo)"
                     elif (t_b, t_a) in PARTIDOS_REALES:
-                        g2, g1 = PARTIDOS_REALES[(t_b, t_a)]
-                        marcador_final = f"{g1} - {g2}"
+                        marcador_final = f"{PARTIDOS_REALES[(t_b, t_a)][0]} - {PARTIDOS_REALES[(t_b, t_a)][1]}"
                         tipo = "🟢 Real (Fijo)"
                     else:
-                        # Extraer el elemento modal de los counters de goles calculados
                         if llave_str in historial_marcadores_cruces and historial_marcadores_cruces[llave_str]:
                             marcador_final = historial_marcadores_cruces[llave_str].most_common(1)[0][0]
                         else:
@@ -260,20 +272,76 @@ if st.button("🚀 Iniciar Simulación en Tiempo Real", type="primary", use_cont
                         tipo = "🔮 Proyectado (Frecuente)"
                     
                     datos_partidos.append({
-                        "Grupo": grupo,
-                        "Partido": llave_str,
-                        "Marcador Más Probable": marcador_final,
-                        "Condición": tipo
+                        "Grupo": grupo, "Partido": llave_str, "Marcador Más Probable": marcador_final, "Condición": tipo
                     })
         
         df_partidos_analisis = pd.DataFrame(datos_partidos)
-        st.dataframe(df_partidos_analisis, use_container_width=True, height=500)
+        st.dataframe(df_partidos_analisis, use_container_width=True, height=400)
 
     with tab3:
-        st.subheader("📈 Frecuencia de Coronación por Simulación Masiva")
-        fig_fav = px.bar(
-            df_campeones.head(10), x="Selección", y="Títulos",
-            title="Distribución de Títulos Obtenidos",
-            color="Títulos", color_continuous_scale="Reds"
-        )
-        st.plotly_chart(fig_fav, use_container_width=True)
+        st.subheader("🌿 Estructura del Árbol de Eliminación Directa Predictivo")
+        st.write("A continuación se grafican las llaves KO más concurrentes resultantes del análisis estadístico general:")
+        
+        # Obtener las llaves modales más comunes de las simulaciones
+        top_r32 = [x[0] for x in conteos_llaves["R32"].most_common(4)]
+        top_r16 = [x[0] for x in conteos_llaves["R16"].most_common(2)]
+        top_qf = [x[0] for x in conteos_llaves["Cuartos"].most_common(2)]
+        top_sf = [x[0] for x in conteos_llaves["Semis"].most_common(1)]
+        top_3ro = [x[0] for x in conteos_llaves["Tercero"].most_common(1)]
+        top_fi = [x[0] for x in conteos_llaves["Final"].most_common(1)]
+        
+        # Renderizado del árbol de flujo utilizando Graphviz sintáctico nativo
+        codigo_grafica = f"""
+        digraph G {{
+            rankdir=LR;
+            node [shape=box, style=filled, color="lightblue", fontname="Arial"];
+            
+            subgraph cluster_32 {{
+                label = "Dieciseisavos de Final (Ejemplos Comunes)";
+                color = lightgrey;
+                "{top_r32[0] if len(top_r32) > 0 else 'Llave A'}";
+                "{top_r32[1] if len(top_r32) > 1 else 'Llave B'}";
+            }}
+            
+            subgraph cluster_16 {{
+                label = "Octavos de Final Más Repetidos";
+                color = blue;
+                "{top_r16[0] if len(top_r16) > 0 else 'Octavos 1'}";
+                "{top_r16[1] if len(top_r16) > 1 else 'Octavos 2'}";
+            }}
+            
+            subgraph cluster_4s {{
+                label = "Cuartos de Final Tendencia";
+                color = green;
+                "{top_qf[0] if len(top_qf) > 0 else 'Cuartos 1'}";
+            }}
+            
+            subgraph cluster_finales {{
+                label = "Etapa Definitoria";
+                color = gold;
+                "Semifinal: {top_sf[0] if len(top_sf) > 0 else 'Semi 1'}" -> "Gran Final: {top_fi[0] if len(top_fi) > 0 else 'Final'}";
+                "Semifinal: {top_sf[0] if len(top_sf) > 0 else 'Semi 1'}" -> "3er Puesto: {top_3ro[0] if len(top_3ro) > 0 else '3er Lugar'}";
+            }}
+            
+            "{top_r32[0] if len(top_r32) > 0 else 'Llave A'}" -> "{top_r16[0] if len(top_r16) > 0 else 'Octavos 1'}";
+            "{top_r16[0] if len(top_r16) > 0 else 'Octavos 1'}" -> "{top_qf[0] if len(top_qf) > 0 else 'Cuartos 1'}";
+            "{top_qf[0] if len(top_qf) > 0 else 'Cuartos 1'}" -> "Semifinal: {top_sf[0] if len(top_sf) > 0 else 'Semi 1'}";
+        }}
+        """
+        st.graphviz_chart(codigo_grafica, use_container_width=True)
+        
+        # Despliegue de apoyo en formato texto limpio para asegurar scannability
+        st.markdown("### 📋 Top Llaves más Frecuentes por Instancia")
+        c_r1, c_r2, c_r3 = st.columns(3)
+        with c_r1:
+            st.write("**Octavos de Final Populares:**")
+            for llave, cant in conteos_llaves["R16"].most_common(3):
+                st.caption(f"• {llave}")
+        with c_r2:
+            st.write("**Cuartos de Final Populares:**")
+            for llave, cant in conteos_llaves["Cuartos"].most_common(3):
+                st.caption(f"• {llave}")
+        with c_r3:
+            st.write("**Finales y 3er Puesto de Tendencia:**")
+            st.caption(f"🏆 **Final:** {top_fi[0] if len(top_fi) > 0 else 'Sin datos'}")
+            st.caption(f"🥉 **3er Lugar:** {top_3ro[0] if len(top_3ro) > 0 else 'Sin datos'}")
