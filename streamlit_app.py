@@ -240,7 +240,8 @@ if st.button("🚀 Iniciar Simulación en Tiempo Real", type="primary", use_cont
             st.subheader("🇪🇨 Situación de Ecuador")
             ecuador_data = df_final[df_final["Selección"] == "Ecuador"]
             if not ecuador_data.empty:
-                prob_pase = ecuador_data["% Clasificación a 16avos"].values
+                # CORRECCIÓN: Agregamos [0] al final para pasar un dato limpio a st.metric
+                prob_pase = ecuador_data["% Clasificación a 16avos"].values[0]
                 st.metric(label="Opciones de avanzar a 16avos", value=prob_pase, delta="Obligado a vencer a Curazao")
                 st.markdown("**Nota metodológica:** El tropiezo real en el debut ante Costa de Marfil (1-0) reduce el margen de error para clasificar entre los mejores terceros.")
             else:
