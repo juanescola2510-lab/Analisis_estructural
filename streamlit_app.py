@@ -153,7 +153,7 @@ if usar_encapsulador:
 Presion_Relativa = np.clip(Presion_Relativa, -4200, 2000)
 
 # ==============================================================================
-# PROCESAMIENTO GEOMÉTRICO ADAPTATIVO: CAMPANAS EN ESPEJO (EQUIDISTANTES)
+# PROCESAMIENTO GEOMÉTRICO ADAPTATIVO: ESPEJO EXACTO (OFFSET PARALELO)
 # ==============================================================================
 r_diseno = 0.15 + 1.1 * factor_radio
 delta_x_holgura = 1.2 * (holgura_mm / 400.0)
@@ -171,19 +171,13 @@ y_c_der = (y_quiebre + r_diseno) + r_diseno * np.sin(theta_der) - (r_diseno * fa
 x_pared_der = np.hstack(([x_der_entrada, x_der_entrada], x_c_der, [x_fin_der]))
 y_pared_der = np.hstack(([5.0, y_quiebre], y_c_der, [y_fin]))
 
-# --- 2. GEOMETRÍA DEL ENCAPSULADOR CON RADIO Y ÁNGULO (CONCÉNTRICO) ---
-# Se calcula un desplazamiento constante (offset) que sigue la misma forma exacta
-r_encapsulador = r_diseno + delta_x_holgura
+# --- 2. GEOMETRÍA DEL ENCAPSULADOR EN ESPEJO PERFECTO (ROJO/BLANCO) ---
+# Copia exactamente cada punto de la campana y lo desplaza hacia afuera según la holgura
+x_enc_pared_izq = x_pared_izq - delta_x_holgura
+y_enc_pared_izq = y_pared_izq  # Mantiene las mismas alturas para un canal horizontal constante
 
-x_enc_c_izq = (x_izq_entrada - delta_x_holgura - r_diseno) + r_encapsulador * np.cos(theta_izq)
-y_enc_c_izq = (y_quiebre + r_diseno) + r_encapsulador * np.sin(theta_izq) - (r_diseno * factor_angulo)
-x_enc_pared_izq = np.hstack(([x_izq_entrada - delta_x_holgura, x_izq_entrada - delta_x_holgura], x_enc_c_izq, [x_fin_izq - delta_x_holgura]))
-y_enc_pared_izq = np.hstack(([5.0, y_quiebre], y_enc_c_izq, [y_fin]))
-
-x_enc_c_der = (x_der_entrada + delta_x_holgura + r_diseno) + r_encapsulador * np.cos(theta_der)
-y_enc_c_der = (y_quiebre + r_diseno) + r_encapsulador * np.sin(theta_der) - (r_diseno * factor_angulo)
-x_enc_pared_der = np.hstack(([x_der_entrada + delta_x_holgura, x_der_entrada + delta_x_holgura], x_enc_c_der, [x_fin_der + delta_x_holgura]))
-y_enc_pared_der = np.hstack(([5.0, y_quiebre], y_enc_c_der, [y_fin]))
+x_enc_pared_der = x_pared_der + delta_x_holgura
+y_enc_pared_der = y_pared_der  # Mantiene las mismas alturas para un canal horizontal constante
 
 
 # ==============================================================================
@@ -199,18 +193,18 @@ with col1:
     # Dibujar las líneas de flujo dinámicas
     strm_vel = ax_vel.streamplot(X, Y, U_final, V_final, color=Vel_magnitud, cmap='turbo', linewidth=1.1, density=1.9, arrowsize=0.8)
     
-    # Dibujar EstStructure Fija del Ventilador (Líneas moradas originales)
+    # Dibujar Estructura Fija del Ventilador (Líneas moradas originales)
     ax_vel.plot(x_pared_izq, y_pared_izq, color='#df00ff', linewidth=4, label="Campana Ventilador")
     ax_vel.plot(x_pared_der, y_pared_der, color='#df00ff', linewidth=4)
     
-    # --- DIBUJAR ENCAPSULADOR COMPLETO CON CURVAS Y ÁNGULOS (ROJO) ---
+    # --- DIBUJAR ENCAPSULADOR EN ESPEJO CORRECTO (ROJO) ---
     if usar_encapsulador:
         ax_vel.plot(x_enc_pared_izq, y_enc_pared_izq, color='#ff1744', linewidth=4.5, label="Encapsulador")
         ax_vel.plot(x_enc_pared_der, y_enc_pared_der, color='#ff1744', linewidth=4.5)
         
-        # Anotaciones del canal de flujo atrapado
-        ax_vel.text(x_izq_entrada - (delta_x_holgura/2), 4.2, "Canal Anular", color='#ff1744', fontsize=7.5, ha='center', weight='bold', rotation=90)
-        ax_vel.text(x_der_entrada + (delta_x_holgura/2), 4.2, "Canal Anular", color='#ff1744', fontsize=7.5, ha='center', weight='bold', rotation=-90)
+        # Anotaciones en el centro del canal anular
+        ax_vel.text(x_izq_entrada - (delta_x_holgura/2), 3.8, "Canal Anular", color='#ff1744', fontsize=7.5, ha='center', weight='bold', rotation=90)
+        ax_vel.text(x_der_entrada + (delta_x_holgura/2), 3.8, "Canal Anular", color='#ff1744', fontsize=7.5, ha='center', weight='bold', rotation=-90)
 
     ax_vel.set_xlim(0, 5)
     ax_vel.set_ylim(0, 5)
@@ -227,7 +221,7 @@ with col2:
     ax_pres.plot(x_pared_izq, y_pared_izq, color='#df00ff', linewidth=4)
     ax_pres.plot(x_pared_der, y_pared_der, color='#df00ff', linewidth=4)
     
-    # --- DIBUJAR ENCAPSULADOR COMPLETO CON CURVAS Y ÁNGULOS (BLANCO CONTRASTE) ---
+    # --- DIBUJAR ENCAPSULADOR EN ESPEJO CORRECTO (BLANCO CONTRASTE) ---
     if usar_encapsulador:
         ax_pres.plot(x_enc_pared_izq, y_enc_pared_izq, color='#ffffff', linewidth=3.5, linestyle='-')
         ax_pres.plot(x_enc_pared_der, y_enc_pared_der, color='#ffffff', linewidth=3.5, linestyle='-')
@@ -237,4 +231,4 @@ with col2:
     ax_pres.axis('off')
     st.pyplot(fig_pres)
 
-st.info("💡 **Conclusión de Ingeniería:** El encapsulador concéntrico replica los radios de suavizado y ángulos de transición. Al variar la 'Distancia de Holgura', la simulación recalcula el canal de paso anular adaptativo para observar con precisión las pérdidas aerodinámicas.")
+st.info("💡 **Conclusión de Ingeniería:** El encapsulador concéntrico ahora actúa como un espejo geométrico exacto del cuello y la campana. Al variar la 'Distancia de Holgura', las placas externas se contraen o expanden radialmente en paralelo, manteniendo el canal de flujo uniforme.")
