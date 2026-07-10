@@ -180,11 +180,11 @@ st.write(
     
 st.divider()
 
-    st.subheader("Detalle del Equipo")
+st.subheader("Detalle del Equipo")
 
-    for fila in datos_equipo:
+for fila in datos_equipo:
 
-        st.write(
-            f"{fila[idx_punto]} - {float(fila[idx_estado]):.0%}"
+    st.write(
+        f"{fila[idx_punto]} - {float(fila[idx_estado]):.0%}"
 
 
