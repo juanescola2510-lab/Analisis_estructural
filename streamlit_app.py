@@ -186,5 +186,6 @@ for fila in datos_equipo:
 
     st.write(
         f"{fila[idx_punto]} - {float(fila[idx_estado]):.0%}"
+    )
 
 
