@@ -2,10 +2,10 @@ import streamlit as st
 import openpyxl
 from io import BytesIO
 
-st.title("Prueba Lectura Hoja")
+st.title("Dashboard Salud Equipos")
 
 archivo = st.file_uploader(
-    "Excel",
+    "Seleccione Excel",
     type=["xlsx"]
 )
 
@@ -20,14 +20,18 @@ if archivo:
 
         ws = wb["Datos"]
 
-        st.success("✅ Hoja abierta")
+        datos = list(ws.values)
 
-        st.write("Filas:")
+        encabezados = datos[0]
 
-        datos = []
+        registros = datos[1:]
 
-        for fila in ws.iter_rows(values_only=True):
+        st.success("✅ Datos cargados")
 
-            datos.append(fila)
+        st.write("Encabezados:")
 
-        st.write(datos[:10])
+        st.write(encabezados)
+
+        st.write("Primeras filas:")
+
+        st.write(registros[:10])
