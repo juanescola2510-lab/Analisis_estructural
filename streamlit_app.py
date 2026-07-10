@@ -109,67 +109,63 @@ if st.session_state.datos is not None:
 
     col1, col2 = st.columns([1, 1])
 
-   with col1:
+    # -------------------------
+    # DONA
+    # -------------------------
 
-    fig = go.Figure()
+    with col1:
 
-    fig.add_trace(
-        go.Pie(
-            values=[
-                salud * 100,
-                100 - (salud * 100)
-            ],
-            hole=0.75,
-            marker=dict(
-                colors=[
-                    color,
-                    "#E0E0E0"
-                ]
-            ),
-            textinfo="none"
-        )
-    )
+        fig = go.Figure()
 
-    fig.update_layout(
-        showlegend=False,
-        height=400,
-        annotations=[
-            dict(
-                text=f"{salud:.0%}",
-                x=0.5,
-                y=0.5,
-                showarrow=False,
-                font_size=35
+        fig.add_trace(
+            go.Pie(
+                values=[
+                    salud * 100,
+                    100 - (salud * 100)
+                ],
+                hole=0.75,
+                marker=dict(
+                    colors=[
+                        color,
+                        "#E0E0E0"
+                    ]
+                ),
+                textinfo="none"
             )
-        ]
-    )
+        )
 
-    st.plotly_chart(
-        fig,
-        use_container_width=True
-    )
+        fig.update_layout(
+            showlegend=False,
+            height=400,
+            annotations=[
+                dict(
+                    text=f"{salud:.0%}",
+                    x=0.5,
+                    y=0.5,
+                    showarrow=False,
+                    font_size=40
+                )
+            ]
+        )
 
-with col2:
+        st.plotly_chart(
+            fig,
+            use_container_width=True
+        )
 
-    st.metric(
-        "SALUD DEL EQUIPO",
-        f"{salud:.0%}"
-    )
+    # -------------------------
+    # INFORMACIÓN
+    # -------------------------
 
-    st.write("## Estado")
-    st.write(estado)
+    with col2:
 
-    st.write("## Punto Más Crítico")
-    st.write(
-        punto_critico[idx_punto]
-    )
+        st.metric(
+            "SALUD DEL EQUIPO",
+            f"{salud:.0%}"
+        )
 
-st.divider()
+        st.write("## Estado")
+        st.write(estado)
 
-st.subheader("Detalle del Equipo")
-
-for fila in datos_equipo:
-
-    st.write(
-        f"{fila[idx_punto]} - {float(fila[idx_estado]):.0%}"
-    )
+        st.write("## Punto Más Crítico")
+        st.write(
