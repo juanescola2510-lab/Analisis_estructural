@@ -52,7 +52,15 @@ if archivo is not None and st.button("INICIAR"):
 # DASHBOARD
 # ------------------------------------
 
-if st.session_state.get("datos") is not None:
+
+if st.session_state.get("datos") is None:
+
+    st.info(
+        "⬆️ Cargue un archivo Excel y pulse INICIAR para visualizar el dashboard."
+    )
+
+    st.stop()
+
 
     encabezados = st.session_state.datos["encabezados"]
     registros = st.session_state.datos["registros"]
@@ -175,15 +183,7 @@ st.write("Punto crítico calculado")
     # DETALLE
     # ---------------------    # -------------------------
 
-    
-st.divider()
 
-st.subheader("Detalle del Equipo")
-
-for fila in datos_equipo:
-
-    st.write(
-        f"{fila[idx_punto]} - {float(fila[idx_estado]):.0%}"
-    )
+ 
 
 
