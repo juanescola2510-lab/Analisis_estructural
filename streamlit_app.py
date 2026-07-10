@@ -1,15 +1,28 @@
 import streamlit as st
+import openpyxl
+from io import BytesIO
 
-st.title("Prueba Openpyxl")
+st.title("Prueba Lectura Workbook")
 
-if st.button("INICIAR"):
+archivo = st.file_uploader(
+    "Excel",
+    type=["xlsx"]
+)
 
-    try:
+if archivo:
 
-        import openpyxl
+    if st.button("INICIAR"):
 
-        st.success("✅ Openpyxl cargado correctamente")
+        try:
 
-    except Exception as e:
+            wb = openpyxl.load_workbook(
+                BytesIO(archivo.read())
+            )
 
-        st.error(e)
+            st.success("✅ Workbook abierto")
+
+            st.write(wb.sheetnames)
+
+        except Exception as e:
+
+            st.error(e)
