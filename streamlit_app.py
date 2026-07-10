@@ -168,4 +168,23 @@ if st.session_state.datos is not None:
         st.write(estado)
 
         st.write("## Punto Más Crítico")
+        
+st.write(
+            punto_critico[idx_punto]
+        )
+
+    # -------------------------
+    # DETALLE
+    # ---------------------    # -------------------------
+
+    
+st.divider()
+
+    st.subheader("Detalle del Equipo")
+
+    for fila in datos_equipo:
+
         st.write(
+            f"{fila[idx_punto]} - {float(fila[idx_estado]):.0%}"
+
+
