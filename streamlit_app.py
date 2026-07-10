@@ -1,34 +1,20 @@
 import streamlit as st
-import pandas as pd
 
-st.title("Prueba Lectura Excel")
+st.title("Prueba Excel")
 
 archivo = st.file_uploader(
-    "Selecciona un archivo Excel",
+    "Seleccione un Excel",
     type=["xlsx"]
 )
 
 if archivo is not None:
 
-    if st.button("INICIAR"):
+    st.success("✅ Archivo cargado")
 
-        try:
+    st.write("Nombre:")
 
-            df = pd.read_excel(
-                archivo,
-                engine="openpyxl"
-            )
+    st.write(archivo.name)
 
-            st.success("✅ Excel leído correctamente")
+    st.write("Tamaño:")
 
-            st.subheader("Columnas detectadas")
-
-            st.write(df.columns.tolist())
-
-            st.subheader("Primeras filas")
-
-            st.dataframe(df)
-
-        except Exception as e:
-
-            st.error(f"Error: {e}")
+    st.write(archivo.size)
