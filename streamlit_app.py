@@ -177,11 +177,15 @@ if st.session_state.get("datos") is None:
 
         st.write("## Punto Más Crítico")
         
-st.write("Punto crítico calculado")
 
-    # -------------------------
-    # DETALLE
-    # ---------------------    # -------------------------
+if st.session_state.datos is None:
+
+    st.info(
+        "⬆️ Seleccione un archivo Excel y pulse INICIAR."
+    )
+
+    st.stop()
+
 
 
  
