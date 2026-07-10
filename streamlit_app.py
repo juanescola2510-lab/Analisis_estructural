@@ -1,144 +1,175 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 
-# 1. Configuración de la página
 st.set_page_config(
-    page_title="Salud de Activos - Mantenimiento Predictivo",
+    page_title="Dashboard Predictivo",
     page_icon="⚙️",
     layout="wide"
 )
 
-# 2. Simulación de tus datos (Reemplaza esto con la carga de tu archivo)
-@st.cache_data
-def cargar_datos_activos():
-    # Aquí simulamos tu archivo con los equipos y ponderaciones
-    np.random.seed(42)
-    equipos = [f"Motor Principal {i}" for i in range(1, 11)] + [f"Bomba Centrífuga {i}" for i in range(1, 11)]
-    
-    # Valores de 0 a 100% (100% es salud perfecta, menos de 60% es crítico)
-    datos = pd.DataFrame({
-        "Activo": equipos,
-        "Vibración": np.random.randint(40, 100, 20),
-        "Ultrasonido": np.random.randint(50, 100, 20),
-        "Termografía": np.random.randint(30, 100, 20),
-        "Balanceo": np.random.randint(60, 100, 20),
-        "Alineación": np.random.randint(60, 100, 20),
-    })
-    
-    # Calculamos la Salud Global (Promedio ponderado simulado)
-    datos["Salud_Global"] = datos[["Vibración", "Ultrasonido", "Termografía", "Balanceo", "Alineación"]].mean(axis=1).round(1)
-    
-    # Asignar Estado según la Salud Global
-    def asignar_estado(score):
-        if score >= 85: return "Bueno ✅"
-        elif score >= 70: return "Alerta ⚠️"
-        else: return "Crítico 🚨"
-        
-    datos["Estado"] = datos["Salud_Global"].apply(asignar_estado)
-    return datos
+st.title("📈 Dashboard Salud de Equipos")
 
-# --- CARGA DE ARCHIVO REAL ---
-# Si quieres usar tu propio archivo Excel/CSV, descomenta las líneas de abajo:
-# st.sidebar.header("Cargar Datos")
-# archivo = st.sidebar.file_uploader("Sube tu archivo de activos", type=["xlsx", "csv"])
-# if archivo:
-#     if archivo.name.endswith('.csv'): df = pd.read_csv(archivo)
-#     else: df = pd.read_excel(archivo)
-# else: df = cargar_datos_activos()
-
-df = cargar_datos_activos() # Borra esta línea si usas el cargador de arriba
-
-# 3. Título Principal
-st.title("⚙️ Dashboard de Salud de Activos Industriales")
-st.markdown("Monitoreo predictivo basado en Vibración, Ultrasonido, Termografía, Balanceo y Alineación.")
-st.markdown("---")
-
-# 4. Filtros en la barra lateral
-st.sidebar.header("Filtros de Inspección")
-estado_seleccionado = st.sidebar.multiselect(
-    "Filtrar por Condición:",
-    options=df["Estado"].unique(),
-    default=df["Estado"].unique()
+archivo = st.file_uploader(
+    "Subir archivo Excel",
+    type=["xlsx"]
 )
-df_filtrado = df[df["Estado"].isin(estado_seleccionado)]
 
-# 5. KPIs de Flota
-Criticos = sum(df_filtrado["Estado"] == "Crítico 🚨")
-Alertas = sum(df_filtrado["Estado"] == "Alerta ⚠️")
-Buenos = sum(df_filtrado["Estado"] == "Bueno ✅")
+if archivo:
 
-kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-kpi1.metric("Total Activos Monitoreados", len(df_filtrado))
-kpi2.metric("Equipos Críticos 🚨", Criticos, delta=f"{Criticos} urgente", delta_color="inverse")
-kpi3.metric("Equipos en Alerta ⚠️", Alertas, delta_color="off")
-kpi4.metric("Equipos Saludables ✅", Buenos)
+    df = pd.read_excel(archivo)
 
-st.markdown("---")
+    equipos = sorted(df["EQUIPO"].unique())
 
-# 6. Gráficos de Estado General
-col_izq, col_der = st.columns([1, 2])
-
-with col_izq:
-    st.subheader("Distribución de Condiciones")
-    fig_pie = px.pie(
-        df_filtrado, 
-        names="Estado", 
-        color="Estado",
-        color_discrete_map={"Bueno ✅": "green", "Alerta ⚠️": "orange", "Crítico 🚨": "red"}
+    equipo = st.sidebar.selectbox(
+        "Seleccionar equipo",
+        equipos
     )
-    st.plotly_chart(fig_pie, use_container_width=True)
 
-with col_der:
-    st.subheader("Peores Activos por Salud Global")
-    df_peores = df_filtrado.sort_values(by="Salud_Global").head(8)
+    df_equipo = df[df["EQUIPO"] == equipo]
+
+    salud = df_equipo["ESTADO E"].mean()
+
+    if salud >= 0.9:
+        estado = "🟢 NORMAL"
+        color = "green"
+
+    elif salud >= 0.7:
+        estado = "🟡 ALARMA"
+        color = "orange"
+
+    else:
+        estado = "🔴 INTERVENIR"
+        color = "red"
+
+    c1, c2, c3 = st.columns(3)
+
+    with c1:
+        st.metric(
+            "SALUD DEL EQUIPO",
+            f"{salud:.0%}"
+        )
+
+    with c2:
+        st.metric(
+            "ESTADO",
+            estado
+        )
+
+    punto_critico = df_equipo.loc[
+        df_equipo["ESTADO E"].idxmin(),
+        "PUNTO DE MEDICIÓN"
+    ]
+
+    with c3:
+        st.metric(
+            "PUNTO CRÍTICO",
+            punto_critico
+        )
+
+    # ------------------
+    # VELOCÍMETRO
+    # ------------------
+
+    fig_gauge = go.Figure(
+        go.Indicator(
+            mode = "gauge+number",
+            value = salud * 100,
+
+            number = {
+                'suffix': "%"
+            },
+
+            gauge = {
+                'axis': {
+                    'range': [0,100]
+                },
+
+                'bar': {
+                    'color': color
+                },
+
+                'steps': [
+                    {
+                        'range': [0,70],
+                        'color': 'red'
+                    },
+                    {
+                        'range': [70,90],
+                        'color': 'yellow'
+                    },
+                    {
+                        'range': [90,100],
+                        'color': 'green'
+                    }
+                ]
+            }
+        )
+    )
+
+    st.plotly_chart(
+        fig_gauge,
+        use_container_width=True
+    )
+
+    st.subheader("Componentes del Equipo")
+
     fig_bar = px.bar(
-        df_peores, 
-        x="Salud_Global", 
-        y="Activo", 
+        df_equipo,
+        x="ESTADO E",
+        y="PUNTO DE MEDICIÓN",
         orientation="h",
-        color="Estado",
-        color_discrete_map={"Bueno ✅": "green", "Alerta ⚠️": "orange", "Crítico 🚨": "red"},
-        text="Salud_Global"
+        text="ESTADO E",
+        color="ESTADO E",
+        color_continuous_scale="RdYlGn"
     )
-    st.plotly_chart(fig_bar, use_container_width=True)
 
-st.markdown("---")
+    fig_bar.update_traces(
+        texttemplate='%{x:.0%}'
+    )
 
-# 7. Análisis Individual por Activo (Gráfico de Radar / Araña)
-st.subheader("🔍 Diagnóstico Detallado por Activo")
-activo_sel = st.selectbox("Selecciona un equipo para ver su diagnóstico:", df["Activo"].unique())
+    st.plotly_chart(
+        fig_bar,
+        use_container_width=True
+    )
 
-info_activo = df[df["Activo"] == activo_sel].iloc[0]
+    st.subheader("Salud por Tecnología")
 
-# Configurar gráfico de radar para las 5 tecnologías
-categorias = ["Vibración", "Ultrasonido", "Termografía", "Balanceo", "Alineación"]
-valores = [info_activo[cat] for cat in categorias]
+    datos = pd.DataFrame({
 
-fig_radar = go.Figure()
-fig_radar.add_trace(go.Scatterpolar(
-      r=valores + [valores[0]], # Se duplica el primero para cerrar el círculo
-      theta=categorias + [categorias[0]],
-      fill='toself',
-      name=activo_sel,
-      line_color="red" if "Crítico" in info_activo["Estado"] else "orange" if "Alerta" in info_activo["Estado"] else "green"
-))
+        "Tecnología":[
+            "Ultrasonido",
+            "Vibración",
+            "Termografía"
+        ],
 
-fig_radar.update_layout(
-  polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
-  showlegend=False
-)
+        "Salud":[
 
-col_rad1, col_rad2 = st.columns([1, 1])
-with col_rad1:
-    st.write(f"### Estado Actual: {info_activo['Estado']}")
-    st.write(f"**Puntuación de Salud Global:** {info_activo['Salud_Global']}%")
-    st.dataframe(pd.DataFrame({"Técnica": categorias, "Puntuación": valores}))
-with col_rad2:
-    st.plotly_chart(fig_radar, use_container_width=True)
+            df_equipo["ESTADO U"].mean()*100,
 
-st.markdown("---")
-st.subheader("📋 Matriz Completa de Activos")
-st.dataframe(df_filtrado, use_container_width=True)
+            df_equipo["ESTADO V"].mean()*100,
+
+            df_equipo["ESTADO T"].mean()*100,
+        ]
+    })
+
+    fig_radar = px.line_polar(
+        datos,
+        r="Salud",
+        theta="Tecnología",
+        line_close=True
+    )
+
+    fig_radar.update_traces(
+        fill="toself"
+    )
+
+    st.plotly_chart(
+        fig_radar,
+        use_container_width=True
+    )
+
+    st.subheader("Detalle")
+
+    st.dataframe(df_equipo)
