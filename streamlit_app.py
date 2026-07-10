@@ -169,9 +169,7 @@ if st.session_state.datos is not None:
 
         st.write("## Punto Más Crítico")
         
-st.write(
-            punto_critico[idx_punto]
-        )
+st.write("Punto crítico calculado")
 
     # -------------------------
     # DETALLE
