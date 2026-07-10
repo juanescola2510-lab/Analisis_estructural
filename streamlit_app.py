@@ -11,10 +11,15 @@ if archivo is not None:
 
     st.success("✅ Archivo cargado")
 
-    st.write("Nombre:")
+    st.write("Nombre:", archivo.name)
+    st.write("Tamaño:", archivo.size)
 
-    st.write(archivo.name)
+    if st.button("INICIAR"):
 
-    st.write("Tamaño:")
+        contenido = archivo.read()
 
-    st.write(archivo.size)
+        st.success("✅ Contenido leído")
+
+        st.write("Bytes leídos:")
+
+        st.write(len(contenido))
