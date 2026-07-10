@@ -52,7 +52,7 @@ if archivo is not None and st.button("INICIAR"):
 # DASHBOARD
 # ------------------------------------
 
-if st.session_state.datos is not None:
+if st.session_state.get("datos") is not None:
 
     encabezados = st.session_state.datos["encabezados"]
     registros = st.session_state.datos["registros"]
