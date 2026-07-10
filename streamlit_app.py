@@ -227,10 +227,10 @@ fig_hist.update_yaxes(
     tickformat=".0%"
 )
 
-st.plotly_chart(
-    fig_hist,
-    use_container_width=True
-)
+#st.plotly_chart(
+   # fig_hist,
+   # use_container_width=True
+#)
 
 # ----------------------------------------
 # ELEMENTOS CRITICOS
@@ -270,10 +270,10 @@ fig_crit.update_yaxes(
     categoryorder="total ascending"
 )
 
-st.plotly_chart(
-    fig_crit,
-    use_container_width=True
-)
+#st.plotly_chart(
+   # fig_crit,
+ #  use_container_width=True
+#)
 
 # ----------------------------------------
 # TABLA
