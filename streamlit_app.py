@@ -1,25 +1,15 @@
 import streamlit as st
 
-st.title("Prueba Excel")
+st.title("Prueba Openpyxl")
 
-archivo = st.file_uploader(
-    "Seleccione un Excel",
-    type=["xlsx"]
-)
+if st.button("INICIAR"):
 
-if archivo is not None:
+    try:
 
-    st.success("✅ Archivo cargado")
+        import openpyxl
 
-    st.write("Nombre:", archivo.name)
-    st.write("Tamaño:", archivo.size)
+        st.success("✅ Openpyxl cargado correctamente")
 
-    if st.button("INICIAR"):
+    except Exception as e:
 
-        contenido = archivo.read()
-
-        st.success("✅ Contenido leído")
-
-        st.write("Bytes leídos:")
-
-        st.write(len(contenido))
+        st.error(e)
