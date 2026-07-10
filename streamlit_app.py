@@ -124,7 +124,6 @@ salud = (
 # ESTADO
 # ------------------------------------------------
 
-
 if salud >= 0.90:
 
     estado = "🟢 NORMAL"
@@ -163,8 +162,7 @@ with col1:
 
     fig = go.Figure()
 
-    
-fig.add_trace(
+    fig.add_trace(
         go.Pie(
             values=[
                 salud * 100,
@@ -173,8 +171,7 @@ fig.add_trace(
             hole=0.75,
             marker=dict(
                 colors=[
-                   
-color,
+                    color,
                     "#E0E0E0"
                 ]
             ),
@@ -187,8 +184,7 @@ color,
         height=400,
         annotations=[
             dict(
-                
-text=f"{salud:.0%}",
+                text=f"{salud:.0%}",
                 x=0.5,
                 y=0.5,
                 showarrow=False,
@@ -199,8 +195,7 @@ text=f"{salud:.0%}",
 
     st.plotly_chart(
         fig,
-        
-use_container_width=True
+        use_container_width=True
     )
 
 # ------------------------------------------------
@@ -211,8 +206,7 @@ with col2:
 
     st.metric(
         "SALUD DEL EQUIPO",
-       
-f"{salud:.0%}"
+        f"{salud:.0%}"
     )
 
     st.write("## Estado")
@@ -224,8 +218,7 @@ f"{salud:.0%}"
     )
 
 # ------------------------------------------------
-
- DETALLE
+# DETALLE
 # ------------------------------------------------
 
 st.divider()
@@ -235,14 +228,5 @@ st.subheader("Detalle del Equipo")
 for fila in datos_equipo:
 
     st.write(
-        
-f"{fila[idx_punto]} - {float(fila[idx_estado]):.0%}"
+        f"{fila[idx_punto]} - {float(fila[idx_estado]):.0%}"
     )
-
-
-
-
-
-
-
-
