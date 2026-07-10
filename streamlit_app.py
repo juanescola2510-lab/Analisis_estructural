@@ -10,16 +10,16 @@ st.set_page_config(
 
 st.title("⚙️ Dashboard Salud de Equipos")
 
-# -------------------------
+# ------------------------------------
 # MEMORIA
-# -------------------------
+# ------------------------------------
 
 if "datos" not in st.session_state:
     st.session_state.datos = None
 
-# -------------------------
-# SUBIR EXCEL
-# -------------------------
+# ------------------------------------
+# CARGAR EXCEL
+# ------------------------------------
 
 archivo = st.file_uploader(
     "Seleccione archivo Excel",
@@ -46,11 +46,13 @@ if archivo is not None and st.button("INICIAR"):
         "registros": registros
     }
 
-# -------------------------
-# DASHBOARD
-# -------------------------
+    st.success("✅ Archivo cargado correctamente")
 
-if st.session_state.datos:
+# ------------------------------------
+# DASHBOARD
+# ------------------------------------
+
+if st.session_state.datos is not None:
 
     encabezados = st.session_state.datos["encabezados"]
     registros = st.session_state.datos["registros"]
@@ -90,37 +92,24 @@ if st.session_state.datos:
 
     if salud >= 0.90:
         estado = "🟢 NORMAL"
+        color = "#28a745"
 
     elif salud >= 0.70:
         estado = "🟡 ALARMA"
+        color = "#ffc107"
 
     else:
         estado = "🔴 INTERVENIR"
+        color = "#dc3545"
 
     punto_critico = min(
         datos_equipo,
         key=lambda x: float(x[idx_estado])
     )
 
-    col1, col2 = st.columns(2)
+    col1, col2 = st.columns([1, 1])
 
     with col1:
 
         fig = go.Figure(
-            go.Indicator(
-                mode="gauge+number",
-                value=salud * 100,
-
-                number={
-                    "suffix": "%"
-                },
-
-                gauge={
-                    "axis": {
-                        "range": [0, 100]
-                    },
-
-                    "bar": {
-                        "color": "black"
-                    },
-
+            data=[
