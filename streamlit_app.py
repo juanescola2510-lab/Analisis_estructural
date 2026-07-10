@@ -2,7 +2,7 @@ import streamlit as st
 import openpyxl
 from io import BytesIO
 
-st.title("Prueba Lectura Workbook")
+st.title("Prueba Lectura Hoja")
 
 archivo = st.file_uploader(
     "Excel",
@@ -13,16 +13,21 @@ if archivo:
 
     if st.button("INICIAR"):
 
-        try:
+        wb = openpyxl.load_workbook(
+            BytesIO(archivo.read()),
+            data_only=True
+        )
 
-            wb = openpyxl.load_workbook(
-                BytesIO(archivo.read())
-            )
+        ws = wb["Datos"]
 
-            st.success("✅ Workbook abierto")
+        st.success("✅ Hoja abierta")
 
-            st.write(wb.sheetnames)
+        st.write("Filas:")
 
-        except Exception as e:
+        datos = []
 
-            st.error(e)
+        for fila in ws.iter_rows(values_only=True):
+
+            datos.append(fila)
+
+        st.write(datos[:10])
