@@ -4,172 +4,163 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 st.set_page_config(
-    page_title="Dashboard Predictivo",
-    page_icon="⚙️",
+    page_title="Tablero Salud de Equipos",
+    page_icon="📈",
     layout="wide"
 )
 
-st.title("📈 Dashboard Salud de Equipos")
+st.title("📈 Tablero Salud de Equipos")
 
 archivo = st.file_uploader(
     "Subir archivo Excel",
     type=["xlsx"]
 )
 
-if archivo:
+if archivo is not None:
 
-    df = pd.read_excel(archivo)
+    try:
 
-    equipos = sorted(df["EQUIPO"].unique())
+        df = pd.read_excel(
+            archivo,
+            engine="openpyxl"
+        )
 
-    equipo = st.sidebar.selectbox(
-        "Seleccionar equipo",
-        equipos
-    )
+        df.columns = df.columns.str.strip()
 
-    df_equipo = df[df["EQUIPO"] == equipo]
+        st.sidebar.header("Filtros")
 
-    salud = df_equipo["ESTADO E"].mean()
+        equipos = sorted(
+            df["EQUIPO"].dropna().unique()
+        )
 
-    if salud >= 0.9:
-        estado = "🟢 NORMAL"
-        color = "green"
+        equipo = st.sidebar.selectbox(
+            "Seleccionar equipo",
+            equipos
+        )
 
-    elif salud >= 0.7:
-        estado = "🟡 ALARMA"
-        color = "orange"
+        df_equipo = df[
+            df["EQUIPO"] == equipo
+        ]
 
-    else:
-        estado = "🔴 INTERVENIR"
-        color = "red"
+        salud = df_equipo["ESTADO E"].mean()
 
-    c1, c2, c3 = st.columns(3)
+        if salud >= 0.9:
+            estado = "🟢 NORMAL"
+            color = "green"
 
-    with c1:
-        st.metric(
+        elif salud >= 0.7:
+            estado = "🟡 ALARMA"
+            color = "orange"
+
+        else:
+            estado = "🔴 INTERVENIR"
+            color = "red"
+
+        punto_critico = df_equipo.loc[
+            df_equipo["ESTADO E"].idxmin(),
+            "PUNTO DE MEDICIÓN"
+        ]
+
+        c1, c2, c3 = st.columns(3)
+
+        c1.metric(
             "SALUD DEL EQUIPO",
             f"{salud:.0%}"
         )
 
-    with c2:
-        st.metric(
+        c2.metric(
             "ESTADO",
             estado
         )
 
-    punto_critico = df_equipo.loc[
-        df_equipo["ESTADO E"].idxmin(),
-        "PUNTO DE MEDICIÓN"
-    ]
-
-    with c3:
-        st.metric(
-            "PUNTO CRÍTICO",
+        c3.metric(
+            "PUNTO MÁS CRÍTICO",
             punto_critico
         )
 
-    # ------------------
-    # VELOCÍMETRO
-    # ------------------
-
-    fig_gauge = go.Figure(
-        go.Indicator(
-            mode = "gauge+number",
-            value = salud * 100,
-
-            number = {
-                'suffix': "%"
-            },
-
-            gauge = {
-                'axis': {
-                    'range': [0,100]
-                },
-
-                'bar': {
-                    'color': color
-                },
-
-                'steps': [
-                    {
-                        'range': [0,70],
-                        'color': 'red'
-                    },
-                    {
-                        'range': [70,90],
-                        'color': 'yellow'
-                    },
-                    {
-                        'range': [90,100],
-                        'color': 'green'
-                    }
-                ]
-            }
+        fig_gauge = go.Figure(
+            go.Indicator(
+                mode="gauge+number",
+                value=salud * 100,
+                number={'suffix': "%"},
+                gauge={
+                    'axis': {'range': [0, 100]},
+                    'bar': {'color': color},
+                    'steps': [
+                        {'range': [0, 70], 'color': '#ff4d4d'},
+                        {'range': [70, 90], 'color': '#ffd633'},
+                        {'range': [90, 100], 'color': '#33cc33'}
+                    ]
+                }
+            )
         )
-    )
 
-    st.plotly_chart(
-        fig_gauge,
-        use_container_width=True
-    )
+        st.plotly_chart(
+            fig_gauge,
+            key="gauge"
+        )
 
-    st.subheader("Componentes del Equipo")
+        st.subheader("Puntos de Medición")
 
-    fig_bar = px.bar(
-        df_equipo,
-        x="ESTADO E",
-        y="PUNTO DE MEDICIÓN",
-        orientation="h",
-        text="ESTADO E",
-        color="ESTADO E",
-        color_continuous_scale="RdYlGn"
-    )
+        fig_bar = px.bar(
+            df_equipo,
+            x="ESTADO E",
+            y="PUNTO DE MEDICIÓN",
+            orientation="h",
+            text="ESTADO E",
+            color="ESTADO E",
+            color_continuous_scale="RdYlGn"
+        )
 
-    fig_bar.update_traces(
-        texttemplate='%{x:.0%}'
-    )
+        fig_bar.update_traces(
+            texttemplate='%{x:.0%}'
+        )
 
-    st.plotly_chart(
-        fig_bar,
-        use_container_width=True
-    )
+        st.plotly_chart(
+            fig_bar,
+            key="barras"
+        )
 
-    st.subheader("Salud por Tecnología")
+        st.subheader("Salud por Tecnología")
 
-    datos = pd.DataFrame({
+        radar = pd.DataFrame({
 
-        "Tecnología":[
-            "Ultrasonido",
-            "Vibración",
-            "Termografía"
-        ],
+            "Tecnología": [
+                "Ultrasonido",
+                "Vibración",
+                "Termografía"
+            ],
 
-        "Salud":[
+            "Salud": [
+                df_equipo["ESTADO U"].mean() * 100,
+                df_equipo["ESTADO V"].mean() * 100,
+                df_equipo["ESTADO T"].mean() * 100
+            ]
+        })
 
-            df_equipo["ESTADO U"].mean()*100,
+        fig_radar = px.line_polar(
+            radar,
+            r="Salud",
+            theta="Tecnología",
+            line_close=True
+        )
 
-            df_equipo["ESTADO V"].mean()*100,
+        fig_radar.update_traces(
+            fill="toself"
+        )
 
-            df_equipo["ESTADO T"].mean()*100,
-        ]
-    })
+        st.plotly_chart(
+            fig_radar,
+            key="radar"
+        )
 
-    fig_radar = px.line_polar(
-        datos,
-        r="Salud",
-        theta="Tecnología",
-        line_close=True
-    )
+        st.subheader("Detalle de Mediciones")
 
-    fig_radar.update_traces(
-        fill="toself"
-    )
+        st.dataframe(
+            df_equipo,
+            use_container_width=True
+        )
 
-    st.plotly_chart(
-        fig_radar,
-        use_container_width=True
-    )
+    except Exception as e:
 
-    st.subheader("Detalle")
-
-    st.dataframe(df_equipo)
+        st.error(f"Error: {e}")
