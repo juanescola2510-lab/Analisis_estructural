@@ -28,6 +28,13 @@ def limpiar_texto(valor):
     return str(valor).strip()
 
 
+def normalizar_nombre(valor):
+    texto = limpiar_texto(valor)
+    texto = texto.replace("\n", " ")
+    texto = " ".join(texto.split())
+    return texto
+
+
 def normalizar_avance(valor):
     try:
         numero = float(valor)
@@ -71,44 +78,110 @@ def cargar_actividades():
             "No se encontro el archivo Avances 26-1-PH2.xlsx"
         )
 
-    # Primera lectura sin encabezados para encontrar la fila que contiene Itm
-    df_previa = pd.read_excel(
+    hojas = pd.ExcelFile(
         EXCEL_PATH,
-        sheet_name=0,
-        header=None,
         engine="openpyxl"
-    )
+    ).sheet_names
 
+    df = None
+    hoja_encontrada = None
     fila_encabezado = None
 
-    for indice, fila in df_previa.iterrows():
-        valores = [
-            str(valor).strip()
-            for valor in fila.tolist()
-            if pd.notna(valor)
-        ]
+    for nombre_hoja in hojas:
+        df_previa = pd.read_excel(
+            EXCEL_PATH,
+            sheet_name=nombre_hoja,
+            header=None,
+            engine="openpyxl"
+        )
 
-        if "Itm" in valores:
-            fila_encabezado = indice
+        limite_filas = min(len(df_previa), 50)
+
+        for indice in range(limite_filas):
+            fila = df_previa.iloc[indice]
+
+            valores = [
+                normalizar_nombre(valor)
+                for valor in fila.tolist()
+                if pd.notna(valor)
+            ]
+
+            encontro_itm = any(
+                valor.lower().startswith("itm")
+                for valor in valores
+            )
+
+            encontro_tarea = any(
+                "nombre de tarea" in valor.lower()
+                for valor in valores
+            )
+
+            encontro_lider = any(
+                "líder" in valor.lower()
+                or "lider" in valor.lower()
+                for valor in valores
+            )
+
+            if encontro_itm and encontro_tarea and encontro_lider:
+                hoja_encontrada = nombre_hoja
+                fila_encabezado = indice
+                break
+
+        if fila_encabezado is not None:
             break
 
     if fila_encabezado is None:
         raise ValueError(
-            "No se encontro la fila de encabezados que contiene Itm."
+            "No se encontro la fila de encabezados del Excel."
         )
 
-    # Segunda lectura utilizando la fila encontrada como encabezado
     df = pd.read_excel(
         EXCEL_PATH,
-        sheet_name=0,
+        sheet_name=hoja_encontrada,
         header=fila_encabezado,
         engine="openpyxl"
     )
 
     df.columns = [
-        limpiar_texto(columna)
+        normalizar_nombre(columna)
         for columna in df.columns
     ]
+
+    renombrar_columnas = {}
+
+    for columna in df.columns:
+        columna_normalizada = columna.lower()
+
+        if columna_normalizada.startswith("itm"):
+            renombrar_columnas[columna] = "Itm"
+
+        elif "nombre de tarea" in columna_normalizada:
+            renombrar_columnas[columna] = "Nombre de tarea"
+
+        elif (
+            columna_normalizada == "líder"
+            or columna_normalizada == "lider"
+        ):
+            renombrar_columnas[columna] = "Líder"
+
+        elif columna_normalizada == "%":
+            renombrar_columnas[columna] = "%"
+
+        elif columna_normalizada == "activo":
+            renombrar_columnas[columna] = "Activo"
+
+        elif columna_normalizada == "ot":
+            renombrar_columnas[columna] = "OT"
+
+        elif columna_normalizada == "responsable":
+            renombrar_columnas[columna] = "Responsable"
+
+        elif columna_normalizada.startswith("comentarios"):
+            renombrar_columnas[columna] = "Comentarios"
+
+    df = df.rename(
+        columns=renombrar_columnas
+    )
 
     columnas_necesarias = [
         "Itm",
@@ -325,12 +398,12 @@ try:
     actividades = cargar_actividades()
 
 except Exception as error:
-    st.error("No se pudo cargar el archivo Excel.")
+    st.error("No se pudo cargar correctamente el archivo Excel.")
 
     st.code(str(error))
 
     st.info(
-        "Verifica que el archivo Avances 26-1-PH2.xlsx "
+        "Verifica que Avances 26-1-PH2.xlsx "
         "este en la misma carpeta que streamlit_app.py."
     )
 
