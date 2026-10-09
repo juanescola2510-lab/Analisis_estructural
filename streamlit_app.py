@@ -7,7 +7,6 @@ import streamlit as st
 
 
 # CONFIGURACION
-
 BASE_DIR = Path(__file__).parent
 EXCEL_PATH = BASE_DIR / "Avances 26-1-PH2.xlsx"
 DB_PATH = BASE_DIR / "avances.db"
@@ -20,18 +19,20 @@ st.set_page_config(
 
 
 # FUNCIONES GENERALES
-
 def limpiar_texto(valor):
     if pd.isna(valor):
         return ""
-
     return str(valor).strip()
 
 
-def normalizar_nombre(valor):
-    texto = limpiar_texto(valor)
-    texto = texto.replace("\n", " ")
-    texto = " ".join(texto.split())
+def limpiar_ot(valor):
+    if pd.isna(valor):
+        return ""
+
+    texto = str(valor).strip()
+
+    if texto.endswith(".0"):
+        texto = texto[:-2]
 
     return texto
 
@@ -54,7 +55,6 @@ def normalizar_avance(valor):
 def obtener_pines():
     try:
         return st.secrets.get("leader_pins", {})
-
     except Exception:
         return {}
 
@@ -71,7 +71,6 @@ def validar_pin(lider, pin):
 
 
 # CARGAR EXCEL
-
 @st.cache_data(show_spinner=False)
 def cargar_actividades():
     if not EXCEL_PATH.exists():
@@ -79,116 +78,17 @@ def cargar_actividades():
             "No se encontro el archivo Avances 26-1-PH2.xlsx"
         )
 
-    hojas = pd.ExcelFile(
-        EXCEL_PATH,
-        engine="openpyxl"
-    ).sheet_names
-
-    df = None
-    hoja_encontrada = None
-    fila_encabezado = None
-
-    for nombre_hoja in hojas:
-        df_previa = pd.read_excel(
-            EXCEL_PATH,
-            sheet_name=nombre_hoja,
-            header=None,
-            engine="openpyxl"
-        )
-
-        limite_filas = min(len(df_previa), 50)
-
-        for indice in range(limite_filas):
-            fila = df_previa.iloc[indice]
-
-            valores = [
-                normalizar_nombre(valor)
-                for valor in fila.tolist()
-                if pd.notna(valor)
-            ]
-
-            encontro_itm = any(
-                valor.lower().startswith("itm")
-                for valor in valores
-            )
-
-            encontro_tarea = any(
-                "nombre de tarea" in valor.lower()
-                for valor in valores
-            )
-
-            encontro_lider = any(
-                "líder" in valor.lower()
-                or "lider" in valor.lower()
-                for valor in valores
-            )
-
-            if encontro_itm and encontro_tarea and encontro_lider:
-                hoja_encontrada = nombre_hoja
-                fila_encabezado = indice
-                break
-
-        if fila_encabezado is not None:
-            break
-
-    if fila_encabezado is None:
-        raise ValueError(
-            "No se encontro la fila de encabezados del Excel."
-        )
-
     df = pd.read_excel(
         EXCEL_PATH,
-        sheet_name=hoja_encontrada,
-        header=fila_encabezado,
+        sheet_name=0,
+        header=1,
         engine="openpyxl"
     )
 
     df.columns = [
-        normalizar_nombre(columna)
+        limpiar_texto(columna)
         for columna in df.columns
     ]
-
-    renombrar_columnas = {}
-
-    for columna in df.columns:
-        columna_normalizada = columna.lower()
-
-        if columna_normalizada.startswith("itm"):
-            renombrar_columnas[columna] = "Itm"
-
-        elif "nombre de tarea" in columna_normalizada:
-            renombrar_columnas[columna] = "Nombre de tarea"
-
-        elif (
-            columna_normalizada == "líder"
-            or columna_normalizada == "lider"
-        ):
-            renombrar_columnas[columna] = "Líder"
-
-        elif columna_normalizada == "%":
-            renombrar_columnas[columna] = "%"
-
-        elif columna_normalizada == "activo":
-            renombrar_columnas[columna] = "Activo"
-
-        elif (
-            columna_normalizada == "ubicación"
-            or columna_normalizada == "ubicacion"
-        ):
-            renombrar_columnas[columna] = "Ubicación"
-
-        elif columna_normalizada == "ot":
-            renombrar_columnas[columna] = "OT"
-
-        elif columna_normalizada == "responsable":
-            renombrar_columnas[columna] = "Responsable"
-
-        elif columna_normalizada.startswith("comentarios"):
-            renombrar_columnas[columna] = "Comentarios"
-
-    df = df.rename(
-        columns=renombrar_columnas
-    )
 
     columnas_necesarias = [
         "Itm",
@@ -220,9 +120,7 @@ def cargar_actividades():
     columnas_texto = [
         "Líder",
         "Nombre de tarea",
-        "Ubicación",
         "Activo",
-        "OT",
         "Responsable",
         "Comentarios"
     ]
@@ -235,18 +133,21 @@ def cargar_actividades():
             limpiar_texto
         )
 
+    if "OT" not in df.columns:
+        df["OT"] = ""
+
+    df["OT"] = df["OT"].apply(limpiar_ot)
+
     df["Avance inicial"] = df["%"].apply(
         normalizar_avance
     )
 
     df = df[df["Líder"] != ""].copy()
-    df = df[df["Nombre de tarea"] != ""].copy()
 
     return df
 
 
 # BASE DE DATOS
-
 def conectar_bd():
     conexion = sqlite3.connect(
         DB_PATH,
@@ -281,9 +182,9 @@ def guardar_avance(
     conexion = conectar_bd()
 
     consulta = (
-        "INSERT INTO avances "
-        "(item, lider, avance, comentario, usuario, fecha) "
-        "VALUES (?, ?, ?, ?, ?, ?)"
+        "INSERT INTO avances ("
+        "item, lider, avance, comentario, usuario, fecha"
+        ") VALUES (?, ?, ?, ?, ?, ?)"
     )
 
     fecha_actual = datetime.now().strftime(
@@ -294,10 +195,10 @@ def guardar_avance(
         consulta,
         (
             int(item),
-            str(lider),
+            limpiar_texto(lider),
             int(avance),
-            comentario.strip(),
-            usuario.strip(),
+            limpiar_texto(comentario),
+            limpiar_texto(usuario),
             fecha_actual
         )
     )
@@ -311,9 +212,8 @@ def cargar_historial():
 
     consulta = (
         "SELECT id, item, lider, avance, comentario, "
-        "usuario, fecha "
-        "FROM avances "
-        "ORDER BY id DESC"
+        "usuario, fecha FROM avances "
+        "ORDER BY fecha DESC"
     )
 
     historial = pd.read_sql_query(
@@ -326,112 +226,63 @@ def cargar_historial():
     return historial
 
 
-def obtener_ultimos_avances():
-    historial = cargar_historial()
+def obtener_ultimo_avance(item, avance_inicial):
+    conexion = conectar_bd()
 
-    if historial.empty:
-        return historial
-
-    historial = historial.sort_values(
-        by="id",
-        ascending=True
+    consulta = (
+        "SELECT avance FROM avances "
+        "WHERE item = ? "
+        "ORDER BY id DESC LIMIT 1"
     )
 
-    ultimos = historial.drop_duplicates(
-        subset=["item"],
-        keep="last"
+    resultado = conexion.execute(
+        consulta,
+        (int(item),)
+    ).fetchone()
+
+    conexion.close()
+
+    if resultado:
+        return int(resultado[0])
+
+    return int(avance_inicial)
+
+
+def preparar_panel(actividades):
+    panel = actividades.copy()
+
+    panel["Avance actual"] = panel.apply(
+        lambda fila: obtener_ultimo_avance(
+            fila["Itm"],
+            fila["Avance inicial"]
+        ),
+        axis=1
     )
 
-    return ultimos
-
-
-def combinar_con_avances(df):
-    resultado = df.copy()
-    ultimos = obtener_ultimos_avances()
-
-    if ultimos.empty:
-        resultado["avance"] = pd.NA
-        resultado["comentario"] = ""
-        resultado["usuario"] = ""
-        resultado["fecha"] = ""
-
-    else:
-        columnas = [
-            "item",
-            "avance",
-            "comentario",
-            "usuario",
-            "fecha"
-        ]
-
-        resultado = resultado.merge(
-            ultimos[columnas],
-            left_on="Itm",
-            right_on="item",
-            how="left"
-        )
-
-    resultado["Avance actual"] = (
-        resultado["avance"]
-        .fillna(resultado["Avance inicial"])
-        .astype(int)
+    panel["Estado"] = panel["Avance actual"].apply(
+        lambda avance:
+        "Finalizada"
+        if avance >= 100
+        else "En proceso"
+        if avance > 0
+        else "Pendiente"
     )
 
-    return resultado
+    return panel
 
 
-def calcular_estado(avance):
-    if avance == 0:
-        return "Sin iniciar"
-
-    if avance == 100:
-        return "Finalizada"
-
-    return "En proceso"
-
-
-# ENCABEZADO
-
+# INICIO DE LA APLICACION
 st.title("📋 Registro de avances 26-1-PH2")
-
-
-# LEER INFORMACION
 
 try:
     actividades = cargar_actividades()
 
 except Exception as error:
-    st.error("No se pudo cargar correctamente el archivo Excel.")
-
-    st.code(str(error))
-
-    st.info(
-        "Verifica que Avances 26-1-PH2.xlsx "
-        "este en la misma carpeta que streamlit_app.py."
-    )
-
+    st.error(str(error))
     st.stop()
 
 
-lideres = sorted(
-    actividades["Líder"]
-    .dropna()
-    .unique()
-    .tolist()
-)
-
-if not lideres:
-    st.error(
-        "No se encontraron lideres en el archivo Excel."
-    )
-
-    st.stop()
-
-
-# MENU
-
-vista = st.sidebar.radio(
-    "Menu",
+pestana_registro, pestana_panel, pestana_historial = st.tabs(
     [
         "Registrar avance",
         "Panel general",
@@ -440,295 +291,253 @@ vista = st.sidebar.radio(
 )
 
 
-# REGISTRAR AVANCE
+# PESTANA REGISTRAR AVANCE
+with pestana_registro:
+    st.header("Registrar avance")
 
-if vista == "Registrar avance":
-    st.subheader("Registrar avance")
+    lideres = sorted(
+        actividades["Líder"]
+        .dropna()
+        .astype(str)
+        .unique()
+        .tolist()
+    )
 
-    lider = st.selectbox(
+    lider_seleccionado = st.selectbox(
         "Selecciona el codigo del lider",
         lideres
+    )
+
+    actividades_lider = actividades[
+        actividades["Líder"] == lider_seleccionado
+    ].copy()
+
+    st.info(
+        "Actividades asignadas a "
+        + lider_seleccionado
+        + ": "
+        + str(len(actividades_lider))
+    )
+
+    opciones_actividades = {}
+
+    for _, fila in actividades_lider.iterrows():
+        avance_actual_fila = obtener_ultimo_avance(
+            fila["Itm"],
+            fila["Avance inicial"]
+        )
+
+        codigo_equipo = limpiar_texto(
+            fila["Activo"]
+        )
+
+        nombre_tarea = limpiar_texto(
+            fila["Nombre de tarea"]
+        )
+
+        texto_opcion = (
+            codigo_equipo
+            + " | "
+            + nombre_tarea
+            + " | "
+            + str(avance_actual_fila)
+            + "%"
+        )
+
+        opciones_actividades[texto_opcion] = fila["Itm"]
+
+    actividad_seleccionada = st.selectbox(
+        "Selecciona la actividad",
+        list(opciones_actividades.keys())
+    )
+
+    item_seleccionado = opciones_actividades[
+        actividad_seleccionada
+    ]
+
+    fila_actividad = actividades_lider[
+        actividades_lider["Itm"] == item_seleccionado
+    ].iloc[0]
+
+    avance_actual = obtener_ultimo_avance(
+        fila_actividad["Itm"],
+        fila_actividad["Avance inicial"]
+    )
+
+    ot_mostrada = limpiar_ot(
+        fila_actividad["OT"]
+    )
+
+    columna_ot, columna_avance = st.columns(2)
+
+    with columna_ot:
+        st.metric(
+            label="OT",
+            value=ot_mostrada
+        )
+
+    with columna_avance:
+        st.metric(
+            label="Avance actual",
+            value=str(avance_actual) + "%"
+        )
+
+    responsable = limpiar_texto(
+        fila_actividad["Responsable"]
+    )
+
+    if responsable:
+        st.markdown(
+            "**Responsable:** " + responsable
+        )
+
+    nuevo_avance = st.slider(
+        "Nuevo avance (%)",
+        min_value=0,
+        max_value=100,
+        value=avance_actual,
+        step=5
+    )
+
+    comentario = st.text_area(
+        "Comentario",
+        value="",
+        placeholder="Escribe un comentario sobre el avance"
+    )
+
+    usuario = st.text_input(
+        "Nombre de quien actualiza",
+        value=""
     )
 
     pines = obtener_pines()
 
     if pines:
         pin = st.text_input(
-            "PIN",
+            "PIN del lider",
             type="password"
         )
-
     else:
         pin = ""
 
-    actividades_lider = actividades[
-        actividades["Líder"] == lider
-    ].copy()
-
-    actividades_lider = combinar_con_avances(
-        actividades_lider
-    )
-
-    actividades_lider["Etiqueta"] = (
-        actividades_lider.apply(
-            lambda fila: (
-                str(fila["Ubicación"])
-                + " | "
-                + str(fila["Nombre de tarea"])
-                + " | "
-                + str(fila["Avance actual"])
-                + "%"
-            ),
-            axis=1
-        )
-    )
-
-    st.info(
-        "Actividades asignadas a "
-        + str(lider)
-        + ": "
-        + str(len(actividades_lider))
-    )
-
-    etiqueta = st.selectbox(
-        "Selecciona la actividad",
-        actividades_lider["Etiqueta"].tolist()
-    )
-
-    fila = actividades_lider[
-        actividades_lider["Etiqueta"] == etiqueta
-    ].iloc[0]
-
-    columna1, columna2, columna3 = st.columns(3)
-
-    codigo_equipo = str(
-        fila["Ubicación"]
-    ).strip()
-
-    if not codigo_equipo:
-        codigo_equipo = "Sin codigo"
-
-    columna1.metric(
-        "Codigo del equipo",
-        codigo_equipo
-    )
-
-    texto_ot = fila["OT"]
-
-    if not texto_ot:
-        texto_ot = "Sin OT"
-
-    columna2.metric(
-        "OT",
-        texto_ot
-    )
-
-    columna3.metric(
-        "Avance actual",
-        str(int(fila["Avance actual"])) + "%"
-    )
-
-    responsable = fila["Responsable"]
-
-    if not responsable:
-        responsable = "No indicado"
-
-    st.write(
-        "**Responsable:** " + responsable
-    )
-
-    fecha_anterior = fila.get("fecha", "")
-    usuario_anterior = fila.get("usuario", "")
-    comentario_anterior = fila.get(
-        "comentario",
-        ""
-    )
-
-    if pd.notna(fecha_anterior):
-        if str(fecha_anterior).strip():
-            st.write(
-                "**Ultima actualizacion:** "
-                + str(fecha_anterior)
-            )
-
-    if pd.notna(usuario_anterior):
-        if str(usuario_anterior).strip():
-            st.write(
-                "**Actualizado por:** "
-                + str(usuario_anterior)
-            )
-
-    if pd.notna(comentario_anterior):
-        if str(comentario_anterior).strip():
-            st.write(
-                "**Ultimo comentario:** "
-                + str(comentario_anterior)
-            )
-
-    with st.form("formulario_avance"):
-        nuevo_avance = st.slider(
-            "Nuevo avance (%)",
-            min_value=0,
-            max_value=100,
-            value=int(fila["Avance actual"]),
-            step=5
-        )
-
-        usuario = st.text_input(
-            "Nombre de quien actualiza"
-        )
-
-        comentario = st.text_area(
-            "Comentario o novedad",
-            placeholder=(
-                "Ejemplo: actividad terminada, "
-                "pendiente prueba de funcionamiento."
-            )
-        )
-
-        boton_guardar = st.form_submit_button(
-            "Guardar avance",
-            use_container_width=True
-        )
-
-    if boton_guardar:
-        if not validar_pin(lider, pin):
-            st.error(
-                "El PIN no corresponde al lider."
-            )
-
-        elif not usuario.strip():
+    if st.button(
+        "Guardar avance",
+        type="primary",
+        use_container_width=True
+    ):
+        if not usuario.strip():
             st.warning(
                 "Escribe el nombre de quien actualiza."
             )
 
+        elif not validar_pin(
+            lider_seleccionado,
+            pin
+        ):
+            st.error(
+                "El PIN ingresado no es correcto."
+            )
+
         else:
             guardar_avance(
-                item=fila["Itm"],
-                lider=lider,
+                item=fila_actividad["Itm"],
+                lider=lider_seleccionado,
                 avance=nuevo_avance,
                 comentario=comentario,
                 usuario=usuario
             )
 
+            st.cache_data.clear()
+
             st.success(
-                "Avance guardado correctamente."
+                "El avance se guardo correctamente."
             )
 
             st.rerun()
 
 
-# PANEL GENERAL
+# PESTANA PANEL GENERAL
+with pestana_panel:
+    st.header("Panel general")
 
-elif vista == "Panel general":
-    st.subheader("Panel general")
+    panel = preparar_panel(actividades)
 
-    panel = combinar_con_avances(
-        actividades
+    total_actividades = len(panel)
+
+    pendientes = len(
+        panel[panel["Estado"] == "Pendiente"]
     )
 
-    panel["Estado"] = panel[
-        "Avance actual"
-    ].apply(calcular_estado)
-
-    total = len(panel)
-
-    finalizadas = int(
-        (panel["Avance actual"] == 100).sum()
+    en_proceso = len(
+        panel[panel["Estado"] == "En proceso"]
     )
 
-    en_proceso = int(
-        panel["Avance actual"]
-        .between(1, 99)
-        .sum()
+    finalizadas = len(
+        panel[panel["Estado"] == "Finalizada"]
     )
 
-    sin_iniciar = int(
-        (panel["Avance actual"] == 0).sum()
+    avance_promedio = (
+        round(panel["Avance actual"].mean(), 1)
+        if total_actividades > 0
+        else 0
     )
 
-    promedio = panel[
-        "Avance actual"
-    ].mean()
+    columna_1, columna_2, columna_3, columna_4 = st.columns(4)
 
-    columna1, columna2, columna3, columna4 = (
-        st.columns(4)
-    )
+    with columna_1:
+        st.metric(
+            "Total de actividades",
+            total_actividades
+        )
 
-    columna1.metric(
-        "Actividades",
-        total
-    )
+    with columna_2:
+        st.metric(
+            "Pendientes",
+            pendientes
+        )
 
-    columna2.metric(
-        "Finalizadas",
-        finalizadas
-    )
-
-    columna3.metric(
-        "En proceso",
-        en_proceso
-    )
-
-    columna4.metric(
-        "Avance promedio",
-        f"{promedio:.1f}%"
-    )
-
-    st.write(
-        "Actividades sin iniciar: "
-        + str(sin_iniciar)
-    )
-
-    filtro_lideres = st.multiselect(
-        "Filtrar por lider",
-        lideres
-    )
-
-    filtro_estados = st.multiselect(
-        "Filtrar por estado",
-        [
-            "Sin iniciar",
+    with columna_3:
+        st.metric(
             "En proceso",
-            "Finalizada"
-        ]
+            en_proceso
+        )
+
+    with columna_4:
+        st.metric(
+            "Finalizadas",
+            finalizadas
+        )
+
+    st.metric(
+        "Avance promedio",
+        str(avance_promedio) + "%"
     )
-
-    if filtro_lideres:
-        panel = panel[
-            panel["Líder"].isin(filtro_lideres)
-        ]
-
-    if filtro_estados:
-        panel = panel[
-            panel["Estado"].isin(filtro_estados)
-        ]
 
     columnas_panel = [
         "Itm",
-        "Líder",
         "Activo",
         "Nombre de tarea",
         "OT",
-        "Avance inicial",
+        "Líder",
+        "Responsable",
         "Avance actual",
-        "Estado",
-        "comentario",
-        "usuario",
-        "fecha"
+        "Estado"
+    ]
+
+    columnas_disponibles = [
+        columna
+        for columna in columnas_panel
+        if columna in panel.columns
     ]
 
     panel_mostrar = panel[
-        columnas_panel
+        columnas_disponibles
     ].copy()
 
-    panel_mostrar = panel_mostrar.rename(
-        columns={
-            "comentario": "Ultimo comentario",
-            "usuario": "Actualizado por",
-            "fecha": "Fecha actualizacion"
-        }
-    )
+    if "OT" in panel_mostrar.columns:
+        panel_mostrar["OT"] = panel_mostrar["OT"].apply(
+            limpiar_ot
+        )
 
     st.dataframe(
         panel_mostrar,
@@ -741,44 +550,31 @@ elif vista == "Panel general":
     ).encode("utf-8-sig")
 
     st.download_button(
-        "Descargar panel CSV",
+        label="Descargar panel en CSV",
         data=archivo_panel,
-        file_name="panel_avances_ph2.csv",
-        mime="text/csv",
-        use_container_width=True
+        file_name="panel_avances_26-1-PH2.csv",
+        mime="text/csv"
     )
 
 
-# HISTORIAL
-
-elif vista == "Historial":
-    st.subheader("Historial de actualizaciones")
+# PESTANA HISTORIAL
+with pestana_historial:
+    st.header("Historial de actualizaciones")
 
     historial = cargar_historial()
 
     if historial.empty:
         st.info(
-            "Todavia no existen avances registrados."
+            "Todavia no existen actualizaciones registradas."
         )
 
     else:
-        filtro_lideres = st.multiselect(
-            "Filtrar historial por lider",
-            lideres
-        )
+        historial_mostrar = historial.copy()
 
-        if filtro_lideres:
-            historial = historial[
-                historial["lider"].isin(
-                    filtro_lideres
-                )
-            ]
-
-        historial_mostrar = historial.rename(
+        historial_mostrar = historial_mostrar.rename(
             columns={
-                "id": "Registro",
-                "item": "Item",
-                "lider": "Lider",
+                "item": "Itm",
+                "lider": "Líder",
                 "avance": "Avance",
                 "comentario": "Comentario",
                 "usuario": "Actualizado por",
@@ -786,31 +582,30 @@ elif vista == "Historial":
             }
         )
 
+        columnas_historial = [
+            "Itm",
+            "Líder",
+            "Avance",
+            "Comentario",
+            "Actualizado por",
+            "Fecha"
+        ]
+
         st.dataframe(
-            historial_mostrar,
+            historial_mostrar[columnas_historial],
             use_container_width=True,
             hide_index=True
         )
 
-        archivo_historial = (
-            historial_mostrar
-            .to_csv(index=False)
-            .encode("utf-8-sig")
-        )
+        archivo_historial = historial_mostrar[
+            columnas_historial
+        ].to_csv(
+            index=False
+        ).encode("utf-8-sig")
 
         st.download_button(
-            "Descargar historial CSV",
+            label="Descargar historial en CSV",
             data=archivo_historial,
-            file_name="historial_avances_ph2.csv",
-            mime="text/csv",
-            use_container_width=True
+            file_name="historial_avances_26-1-PH2.csv",
+            mime="text/csv"
         )
-
-
-# PIE DE PAGINA
-
-st.divider()
-
-st.caption(
-    "Seguimiento de actividades del paro de Horno 2."
-)
