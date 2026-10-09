@@ -71,9 +71,37 @@ def cargar_actividades():
             "No se encontro el archivo Avances 26-1-PH2.xlsx"
         )
 
+    # Primera lectura sin encabezados para encontrar la fila que contiene Itm
+    df_previa = pd.read_excel(
+        EXCEL_PATH,
+        sheet_name=0,
+        header=None,
+        engine="openpyxl"
+    )
+
+    fila_encabezado = None
+
+    for indice, fila in df_previa.iterrows():
+        valores = [
+            str(valor).strip()
+            for valor in fila.tolist()
+            if pd.notna(valor)
+        ]
+
+        if "Itm" in valores:
+            fila_encabezado = indice
+            break
+
+    if fila_encabezado is None:
+        raise ValueError(
+            "No se encontro la fila de encabezados que contiene Itm."
+        )
+
+    # Segunda lectura utilizando la fila encontrada como encabezado
     df = pd.read_excel(
         EXCEL_PATH,
         sheet_name=0,
+        header=fila_encabezado,
         engine="openpyxl"
     )
 
