@@ -1,4 +1,5 @@
 import sqlite3
+import unicodedata
 from datetime import datetime
 from pathlib import Path
 
@@ -22,7 +23,22 @@ st.set_page_config(
 def limpiar_texto(valor):
     if pd.isna(valor):
         return ""
+
     return str(valor).strip()
+
+
+def normalizar_nombre(valor):
+    texto = limpiar_texto(valor).lower()
+
+    texto = "".join(
+        caracter
+        for caracter in unicodedata.normalize("NFD", texto)
+        if unicodedata.category(caracter) != "Mn"
+    )
+
+    texto = " ".join(texto.split())
+
+    return texto
 
 
 def limpiar_ot(valor):
@@ -74,7 +90,9 @@ def validar_pin(lider, pin):
     if not pines:
         return True
 
-    pin_guardado = str(pines.get(lider, ""))
+    pin_guardado = str(
+        pines.get(lider, "")
+    )
 
     return pin_guardado == str(pin)
 
@@ -84,11 +102,10 @@ def validar_pin(lider, pin):
 def cargar_actividades():
     if not EXCEL_PATH.exists():
         raise FileNotFoundError(
-            "No se encontró el archivo Avances 26-1-PH2.xlsx"
+            "No se encontró el archivo "
+            "Avances 26-1-PH2.xlsx"
         )
 
-    # Leer primero sin encabezados para detectar
-    # automáticamente la fila correcta.
     vista_previa = pd.read_excel(
         EXCEL_PATH,
         sheet_name=0,
@@ -98,26 +115,20 @@ def cargar_actividades():
 
     fila_encabezado = None
 
-    for indice, fila in vista_previa.head(15).iterrows():
-        valores = [
-            limpiar_texto(valor)
+    for indice, fila in vista_previa.head(100).iterrows():
+        valores_normalizados = [
+            normalizar_nombre(valor)
             for valor in fila.tolist()
         ]
 
-        if (
-            "Itm" in valores
-            and "Nombre de tarea" in valores
-            and "Líder" in valores
-            and "%" in valores
-        ):
+        if "itm project" in valores_normalizados:
             fila_encabezado = indice
             break
 
     if fila_encabezado is None:
         raise ValueError(
-            "No se encontró la fila de encabezados. "
-            "El Excel debe contener las columnas: "
-            "Itm, Nombre de tarea, Líder y %."
+            "No se encontró la columna 'Itm project' "
+            "en las primeras 100 filas del Excel."
         )
 
     df = pd.read_excel(
@@ -132,8 +143,52 @@ def cargar_actividades():
         for columna in df.columns
     ]
 
+    nombres_columnas = {
+        normalizar_nombre(columna): columna
+        for columna in df.columns
+    }
+
+    equivalencias = {}
+
+    if "itm project" in nombres_columnas:
+        equivalencias[
+            nombres_columnas["itm project"]
+        ] = "Itm project"
+
+    for nombre_normalizado, columna_real in nombres_columnas.items():
+        if nombre_normalizado == "nombre de tarea":
+            equivalencias[columna_real] = "Nombre de tarea"
+
+        elif nombre_normalizado == "lider":
+            equivalencias[columna_real] = "Líder"
+
+        elif nombre_normalizado == "activo":
+            equivalencias[columna_real] = "Activo"
+
+        elif nombre_normalizado == "ot":
+            equivalencias[columna_real] = "OT"
+
+        elif nombre_normalizado == "responsable":
+            equivalencias[columna_real] = "Responsable"
+
+        elif nombre_normalizado == "comentarios":
+            equivalencias[columna_real] = "Comentarios"
+
+        elif (
+            nombre_normalizado == "%"
+            or nombre_normalizado == "avance"
+            or nombre_normalizado == "% avance"
+            or nombre_normalizado == "porcentaje"
+            or nombre_normalizado == "porcentaje avance"
+        ):
+            equivalencias[columna_real] = "%"
+
+    df = df.rename(
+        columns=equivalencias
+    )
+
     columnas_necesarias = [
-        "Itm",
+        "Itm project",
         "Nombre de tarea",
         "Líder",
         "%"
@@ -149,15 +204,25 @@ def cargar_actividades():
         raise ValueError(
             "Faltan columnas en el Excel: "
             + ", ".join(columnas_faltantes)
+            + ". Columnas encontradas: "
+            + ", ".join(
+                str(columna)
+                for columna in df.columns
+            )
         )
 
-    df["Itm"] = pd.to_numeric(
-        df["Itm"],
+    df["Itm project"] = pd.to_numeric(
+        df["Itm project"],
         errors="coerce"
     )
 
-    df = df[df["Itm"].notna()].copy()
-    df["Itm"] = df["Itm"].astype(int)
+    df = df[
+        df["Itm project"].notna()
+    ].copy()
+
+    df["Itm project"] = (
+        df["Itm project"].astype(int)
+    )
 
     columnas_texto = [
         "Líder",
@@ -178,13 +243,17 @@ def cargar_actividades():
     if "OT" not in df.columns:
         df["OT"] = ""
 
-    df["OT"] = df["OT"].apply(limpiar_ot)
+    df["OT"] = df["OT"].apply(
+        limpiar_ot
+    )
 
     df["Avance inicial"] = df["%"].apply(
         normalizar_avance
     )
 
-    df = df[df["Líder"] != ""].copy()
+    df = df[
+        df["Líder"] != ""
+    ].copy()
 
     return df
 
@@ -268,7 +337,10 @@ def cargar_historial():
     return historial
 
 
-def obtener_ultimo_avance(item, avance_inicial):
+def obtener_ultimo_avance(
+    item,
+    avance_inicial
+):
     conexion = conectar_bd()
 
     consulta = (
@@ -295,13 +367,15 @@ def preparar_panel(actividades):
 
     panel["Avance actual"] = panel.apply(
         lambda fila: obtener_ultimo_avance(
-            fila["Itm"],
+            fila["Itm project"],
             fila["Avance inicial"]
         ),
         axis=1
     )
 
-    panel["Estado"] = panel["Avance actual"].apply(
+    panel["Estado"] = panel[
+        "Avance actual"
+    ].apply(
         lambda avance: (
             "Finalizada"
             if avance >= 100
@@ -352,7 +426,8 @@ with pestana_registro:
     )
 
     actividades_lider = actividades[
-        actividades["Líder"] == lider_seleccionado
+        actividades["Líder"]
+        == lider_seleccionado
     ].copy()
 
     st.info(
@@ -366,7 +441,7 @@ with pestana_registro:
 
     for _, fila in actividades_lider.iterrows():
         avance_actual_fila = obtener_ultimo_avance(
-            fila["Itm"],
+            fila["Itm project"],
             fila["Avance inicial"]
         )
 
@@ -387,7 +462,9 @@ with pestana_registro:
             + "%"
         )
 
-        opciones_actividades[texto_opcion] = fila["Itm"]
+        opciones_actividades[
+            texto_opcion
+        ] = fila["Itm project"]
 
     if not opciones_actividades:
         st.warning(
@@ -405,11 +482,12 @@ with pestana_registro:
     ]
 
     fila_actividad = actividades_lider[
-        actividades_lider["Itm"] == item_seleccionado
+        actividades_lider["Itm project"]
+        == item_seleccionado
     ].iloc[0]
 
     avance_actual = obtener_ultimo_avance(
-        fila_actividad["Itm"],
+        fila_actividad["Itm project"],
         fila_actividad["Avance inicial"]
     )
 
@@ -417,8 +495,8 @@ with pestana_registro:
         fila_actividad["OT"]
     )
 
-    # Solo se muestran OT y avance actual.
-    # Se eliminó el bloque grande Código del equipo.
+    # Se eliminó únicamente el bloque grande
+    # Código del equipo.
     columna_ot, columna_avance = st.columns(2)
 
     with columna_ot:
@@ -453,7 +531,9 @@ with pestana_registro:
     comentario = st.text_area(
         "Comentario",
         value="",
-        placeholder="Escribe un comentario sobre el avance"
+        placeholder=(
+            "Escribe un comentario sobre el avance"
+        )
     )
 
     usuario = st.text_input(
@@ -491,7 +571,7 @@ with pestana_registro:
 
         else:
             guardar_avance(
-                item=fila_actividad["Itm"],
+                item=fila_actividad["Itm project"],
                 lider=lider_seleccionado,
                 avance=nuevo_avance,
                 comentario=comentario,
@@ -511,29 +591,42 @@ with pestana_registro:
 with pestana_panel:
     st.header("Panel general")
 
-    panel = preparar_panel(actividades)
+    panel = preparar_panel(
+        actividades
+    )
 
     total_actividades = len(panel)
 
     pendientes = len(
-        panel[panel["Estado"] == "Pendiente"]
+        panel[
+            panel["Estado"] == "Pendiente"
+        ]
     )
 
     en_proceso = len(
-        panel[panel["Estado"] == "En proceso"]
+        panel[
+            panel["Estado"] == "En proceso"
+        ]
     )
 
     finalizadas = len(
-        panel[panel["Estado"] == "Finalizada"]
+        panel[
+            panel["Estado"] == "Finalizada"
+        ]
     )
 
     avance_promedio = (
-        round(panel["Avance actual"].mean(), 1)
+        round(
+            panel["Avance actual"].mean(),
+            1
+        )
         if total_actividades > 0
         else 0
     )
 
-    columna_1, columna_2, columna_3, columna_4 = st.columns(4)
+    columna_1, columna_2, columna_3, columna_4 = (
+        st.columns(4)
+    )
 
     with columna_1:
         st.metric(
@@ -565,7 +658,7 @@ with pestana_panel:
     )
 
     columnas_panel = [
-        "Itm",
+        "Itm project",
         "Activo",
         "Nombre de tarea",
         "OT",
@@ -586,8 +679,10 @@ with pestana_panel:
     ].copy()
 
     if "OT" in panel_mostrar.columns:
-        panel_mostrar["OT"] = panel_mostrar["OT"].apply(
-            limpiar_ot
+        panel_mostrar["OT"] = (
+            panel_mostrar["OT"].apply(
+                limpiar_ot
+            )
         )
 
     st.dataframe(
@@ -610,13 +705,16 @@ with pestana_panel:
 
 # PESTANA HISTORIAL
 with pestana_historial:
-    st.header("Historial de actualizaciones")
+    st.header(
+        "Historial de actualizaciones"
+    )
 
     historial = cargar_historial()
 
     if historial.empty:
         st.info(
-            "Todavía no existen actualizaciones registradas."
+            "Todavía no existen actualizaciones "
+            "registradas."
         )
 
     else:
@@ -624,7 +722,7 @@ with pestana_historial:
 
         historial_mostrar = historial_mostrar.rename(
             columns={
-                "item": "Itm",
+                "item": "Itm project",
                 "lider": "Líder",
                 "avance": "Avance",
                 "comentario": "Comentario",
@@ -634,7 +732,7 @@ with pestana_historial:
         )
 
         columnas_historial = [
-            "Itm",
+            "Itm project",
             "Líder",
             "Avance",
             "Comentario",
@@ -643,20 +741,11 @@ with pestana_historial:
         ]
 
         st.dataframe(
-            historial_mostrar[columnas_historial],
+            historial_mostrar[
+                columnas_historial
+            ],
             use_container_width=True,
             hide_index=True
         )
 
-        archivo_historial = historial_mostrar[
-            columnas_historial
-        ].to_csv(
-            index=False
-        ).encode("utf-8-sig")
-
-        st.download_button(
-            label="Descargar historial en CSV",
-            data=archivo_historial,
-            file_name="historial_avances_26-1-PH2.csv",
-            mime="text/csv"
-        )
+       
