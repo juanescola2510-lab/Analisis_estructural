@@ -394,11 +394,6 @@ def calcular_estado(avance):
 
 st.title("📋 Registro de avances 26-1-PH2")
 
-st.write(
-    "Aplicacion para registrar y consultar "
-    "el avance de las actividades."
-)
-
 
 # LEER INFORMACION
 
@@ -531,15 +526,6 @@ if vista == "Registrar avance":
     columna3.metric(
         "Avance actual",
         str(int(fila["Avance actual"])) + "%"
-    )
-
-    st.write(
-        "**Activo:** " + str(fila["Activo"])
-    )
-
-    st.write(
-        "**Actividad:** "
-        + str(fila["Nombre de tarea"])
     )
 
     responsable = fila["Responsable"]
