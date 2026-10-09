@@ -165,6 +165,9 @@ def cargar_actividades():
         elif nombre_normalizado == "activo":
             equivalencias[columna_real] = "Activo"
 
+        elif nombre_normalizado == "ubicacion":
+            equivalencias[columna_real] = "Ubicacion"
+
         elif nombre_normalizado == "ot":
             equivalencias[columna_real] = "OT"
 
@@ -191,6 +194,7 @@ def cargar_actividades():
         "Itm project",
         "Nombre de tarea",
         "Líder",
+        "Ubicacion",
         "%"
     ]
 
@@ -228,6 +232,7 @@ def cargar_actividades():
         "Líder",
         "Nombre de tarea",
         "Activo",
+        "Ubicacion",
         "Responsable",
         "Comentarios"
     ]
@@ -445,8 +450,8 @@ with pestana_registro:
             fila["Avance inicial"]
         )
 
-        codigo_equipo = limpiar_texto(
-            fila["Activo"]
+        ubicacion = limpiar_texto(
+            fila["Ubicacion"]
         )
 
         nombre_tarea = limpiar_texto(
@@ -454,7 +459,7 @@ with pestana_registro:
         )
 
         texto_opcion = (
-            codigo_equipo
+            ubicacion
             + " | "
             + nombre_tarea
             + " | "
@@ -495,8 +500,6 @@ with pestana_registro:
         fila_actividad["OT"]
     )
 
-    # Se eliminó únicamente el bloque grande
-    # Código del equipo.
     columna_ot, columna_avance = st.columns(2)
 
     with columna_ot:
@@ -530,222 +533,4 @@ with pestana_registro:
 
     comentario = st.text_area(
         "Comentario",
-        value="",
-        placeholder=(
-            "Escribe un comentario sobre el avance"
-        )
-    )
-
-    usuario = st.text_input(
-        "Nombre de quien actualiza",
-        value=""
-    )
-
-    pines = obtener_pines()
-
-    if pines:
-        pin = st.text_input(
-            "PIN del lider",
-            type="password"
-        )
-    else:
-        pin = ""
-
-    if st.button(
-        "Guardar avance",
-        type="primary",
-        use_container_width=True
-    ):
-        if not usuario.strip():
-            st.warning(
-                "Escribe el nombre de quien actualiza."
-            )
-
-        elif not validar_pin(
-            lider_seleccionado,
-            pin
-        ):
-            st.error(
-                "El PIN ingresado no es correcto."
-            )
-
-        else:
-            guardar_avance(
-                item=fila_actividad["Itm project"],
-                lider=lider_seleccionado,
-                avance=nuevo_avance,
-                comentario=comentario,
-                usuario=usuario
-            )
-
-            st.cache_data.clear()
-
-            st.success(
-                "El avance se guardó correctamente."
-            )
-
-            st.rerun()
-
-
-# PESTANA PANEL GENERAL
-with pestana_panel:
-    st.header("Panel general")
-
-    panel = preparar_panel(
-        actividades
-    )
-
-    total_actividades = len(panel)
-
-    pendientes = len(
-        panel[
-            panel["Estado"] == "Pendiente"
-        ]
-    )
-
-    en_proceso = len(
-        panel[
-            panel["Estado"] == "En proceso"
-        ]
-    )
-
-    finalizadas = len(
-        panel[
-            panel["Estado"] == "Finalizada"
-        ]
-    )
-
-    avance_promedio = (
-        round(
-            panel["Avance actual"].mean(),
-            1
-        )
-        if total_actividades > 0
-        else 0
-    )
-
-    columna_1, columna_2, columna_3, columna_4 = (
-        st.columns(4)
-    )
-
-    with columna_1:
-        st.metric(
-            "Total de actividades",
-            total_actividades
-        )
-
-    with columna_2:
-        st.metric(
-            "Pendientes",
-            pendientes
-        )
-
-    with columna_3:
-        st.metric(
-            "En proceso",
-            en_proceso
-        )
-
-    with columna_4:
-        st.metric(
-            "Finalizadas",
-            finalizadas
-        )
-
-    st.metric(
-        "Avance promedio",
-        str(avance_promedio) + "%"
-    )
-
-    columnas_panel = [
-        "Itm project",
-        "Activo",
-        "Nombre de tarea",
-        "OT",
-        "Líder",
-        "Responsable",
-        "Avance actual",
-        "Estado"
-    ]
-
-    columnas_disponibles = [
-        columna
-        for columna in columnas_panel
-        if columna in panel.columns
-    ]
-
-    panel_mostrar = panel[
-        columnas_disponibles
-    ].copy()
-
-    if "OT" in panel_mostrar.columns:
-        panel_mostrar["OT"] = (
-            panel_mostrar["OT"].apply(
-                limpiar_ot
-            )
-        )
-
-    st.dataframe(
-        panel_mostrar,
-        use_container_width=True,
-        hide_index=True
-    )
-
-    archivo_panel = panel_mostrar.to_csv(
-        index=False
-    ).encode("utf-8-sig")
-
-    st.download_button(
-        label="Descargar panel en CSV",
-        data=archivo_panel,
-        file_name="panel_avances_26-1-PH2.csv",
-        mime="text/csv"
-    )
-
-
-# PESTANA HISTORIAL
-with pestana_historial:
-    st.header(
-        "Historial de actualizaciones"
-    )
-
-    historial = cargar_historial()
-
-    if historial.empty:
-        st.info(
-            "Todavía no existen actualizaciones "
-            "registradas."
-        )
-
-    else:
-        historial_mostrar = historial.copy()
-
-        historial_mostrar = historial_mostrar.rename(
-            columns={
-                "item": "Itm project",
-                "lider": "Líder",
-                "avance": "Avance",
-                "comentario": "Comentario",
-                "usuario": "Actualizado por",
-                "fecha": "Fecha"
-            }
-        )
-
-        columnas_historial = [
-            "Itm project",
-            "Líder",
-            "Avance",
-            "Comentario",
-            "Actualizado por",
-            "Fecha"
-        ]
-
-        st.dataframe(
-            historial_mostrar[
-                columnas_historial
-            ],
-            use_container_width=True,
-            hide_index=True
-        )
-
-       
+        value
