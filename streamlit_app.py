@@ -404,7 +404,6 @@ pestana_registro, pestana_panel, pestana_historial = st.tabs(
 
 # PESTANA REGISTRAR AVANCE
 # PESTANA REGISTRAR AVANCE
-# PESTANA REGISTRAR AVANCE
 with pestana_registro:
 
     st.header("Registrar avances")
@@ -445,71 +444,19 @@ with pestana_registro:
     )
 
     st.info(
-    f"Actividades asignadas a {lider_seleccionado}: "
-    f"{len(actividades_lider)}"
-)
+        f"Actividades asignadas a {lider_seleccionado}: "
+        f"{len(actividades_lider)}"
+    )
 
-st.markdown("""
-<style>
+    columnas_tabla = [
+        "OT",
+        "Ubicacion",
+        "Nombre de tarea",
+        "Avance actual",
+        "Nuevo avance"
+    ]
 
-[data-testid="stDataFrame"] table {
-    table-layout: fixed !important;
-}
-
-[data-testid="stDataFrame"] th:nth-child(3),
-[data-testid="stDataFrame"] td:nth-child(3) {
-    width: 130px !important;
-    min-width: 130px !important;
-    max-width: 130px !important;
-
-    white-space: normal !important;
-    word-wrap: break-word !important;
-    overflow-wrap: break-word !important;
-}
-
-</style>
-""", unsafe_allow_html=True)
-
-tabla = st.data_editor(
-    actividades_lider[columnas_tabla],
-    hide_index=True,
-    use_container_width=True,
-    num_rows="fixed",
-    height=550,
-    column_config={
-        "OT": st.column_config.TextColumn(
-            "OT",
-            width="small",
-            disabled=True
-        ),
-
-        "Ubicacion": st.column_config.TextColumn(
-            "Ubicación",
-            width="small",
-            disabled=True
-        ),
-
-        "Nombre de tarea": st.column_config.TextColumn(
-            "Tarea",
-            width="small",
-            disabled=True
-        ),
-
-        "Avance actual": st.column_config.NumberColumn(
-            "Actual %",
-            width="small",
-            disabled=True
-        ),
-
-        "Nuevo avance": st.column_config.NumberColumn(
-            "Nuevo %",
-            width="small",
-            min_value=0,
-            max_value=100,
-            step=5
-        )
-    }
-)
+    tabla = st.data_editor(
         actividades_lider[columnas_tabla],
         hide_index=True,
         use_container_width=True,
@@ -521,21 +468,25 @@ tabla = st.data_editor(
                 width="small",
                 disabled=True
             ),
+
             "Ubicacion": st.column_config.TextColumn(
                 "Ubicación",
                 width="small",
                 disabled=True
             ),
+
             "Nombre de tarea": st.column_config.TextColumn(
-                "Nombre de tarea",
-                width="large",
+                "Tarea",
+                width="small",
                 disabled=True
             ),
+
             "Avance actual": st.column_config.NumberColumn(
                 "Actual %",
                 width="small",
                 disabled=True
             ),
+
             "Nuevo avance": st.column_config.NumberColumn(
                 "Nuevo %",
                 width="small",
