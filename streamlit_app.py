@@ -459,37 +459,37 @@ with pestana_registro:
     tabla = st.data_editor(
         actividades_lider[columnas_tabla],
         hide_index=True,
-        use_container_width=True,
+        use_container_width=False,
         num_rows="fixed",
         height=550,
         column_config={
             "OT": st.column_config.TextColumn(
                 "OT",
-                width="small",
+                width=60,
                 disabled=True
             ),
 
             "Ubicacion": st.column_config.TextColumn(
-                "Ubicación",
-                width="small",
+                "Ub.",
+                width=80,
                 disabled=True
             ),
 
             "Nombre de tarea": st.column_config.TextColumn(
                 "Tarea",
-                width="small",
+                width=280,
                 disabled=True
             ),
 
             "Avance actual": st.column_config.NumberColumn(
-                "Actual %",
-                width="small",
+                "%",
+                width=50,
                 disabled=True
             ),
 
             "Nuevo avance": st.column_config.NumberColumn(
-                "Nuevo %",
-                width="small",
+                "N %",
+                width=60,
                 min_value=0,
                 max_value=100,
                 step=5
