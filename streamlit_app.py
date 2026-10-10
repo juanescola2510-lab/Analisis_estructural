@@ -403,6 +403,7 @@ pestana_registro, pestana_panel, pestana_historial = st.tabs(
 
 
 # PESTANA REGISTRAR AVANCE
+# PESTANA REGISTRAR AVANCE
 with pestana_registro:
 
     st.header("Registrar avances")
@@ -445,7 +446,6 @@ with pestana_registro:
     actividades_lider["Comentario nuevo"] = ""
 
     columnas_tabla = [
-        "Itm project",
         "OT",
         "Ubicacion",
         "Nombre de tarea",
@@ -464,37 +464,7 @@ with pestana_registro:
         actividades_lider[columnas_tabla],
         hide_index=True,
         use_container_width=True,
-        num_rows="fixed",
-        column_config={
-            "Itm project": st.column_config.NumberColumn(
-                disabled=True
-            ),
-            "OT": st.column_config.TextColumn(
-                disabled=True
-            ),
-            "Ubicacion": st.column_config.TextColumn(
-                disabled=True
-            ),
-            "Nombre de tarea": st.column_config.TextColumn(
-                disabled=True
-            ),
-            "Responsable": st.column_config.TextColumn(
-                disabled=True
-            ),
-            "Avance actual": st.column_config.NumberColumn(
-                disabled=True
-            ),
-            "Nuevo avance": st.column_config.NumberColumn(
-                min_value=0,
-                max_value=100,
-                step=5
-            ),
-            "Comentario nuevo": st.column_config.TextColumn()
-        }
-    )
-
-    usuario = st.text_input(
-        "Nombre de quien actualiza"
+        num_rows="fixed"
     )
 
     pines = obtener_pines()
@@ -513,13 +483,7 @@ with pestana_registro:
         use_container_width=True
     ):
 
-        if not usuario.strip():
-
-            st.warning(
-                "Ingrese el nombre de quien actualiza."
-            )
-
-        elif not validar_pin(
+        if not validar_pin(
             lider_seleccionado,
             pin
         ):
@@ -532,7 +496,11 @@ with pestana_registro:
 
             registros_guardados = 0
 
-            for _, fila in tabla.iterrows():
+            for i, fila in tabla.iterrows():
+
+                fila_original = (
+                    actividades_lider.iloc[i]
+                )
 
                 avance_nuevo = int(
                     fila["Nuevo avance"]
@@ -543,7 +511,7 @@ with pestana_registro:
                 )
 
                 avance_actual = obtener_ultimo_avance(
-                    fila["Itm project"],
+                    fila_original["Itm project"],
                     0
                 )
 
@@ -553,11 +521,11 @@ with pestana_registro:
                 ):
 
                     guardar_avance(
-                        item=fila["Itm project"],
+                        item=fila_original["Itm project"],
                         lider=lider_seleccionado,
                         avance=avance_nuevo,
                         comentario=comentario_nuevo,
-                        usuario=usuario
+                        usuario=lider_seleccionado
                     )
 
                     registros_guardados += 1
