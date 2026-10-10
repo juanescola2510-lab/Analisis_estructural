@@ -507,7 +507,7 @@ with pestana_registro:
     else:
         pin = ""
 
-    if st.button(
+        if st.button(
         "Guardar avances",
         type="primary",
         use_container_width=True
@@ -526,25 +526,28 @@ with pestana_registro:
 
             registros_guardados = 0
 
-            for i, fila in tabla.iterrows():
+            cantidad_filas = min(
+                len(tabla),
+                len(actividades_lider)
+            )
 
-                fila_original = (
-                    actividades_lider.iloc[i]
-                )
+            for i in range(cantidad_filas):
+
+                item_project = actividades_lider.iloc[i]["Itm project"]
 
                 avance_nuevo = int(
-                    fila["Nuevo avance"]
+                    tabla.iloc[i]["Nuevo avance"]
                 )
 
                 avance_actual = obtener_ultimo_avance(
-                    fila_original["Itm project"],
+                    item_project,
                     0
                 )
 
                 if avance_nuevo != avance_actual:
 
                     guardar_avance(
-                        item=fila_original["Itm project"],
+                        item=item_project,
                         lider=lider_seleccionado,
                         avance=avance_nuevo,
                         comentario="",
