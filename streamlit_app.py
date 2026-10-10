@@ -404,6 +404,7 @@ pestana_registro, pestana_panel, pestana_historial = st.tabs(
 
 # PESTANA REGISTRAR AVANCE
 # PESTANA REGISTRAR AVANCE
+# PESTANA REGISTRAR AVANCE
 with pestana_registro:
 
     st.header("Registrar avances")
@@ -443,28 +444,54 @@ with pestana_registro:
         actividades_lider["Avance actual"]
     )
 
-    actividades_lider["Comentario nuevo"] = ""
-
-    columnas_tabla = [
-        "OT",
-        "Ubicacion",
-        "Nombre de tarea",
-        "Responsable",
-        "Avance actual",
-        "Nuevo avance",
-        "Comentario nuevo"
-    ]
-
     st.info(
         f"Actividades asignadas a {lider_seleccionado}: "
         f"{len(actividades_lider)}"
     )
 
+    columnas_tabla = [
+        "OT",
+        "Ubicacion",
+        "Nombre de tarea",
+        "Avance actual",
+        "Nuevo avance"
+    ]
+
     tabla = st.data_editor(
         actividades_lider[columnas_tabla],
         hide_index=True,
         use_container_width=True,
-        num_rows="fixed"
+        num_rows="fixed",
+        height=550,
+        column_config={
+            "OT": st.column_config.TextColumn(
+                "OT",
+                width="small",
+                disabled=True
+            ),
+            "Ubicacion": st.column_config.TextColumn(
+                "Ubicación",
+                width="small",
+                disabled=True
+            ),
+            "Nombre de tarea": st.column_config.TextColumn(
+                "Nombre de tarea",
+                width="large",
+                disabled=True
+            ),
+            "Avance actual": st.column_config.NumberColumn(
+                "Actual %",
+                width="small",
+                disabled=True
+            ),
+            "Nuevo avance": st.column_config.NumberColumn(
+                "Nuevo %",
+                width="small",
+                min_value=0,
+                max_value=100,
+                step=5
+            )
+        }
     )
 
     pines = obtener_pines()
@@ -506,25 +533,18 @@ with pestana_registro:
                     fila["Nuevo avance"]
                 )
 
-                comentario_nuevo = str(
-                    fila["Comentario nuevo"]
-                )
-
                 avance_actual = obtener_ultimo_avance(
                     fila_original["Itm project"],
                     0
                 )
 
-                if (
-                    avance_nuevo != avance_actual
-                    or comentario_nuevo.strip()
-                ):
+                if avance_nuevo != avance_actual:
 
                     guardar_avance(
                         item=fila_original["Itm project"],
                         lider=lider_seleccionado,
                         avance=avance_nuevo,
-                        comentario=comentario_nuevo,
+                        comentario="",
                         usuario=lider_seleccionado
                     )
 
@@ -543,7 +563,6 @@ with pestana_registro:
                 )
 
                 st.rerun()
-
 
 # PESTANA PANEL GENERAL
 with pestana_panel:
