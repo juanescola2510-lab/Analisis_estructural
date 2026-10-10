@@ -439,9 +439,8 @@ with pestana_registro:
         axis=1
     )
 
-    actividades_lider["Nuevo avance"] = (
-        actividades_lider["Avance actual"]
-    )
+    # N % VACÍO
+    actividades_lider["Nuevo avance"] = None
 
     st.info(
         f"Actividades asignadas a {lider_seleccionado}: "
@@ -463,6 +462,7 @@ with pestana_registro:
         num_rows="fixed",
         height=550,
         column_config={
+
             "OT": st.column_config.TextColumn(
                 "OT",
                 width=60,
@@ -537,16 +537,25 @@ with pestana_registro:
                     actividades_lider.iloc[i]["Itm project"]
                 )
 
-                avance_nuevo = int(
+                valor_nuevo = (
                     tabla.iloc[i]["Nuevo avance"]
                 )
+
+                # Si está vacío no hace nada
+                if pd.isna(valor_nuevo):
+                    continue
+
+                avance_nuevo = int(valor_nuevo)
 
                 avance_actual = obtener_ultimo_avance(
                     item_project,
                     0
                 )
 
-                if avance_nuevo != avance_actual:
+                if (
+                    avance_nuevo >= avance_actual
+                    and avance_nuevo <= 100
+                ):
 
                     guardar_avance(
                         item=item_project,
