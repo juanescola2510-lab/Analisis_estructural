@@ -497,7 +497,7 @@ with pestana_registro:
         }
     )
 
-        pines = obtener_pines()
+    pines = obtener_pines()
 
     if pines:
         pin = st.text_input(
@@ -533,7 +533,9 @@ with pestana_registro:
 
             for i in range(cantidad_filas):
 
-                item_project = actividades_lider.iloc[i]["Itm project"]
+                item_project = (
+                    actividades_lider.iloc[i]["Itm project"]
+                )
 
                 avance_nuevo = int(
                     tabla.iloc[i]["Nuevo avance"]
