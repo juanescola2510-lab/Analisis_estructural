@@ -497,7 +497,7 @@ with pestana_registro:
         }
     )
 
-    pines = obtener_pines()
+        pines = obtener_pines()
 
     if pines:
         pin = st.text_input(
@@ -507,7 +507,7 @@ with pestana_registro:
     else:
         pin = ""
 
-        if st.button(
+    if st.button(
         "Guardar avances",
         type="primary",
         use_container_width=True
