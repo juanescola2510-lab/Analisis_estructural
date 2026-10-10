@@ -2,10 +2,8 @@ import sqlite3
 import unicodedata
 from datetime import datetime
 from pathlib import Path
-
 import pandas as pd
 import streamlit as st
-
 
 # CONFIGURACION
 BASE_DIR = Path(__file__).parent
@@ -18,14 +16,12 @@ st.set_page_config(
     layout="wide"
 )
 
-
 # FUNCIONES GENERALES
 def limpiar_texto(valor):
     if pd.isna(valor):
         return ""
 
     return str(valor).strip()
-
 
 def normalizar_nombre(valor):
     texto = limpiar_texto(valor).lower()
@@ -39,7 +35,6 @@ def normalizar_nombre(valor):
     texto = " ".join(texto.split())
 
     return texto
-
 
 def limpiar_ot(valor):
     if pd.isna(valor):
@@ -61,7 +56,6 @@ def limpiar_ot(valor):
 
     return texto
 
-
 def normalizar_avance(valor):
     try:
         numero = float(valor)
@@ -76,13 +70,11 @@ def normalizar_avance(valor):
     except (TypeError, ValueError):
         return 0
 
-
 def obtener_pines():
     try:
         return st.secrets.get("leader_pins", {})
     except Exception:
         return {}
-
 
 def validar_pin(lider, pin):
     pines = obtener_pines()
@@ -95,7 +87,6 @@ def validar_pin(lider, pin):
     )
 
     return pin_guardado == str(pin)
-
 
 # CARGAR EXCEL
 @st.cache_data(show_spinner=False)
@@ -287,7 +278,6 @@ def conectar_bd():
 
     return conexion
 
-
 def guardar_avance(
     item,
     lider,
@@ -340,7 +330,6 @@ def cargar_historial():
     conexion.close()
 
     return historial
-
 
 def obtener_ultimo_avance(
     item,
@@ -415,7 +404,8 @@ pestana_registro, pestana_panel, pestana_historial = st.tabs(
 
 # PESTANA REGISTRAR AVANCE
 with pestana_registro:
-    st.header("Registrar avance")
+
+    st.header("Registrar avances")
 
     lideres = sorted(
         actividades["Líder"]
@@ -426,168 +416,165 @@ with pestana_registro:
     )
 
     lider_seleccionado = st.selectbox(
-        "Selecciona el codigo del lider",
+        "Selecciona el código del líder",
         lideres
     )
 
     actividades_lider = actividades[
-        actividades["Líder"]
-        == lider_seleccionado
+        actividades["Líder"] == lider_seleccionado
     ].copy()
 
-    st.info(
-        "Actividades asignadas a "
-        + lider_seleccionado
-        + ": "
-        + str(len(actividades_lider))
-    )
-
-    opciones_actividades = {}
-
-    for _, fila in actividades_lider.iterrows():
-        avance_actual_fila = obtener_ultimo_avance(
-            fila["Itm project"],
-            fila["Avance inicial"]
-        )
-
-        ubicacion = limpiar_texto(
-            fila["Ubicacion"]
-        )
-
-        nombre_tarea = limpiar_texto(
-            fila["Nombre de tarea"]
-        )
-
-        texto_opcion = (
-            ubicacion
-            + " | "
-            + nombre_tarea
-            + " | "
-            + str(avance_actual_fila)
-            + "%"
-        )
-
-        opciones_actividades[
-            texto_opcion
-        ] = fila["Itm project"]
-
-    if not opciones_actividades:
+    if actividades_lider.empty:
         st.warning(
             "Este líder no tiene actividades asignadas."
         )
         st.stop()
 
-    actividad_seleccionada = st.selectbox(
-        "Selecciona la actividad",
-        list(opciones_actividades.keys())
+    actividades_lider["Avance actual"] = actividades_lider.apply(
+        lambda fila: obtener_ultimo_avance(
+            fila["Itm project"],
+            fila["Avance inicial"]
+        ),
+        axis=1
     )
 
-    item_seleccionado = opciones_actividades[
-        actividad_seleccionada
+    actividades_lider["Nuevo avance"] = (
+        actividades_lider["Avance actual"]
+    )
+
+    actividades_lider["Comentario nuevo"] = ""
+
+    columnas_tabla = [
+        "Itm project",
+        "OT",
+        "Ubicacion",
+        "Nombre de tarea",
+        "Responsable",
+        "Avance actual",
+        "Nuevo avance",
+        "Comentario nuevo"
     ]
 
-    fila_actividad = actividades_lider[
-        actividades_lider["Itm project"]
-        == item_seleccionado
-    ].iloc[0]
-
-    avance_actual = obtener_ultimo_avance(
-        fila_actividad["Itm project"],
-        fila_actividad["Avance inicial"]
+    st.info(
+        f"Actividades asignadas a {lider_seleccionado}: "
+        f"{len(actividades_lider)}"
     )
 
-    ot_mostrada = limpiar_ot(
-        fila_actividad["OT"]
-    )
-
-    columna_ot, columna_avance = st.columns(2)
-
-    with columna_ot:
-        st.metric(
-            label="OT",
-            value=ot_mostrada
-        )
-
-    with columna_avance:
-        st.metric(
-            label="Avance actual",
-            value=str(avance_actual) + "%"
-        )
-
-    responsable = limpiar_texto(
-        fila_actividad["Responsable"]
-    )
-
-    if responsable:
-        st.markdown(
-            "**Responsable:** " + responsable
-        )
-
-    nuevo_avance = st.slider(
-        "Nuevo avance (%)",
-        min_value=0,
-        max_value=100,
-        value=avance_actual,
-        step=5
-    )
-
-    comentario = st.text_area(
-        "Comentario",
-        value="",
-        placeholder=(
-            "Escribe un comentario sobre el avance"
-        )
+    tabla = st.data_editor(
+        actividades_lider[columnas_tabla],
+        hide_index=True,
+        use_container_width=True,
+        num_rows="fixed",
+        column_config={
+            "Itm project": st.column_config.NumberColumn(
+                disabled=True
+            ),
+            "OT": st.column_config.TextColumn(
+                disabled=True
+            ),
+            "Ubicacion": st.column_config.TextColumn(
+                disabled=True
+            ),
+            "Nombre de tarea": st.column_config.TextColumn(
+                disabled=True
+            ),
+            "Responsable": st.column_config.TextColumn(
+                disabled=True
+            ),
+            "Avance actual": st.column_config.NumberColumn(
+                disabled=True
+            ),
+            "Nuevo avance": st.column_config.NumberColumn(
+                min_value=0,
+                max_value=100,
+                step=5
+            ),
+            "Comentario nuevo": st.column_config.TextColumn()
+        }
     )
 
     usuario = st.text_input(
-        "Nombre de quien actualiza",
-        value=""
+        "Nombre de quien actualiza"
     )
 
     pines = obtener_pines()
 
     if pines:
         pin = st.text_input(
-            "PIN del lider",
+            "PIN del líder",
             type="password"
         )
     else:
         pin = ""
 
     if st.button(
-        "Guardar avance",
+        "Guardar avances",
         type="primary",
         use_container_width=True
     ):
+
         if not usuario.strip():
+
             st.warning(
-                "Escribe el nombre de quien actualiza."
+                "Ingrese el nombre de quien actualiza."
             )
 
         elif not validar_pin(
             lider_seleccionado,
             pin
         ):
+
             st.error(
-                "El PIN ingresado no es correcto."
+                "PIN incorrecto."
             )
 
         else:
-            guardar_avance(
-                item=fila_actividad["Itm project"],
-                lider=lider_seleccionado,
-                avance=nuevo_avance,
-                comentario=comentario,
-                usuario=usuario
-            )
 
-            st.cache_data.clear()
+            registros_guardados = 0
 
-            st.success(
-                "El avance se guardó correctamente."
-            )
+            for _, fila in tabla.iterrows():
 
-            st.rerun()
+                avance_nuevo = int(
+                    fila["Nuevo avance"]
+                )
+
+                comentario_nuevo = str(
+                    fila["Comentario nuevo"]
+                )
+
+                avance_actual = obtener_ultimo_avance(
+                    fila["Itm project"],
+                    0
+                )
+
+                if (
+                    avance_nuevo != avance_actual
+                    or comentario_nuevo.strip()
+                ):
+
+                    guardar_avance(
+                        item=fila["Itm project"],
+                        lider=lider_seleccionado,
+                        avance=avance_nuevo,
+                        comentario=comentario_nuevo,
+                        usuario=usuario
+                    )
+
+                    registros_guardados += 1
+
+            if registros_guardados == 0:
+
+                st.info(
+                    "No se detectaron cambios."
+                )
+
+            else:
+
+                st.success(
+                    f"Se guardaron {registros_guardados} actualizaciones."
+                )
+
+                st.rerun()
 
 
 # PESTANA PANEL GENERAL
