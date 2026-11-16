@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 from datetime import date
 
 st.set_page_config(
@@ -10,13 +9,46 @@ st.set_page_config(
     layout="wide"
 )
 
-# =====================================================
+# ===============================
+# BASE DE DATOS EN MEMORIA
+# ===============================
+
+if "historico" not in st.session_state:
+    st.session_state.historico = pd.DataFrame(
+        columns=[
+            "Fecha",
+            "Equipo",
+            "Vibracion",
+            "Limite_Vibracion",
+            "Temperatura",
+            "Limite_Temperatura",
+            "Ultrasonido",
+            "Limite_Ultrasonido"
+        ]
+    )
+
+# ===============================
 # FUNCIONES
-# =====================================================
+# ===============================
 
-def calcular_salud(vib_pct, temp_pct, ultra_pct):
+def calcular_salud(row):
 
-    riesgo = (vib_pct + temp_pct + ultra_pct) / 3
+    vib = min(
+        (row["Vibracion"] / row["Limite_Vibracion"]) * 100,
+        150
+    )
+
+    temp = min(
+        (row["Temperatura"] / row["Limite_Temperatura"]) * 100,
+        150
+    )
+
+    ultra = min(
+        (row["Ultrasonido"] / row["Limite_Ultrasonido"]) * 100,
+        150
+    )
+
+    riesgo = (vib + temp + ultra) / 3
 
     salud = max(0, 100 - riesgo)
 
@@ -35,83 +67,4 @@ def clasificar(salud):
         return "🟠 Alarma"
 
     else:
-        return "🔴 Crítico"
-
-
-# =====================================================
-# BASE DE DATOS
-# =====================================================
-
-if "historico" not in st.session_state:
-
-    st.session_state.historico = pd.DataFrame(
-        columns=[
-            "Fecha",
-            "Equipo",
-            "Vib_Actual",
-            "Vib_Limite",
-            "Temp_Actual",
-            "Temp_Limite",
-            "Ultra_Actual",
-            "Ultra_Limite"
-        ]
-    )
-
-# =====================================================
-# SIDEBAR
-# =====================================================
-
-st.sidebar.title("Ingreso de Inspección")
-
-fecha = st.sidebar.date_input(
-    "Fecha",
-    date.today()
-)
-
-equipo = st.sidebar.text_input(
-    "Equipo"
-)
-
-st.sidebar.markdown("### Vibración")
-
-vib_actual = st.sidebar.number_input(
-    "Vibración Actual (mm/s)",
-    min_value=0.0,
-    value=10.0
-)
-
-vib_limite = st.sidebar.number_input(
-    "Límite Vibración",
-    min_value=1.0,
-    value=30.0
-)
-
-st.sidebar.markdown("### Temperatura")
-
-temp_actual = st.sidebar.number_input(
-    "Temperatura Actual (°C)",
-    min_value=0.0,
-    value=60.0
-)
-
-temp_limite = st.sidebar.number_input(
-    "Límite Temperatura",
-    min_value=1.0,
-    value=90.0
-)
-
-st.sidebar.markdown("### Ultrasonido")
-
-ultra_actual = st.sidebar.number_input(
-    "Ultrasonido Actual",
-    min_value=0.0,
-    value=15.0
-)
-
-ultra_limite = st.sidebar.number_input(
-    "Límite Ultrasonido",
-    min_value=1.0,
-    value=30.0
-)
-
-if st.sidebar.button
+        return "🔴 Crí
