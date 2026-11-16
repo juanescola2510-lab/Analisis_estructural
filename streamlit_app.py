@@ -1,759 +1,340 @@
-import sqlite3
-import unicodedata
-from datetime import datetime
-from pathlib import Path
-import pandas as pd
 import streamlit as st
-
-# CONFIGURACION
-BASE_DIR = Path(__file__).parent
-EXCEL_PATH = BASE_DIR / "Avances 26-1-PH2.xlsx"
-DB_PATH = BASE_DIR / "avances.db"
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+import numpy as np
 
 st.set_page_config(
-    page_title="Avances 26-1-PH2",
-    page_icon="📋",
+    page_title="Asset Health Dashboard",
+    page_icon="🏭",
     layout="wide"
 )
 
-# FUNCIONES GENERALES
-def limpiar_texto(valor):
-    if pd.isna(valor):
-        return ""
+# =====================================================
+# DATOS
+# =====================================================
 
-    return str(valor).strip()
+if "activos" not in st.session_state:
 
-def normalizar_nombre(valor):
-    texto = limpiar_texto(valor).lower()
+    st.session_state.activos = pd.DataFrame([
+        {
+            "Equipo":"ID FAN H2",
+            "Area":"Horno 2",
+            "Vibracion":60,
+            "Temperatura":75,
+            "Ultrasonido":70,
+            "Lubricacion":85,
+            "Inspeccion":80
+        },
+        {
+            "Equipo":"Compresor 3",
+            "Area":"Aire Comprimido",
+            "Vibracion":85,
+            "Temperatura":90,
+            "Ultrasonido":88,
+            "Lubricacion":92,
+            "Inspeccion":90
+        },
+        {
+            "Equipo":"Reductor Molino",
+            "Area":"Molino Crudo",
+            "Vibracion":55,
+            "Temperatura":65,
+            "Ultrasonido":60,
+            "Lubricacion":70,
+            "Inspeccion":75
+        }
+    ])
 
-    texto = "".join(
-        caracter
-        for caracter in unicodedata.normalize("NFD", texto)
-        if unicodedata.category(caracter) != "Mn"
+# =====================================================
+# FUNCIONES
+# =====================================================
+
+def calcular_health(row):
+
+    health = (
+        row["Vibracion"] * 0.30 +
+        row["Temperatura"] * 0.20 +
+        row["Ultrasonido"] * 0.20 +
+        row["Lubricacion"] * 0.15 +
+        row["Inspeccion"] * 0.15
     )
 
-    texto = " ".join(texto.split())
+    return round(health,1)
 
-    return texto
 
-def limpiar_ot(valor):
-    if pd.isna(valor):
-        return ""
+def clasificar(valor):
 
-    texto = str(valor).strip()
+    if valor >= 90:
+        return "Excelente"
 
-    try:
-        numero = float(texto)
+    elif valor >= 75:
+        return "Bueno"
 
-        if numero.is_integer():
-            return str(int(numero))
+    elif valor >= 60:
+        return "Atención"
 
-    except (ValueError, TypeError):
-        pass
+    elif valor >= 40:
+        return "Crítico"
 
-    if texto.endswith(".0"):
-        texto = texto[:-2]
+    else:
+        return "Riesgo Alto"
 
-    return texto
 
-def normalizar_avance(valor):
-    try:
-        numero = float(valor)
+df = st.session_state.activos.copy()
 
-        if numero <= 1:
-            numero = numero * 100
+df["Health"] = df.apply(calcular_health, axis=1)
+df["Estado"] = df["Health"].apply(clasificar)
 
-        numero = round(numero)
+# =====================================================
+# SIDEBAR
+# =====================================================
 
-        return max(0, min(100, numero))
+st.sidebar.title("🏭 Asset Health")
 
-    except (TypeError, ValueError):
-        return 0
+st.sidebar.header("Nuevo Activo")
 
-def obtener_pines():
-    try:
-        return st.secrets.get("leader_pins", {})
-    except Exception:
-        return {}
+equipo = st.sidebar.text_input("Equipo")
 
-def validar_pin(lider, pin):
-    pines = obtener_pines()
-
-    if not pines:
-        return True
-
-    pin_guardado = str(
-        pines.get(lider, "")
-    )
-
-    return pin_guardado == str(pin)
-
-# CARGAR EXCEL
-@st.cache_data(show_spinner=False)
-def cargar_actividades():
-    if not EXCEL_PATH.exists():
-        raise FileNotFoundError(
-            "No se encontró el archivo "
-            "Avances 26-1-PH2.xlsx"
-        )
-
-    vista_previa = pd.read_excel(
-        EXCEL_PATH,
-        sheet_name=0,
-        header=None,
-        engine="openpyxl"
-    )
-
-    fila_encabezado = None
-
-    for indice, fila in vista_previa.head(100).iterrows():
-        valores_normalizados = [
-            normalizar_nombre(valor)
-            for valor in fila.tolist()
-        ]
-
-        if "itm project" in valores_normalizados:
-            fila_encabezado = indice
-            break
-
-    if fila_encabezado is None:
-        raise ValueError(
-            "No se encontró la columna 'Itm project' "
-            "en las primeras 100 filas del Excel."
-        )
-
-    df = pd.read_excel(
-        EXCEL_PATH,
-        sheet_name=0,
-        header=fila_encabezado,
-        engine="openpyxl"
-    )
-
-    df.columns = [
-        limpiar_texto(columna)
-        for columna in df.columns
-    ]
-
-    nombres_columnas = {
-        normalizar_nombre(columna): columna
-        for columna in df.columns
-    }
-
-    equivalencias = {}
-
-    if "itm project" in nombres_columnas:
-        equivalencias[
-            nombres_columnas["itm project"]
-        ] = "Itm project"
-
-    for nombre_normalizado, columna_real in nombres_columnas.items():
-        if nombre_normalizado == "nombre de tarea":
-            equivalencias[columna_real] = "Nombre de tarea"
-
-        elif nombre_normalizado == "lider":
-            equivalencias[columna_real] = "Líder"
-
-        elif nombre_normalizado == "activo":
-            equivalencias[columna_real] = "Activo"
-
-        elif nombre_normalizado == "ubicacion":
-            equivalencias[columna_real] = "Ubicacion"
-
-        elif nombre_normalizado == "ot":
-            equivalencias[columna_real] = "OT"
-
-        elif nombre_normalizado == "responsable":
-            equivalencias[columna_real] = "Responsable"
-
-        elif nombre_normalizado == "comentarios":
-            equivalencias[columna_real] = "Comentarios"
-
-        elif (
-            nombre_normalizado == "%"
-            or nombre_normalizado == "avance"
-            or nombre_normalizado == "% avance"
-            or nombre_normalizado == "porcentaje"
-            or nombre_normalizado == "porcentaje avance"
-        ):
-            equivalencias[columna_real] = "%"
-
-    df = df.rename(
-        columns=equivalencias
-    )
-
-    columnas_necesarias = [
-        "Itm project",
-        "Nombre de tarea",
-        "Líder",
-        "Ubicacion",
-        "%"
-    ]
-
-    columnas_faltantes = [
-        columna
-        for columna in columnas_necesarias
-        if columna not in df.columns
-    ]
-
-    if columnas_faltantes:
-        raise ValueError(
-            "Faltan columnas en el Excel: "
-            + ", ".join(columnas_faltantes)
-            + ". Columnas encontradas: "
-            + ", ".join(
-                str(columna)
-                for columna in df.columns
-            )
-        )
-
-    df["Itm project"] = pd.to_numeric(
-        df["Itm project"],
-        errors="coerce"
-    )
-
-    df = df[
-        df["Itm project"].notna()
-    ].copy()
-
-    df["Itm project"] = (
-        df["Itm project"].astype(int)
-    )
-
-    columnas_texto = [
-        "Líder",
-        "Nombre de tarea",
-        "Activo",
-        "Ubicacion",
-        "Responsable",
-        "Comentarios"
-    ]
-
-    for columna in columnas_texto:
-        if columna not in df.columns:
-            df[columna] = ""
-
-        df[columna] = df[columna].apply(
-            limpiar_texto
-        )
-
-    if "OT" not in df.columns:
-        df["OT"] = ""
-
-    df["OT"] = df["OT"].apply(
-        limpiar_ot
-    )
-
-    df["Avance inicial"] = df["%"].apply(
-        normalizar_avance
-    )
-
-    df = df[
-        df["Líder"] != ""
-    ].copy()
-
-    return df
-
-
-# BASE DE DATOS
-def conectar_bd():
-    conexion = sqlite3.connect(
-        DB_PATH,
-        check_same_thread=False
-    )
-
-    consulta = (
-        "CREATE TABLE IF NOT EXISTS avances ("
-        "id INTEGER PRIMARY KEY AUTOINCREMENT, "
-        "item INTEGER NOT NULL, "
-        "lider TEXT NOT NULL, "
-        "avance INTEGER NOT NULL, "
-        "comentario TEXT, "
-        "usuario TEXT NOT NULL, "
-        "fecha TEXT NOT NULL"
-        ")"
-    )
-
-    conexion.execute(consulta)
-    conexion.commit()
-
-    return conexion
-
-def guardar_avance(
-    item,
-    lider,
-    avance,
-    comentario,
-    usuario
-):
-    conexion = conectar_bd()
-
-    consulta = (
-        "INSERT INTO avances ("
-        "item, lider, avance, comentario, usuario, fecha"
-        ") VALUES (?, ?, ?, ?, ?, ?)"
-    )
-
-    fecha_actual = datetime.now().strftime(
-        "%Y-%m-%d %H:%M:%S"
-    )
-
-    conexion.execute(
-        consulta,
-        (
-            int(item),
-            limpiar_texto(lider),
-            int(avance),
-            limpiar_texto(comentario),
-            limpiar_texto(usuario),
-            fecha_actual
-        )
-    )
-
-    conexion.commit()
-    conexion.close()
-
-
-def cargar_historial():
-    conexion = conectar_bd()
-
-    consulta = (
-        "SELECT id, item, lider, avance, comentario, "
-        "usuario, fecha FROM avances "
-        "ORDER BY id DESC"
-    )
-
-    historial = pd.read_sql_query(
-        consulta,
-        conexion
-    )
-
-    conexion.close()
-
-    return historial
-
-def obtener_ultimo_avance(
-    item,
-    avance_inicial
-):
-    conexion = conectar_bd()
-
-    consulta = (
-        "SELECT avance FROM avances "
-        "WHERE item = ? "
-        "ORDER BY id DESC LIMIT 1"
-    )
-
-    resultado = conexion.execute(
-        consulta,
-        (int(item),)
-    ).fetchone()
-
-    conexion.close()
-
-    if resultado:
-        return int(resultado[0])
-
-    return int(avance_inicial)
-
-
-def preparar_panel(actividades):
-    panel = actividades.copy()
-
-    panel["Avance actual"] = panel.apply(
-        lambda fila: obtener_ultimo_avance(
-            fila["Itm project"],
-            fila["Avance inicial"]
-        ),
-        axis=1
-    )
-
-    panel["Estado"] = panel[
-        "Avance actual"
-    ].apply(
-        lambda avance: (
-            "Finalizada"
-            if avance >= 100
-            else "En proceso"
-            if avance > 0
-            else "Pendiente"
-        )
-    )
-
-    return panel
-
-
-# INICIO DE LA APLICACION
-st.title("📋 Registro de avances 26-1-PH2")
-
-try:
-    actividades = cargar_actividades()
-
-except Exception as error:
-    st.error(str(error))
-    st.stop()
-
-
-pestana_registro, pestana_panel, pestana_historial = st.tabs(
+area = st.sidebar.selectbox(
+    "Área",
     [
-        "Registrar avance",
-        "Panel general",
-        "Historial"
+        "Horno 1",
+        "Horno 2",
+        "Molino Crudo",
+        "Molino Cemento",
+        "Empaque",
+        "Aire Comprimido"
     ]
 )
 
+vib = st.sidebar.slider("Vibración",0,100,80)
+temp = st.sidebar.slider("Temperatura",0,100,80)
+ultra = st.sidebar.slider("Ultrasonido",0,100,80)
+lub = st.sidebar.slider("Lubricación",0,100,80)
+insp = st.sidebar.slider("Inspección",0,100,80)
 
-# PESTANA REGISTRAR AVANCE
-# PESTANA REGISTRAR AVANCE
-with pestana_registro:
+if st.sidebar.button("Agregar"):
 
-    st.header("Registrar avances")
+    nuevo = pd.DataFrame([{
+        "Equipo":equipo,
+        "Area":area,
+        "Vibracion":vib,
+        "Temperatura":temp,
+        "Ultrasonido":ultra,
+        "Lubricacion":lub,
+        "Inspeccion":insp
+    }])
 
-    lideres = sorted(
-        actividades["Líder"]
-        .dropna()
-        .astype(str)
-        .unique()
-        .tolist()
+    st.session_state.activos = pd.concat(
+        [st.session_state.activos,nuevo],
+        ignore_index=True
     )
 
-    lider_seleccionado = st.selectbox(
-        "Selecciona el código del líder",
-        lideres
-    )
+    st.rerun()
 
-    actividades_lider = actividades[
-        actividades["Líder"] == lider_seleccionado
-    ].copy()
+# =====================================================
+# TITULO
+# =====================================================
 
-    if actividades_lider.empty:
-        st.warning(
-            "Este líder no tiene actividades asignadas."
-        )
-        st.stop()
+st.title("🏭 Asset Health Dashboard")
 
-    actividades_lider["Avance actual"] = actividades_lider.apply(
-        lambda fila: obtener_ultimo_avance(
-            fila["Itm project"],
-            fila["Avance inicial"]
-        ),
-        axis=1
-    )
+salud_general = round(df["Health"].mean(),1)
 
-    # N % VACÍO
-    actividades_lider["Nuevo avance"] = None
+# =====================================================
+# KPIs
+# =====================================================
 
-    st.info(
-        f"Actividades asignadas a {lider_seleccionado}: "
-        f"{len(actividades_lider)}"
-    )
+c1,c2,c3,c4 = st.columns(4)
 
-    columnas_tabla = [
-        "OT",
-        "Ubicacion",
-        "Nombre de tarea",
-        "Avance actual",
-        "Nuevo avance"
-    ]
+c1.metric("Salud General",f"{salud_general}%")
+c2.metric("Activos",len(df))
+c3.metric("Críticos",len(df[df["Health"]<60]))
+c4.metric("Mejor Equipo",df.loc[df["Health"].idxmax(),"Equipo"])
 
-    tabla = st.data_editor(
-        actividades_lider[columnas_tabla],
-        hide_index=True,
-        use_container_width=False,
-        num_rows="fixed",
-        height=550,
-        column_config={
+# =====================================================
+# GAUGE
+# =====================================================
 
-            "OT": st.column_config.TextColumn(
-                "OT",
-                width=60,
-                disabled=True
-            ),
+gauge = go.Figure(go.Indicator(
+    mode="gauge+number",
+    value=salud_general,
+    title={"text":"Salud General Planta"},
+    gauge={
+        "axis":{"range":[0,100]},
+        "bar":{"color":"darkblue"},
+        "steps":[
+            {"range":[0,40],"color":"red"},
+            {"range":[40,60],"color":"orange"},
+            {"range":[60,75],"color":"yellow"},
+            {"range":[75,100],"color":"green"},
+        ]
+    }
+))
 
-            "Ubicacion": st.column_config.TextColumn(
-                "Ub.",
-                width=80,
-                disabled=True
-            ),
+# =====================================================
+# DONA
+# =====================================================
 
-            "Nombre de tarea": st.column_config.TextColumn(
-                "Tarea",
-                width=280,
-                disabled=True
-            ),
+pie = px.pie(
+    df,
+    names="Estado",
+    title="Estado de Activos"
+)
 
-            "Avance actual": st.column_config.NumberColumn(
-                "%",
-                width=50,
-                disabled=True
-            ),
+# =====================================================
+# FILA 1
+# =====================================================
 
-            "Nuevo avance": st.column_config.NumberColumn(
-                "N %",
-                width=60,
-                min_value=0,
-                max_value=100,
-                step=5
-            )
-        }
-    )
+c1,c2 = st.columns(2)
 
-    pines = obtener_pines()
-
-    if pines:
-        pin = st.text_input(
-            "PIN del líder",
-            type="password"
-        )
-    else:
-        pin = ""
-
-    if st.button(
-        "Guardar avances",
-        type="primary",
+with c1:
+    st.plotly_chart(
+        gauge,
         use_container_width=True
-    ):
-
-        if not validar_pin(
-            lider_seleccionado,
-            pin
-        ):
-
-            st.error(
-                "PIN incorrecto."
-            )
-
-        else:
-
-            registros_guardados = 0
-
-            cantidad_filas = min(
-                len(tabla),
-                len(actividades_lider)
-            )
-
-            for i in range(cantidad_filas):
-
-                item_project = (
-                    actividades_lider.iloc[i]["Itm project"]
-                )
-
-                valor_nuevo = (
-                    tabla.iloc[i]["Nuevo avance"]
-                )
-
-                # Si está vacío no hace nada
-                if pd.isna(valor_nuevo):
-                    continue
-
-                avance_nuevo = int(valor_nuevo)
-
-                avance_actual = obtener_ultimo_avance(
-                    item_project,
-                    0
-                )
-
-                if (
-                    avance_nuevo >= avance_actual
-                    and avance_nuevo <= 100
-                ):
-
-                    guardar_avance(
-                        item=item_project,
-                        lider=lider_seleccionado,
-                        avance=avance_nuevo,
-                        comentario="",
-                        usuario=lider_seleccionado
-                    )
-
-                    registros_guardados += 1
-
-            if registros_guardados == 0:
-
-                st.info(
-                    "No se detectaron cambios."
-                )
-
-            else:
-
-                st.success(
-                    f"Se guardaron {registros_guardados} actualizaciones."
-                )
-
-                st.rerun()
-
-# PESTANA PANEL GENERAL
-with pestana_panel:
-    st.header("Panel general")
-
-    panel = preparar_panel(
-        actividades
     )
 
-    total_actividades = len(panel)
-
-    pendientes = len(
-        panel[
-            panel["Estado"] == "Pendiente"
-        ]
+with c2:
+    st.plotly_chart(
+        pie,
+        use_container_width=True
     )
 
-    en_proceso = len(
-        panel[
-            panel["Estado"] == "En proceso"
-        ]
-    )
+# =====================================================
+# SALUD POR AREA
+# =====================================================
 
-    finalizadas = len(
-        panel[
-            panel["Estado"] == "Finalizada"
-        ]
-    )
+area_df = (
+    df.groupby("Area")["Health"]
+    .mean()
+    .reset_index()
+)
 
-    avance_promedio = (
-        round(
-            panel["Avance actual"].mean(),
-            1
-        )
-        if total_actividades > 0
-        else 0
-    )
+fig_area = px.bar(
+    area_df,
+    x="Health",
+    y="Area",
+    orientation="h",
+    color="Health",
+    title="Salud por Área"
+)
 
-    columna_1, columna_2, columna_3, columna_4 = (
-        st.columns(4)
-    )
+st.plotly_chart(
+    fig_area,
+    use_container_width=True
+)
 
-    with columna_1:
-        st.metric(
-            "Total de actividades",
-            total_actividades
-        )
+# =====================================================
+# TOP EQUIPOS CRITICOS
+# =====================================================
 
-    with columna_2:
-        st.metric(
-            "Pendientes",
-            pendientes
-        )
+st.subheader("Top Equipos Críticos")
 
-    with columna_3:
-        st.metric(
-            "En proceso",
-            en_proceso
-        )
+criticos = df.sort_values(
+    "Health"
+).head(10)
 
-    with columna_4:
-        st.metric(
-            "Finalizadas",
-            finalizadas
-        )
+fig_crit = px.bar(
+    criticos,
+    x="Equipo",
+    y="Health",
+    color="Health",
+    text="Health"
+)
 
-    st.metric(
-        "Avance promedio",
-        str(avance_promedio) + "%"
-    )
+st.plotly_chart(
+    fig_crit,
+    use_container_width=True
+)
 
-    columnas_panel = [
-        "Itm project",
-        "Activo",
-        "Ubicacion",
-        "Nombre de tarea",
-        "OT",
-        "Líder",
-        "Responsable",
-        "Avance actual",
-        "Estado"
+# =====================================================
+# HEATMAP
+# =====================================================
+
+st.subheader("Heatmap de Condición")
+
+heat = df.set_index("Equipo")[
+    [
+        "Vibracion",
+        "Temperatura",
+        "Ultrasonido",
+        "Lubricacion",
+        "Inspeccion"
     ]
+]
 
-    columnas_disponibles = [
-        columna
-        for columna in columnas_panel
-        if columna in panel.columns
-    ]
-
-    panel_mostrar = panel[
-        columnas_disponibles
-    ].copy()
-
-    if "OT" in panel_mostrar.columns:
-        panel_mostrar["OT"] = (
-            panel_mostrar["OT"].apply(
-                limpiar_ot
-            )
-        )
-
-    st.dataframe(
-        panel_mostrar,
-        use_container_width=True,
-        hide_index=True
+heatmap = go.Figure(
+    data=go.Heatmap(
+        z=heat.values,
+        x=heat.columns,
+        y=heat.index,
+        colorscale="RdYlGn"
     )
+)
 
-    archivo_panel = panel_mostrar.to_csv(
-        index=False
-    ).encode("utf-8-sig")
+st.plotly_chart(
+    heatmap,
+    use_container_width=True
+)
 
-    st.download_button(
-        label="Descargar panel en CSV",
-        data=archivo_panel,
-        file_name="panel_avances_26-1-PH2.csv",
-        mime="text/csv"
+# =====================================================
+# RADAR
+# =====================================================
+
+st.subheader("Radar de Equipo")
+
+equipo_sel = st.selectbox(
+    "Seleccione Equipo",
+    df["Equipo"]
+)
+
+sel = df[df["Equipo"]==equipo_sel].iloc[0]
+
+radar = go.Figure()
+
+radar.add_trace(go.Scatterpolar(
+    r=[
+        sel["Vibracion"],
+        sel["Temperatura"],
+        sel["Ultrasonido"],
+        sel["Lubricacion"],
+        sel["Inspeccion"]
+    ],
+    theta=[
+        "Vibración",
+        "Temperatura",
+        "Ultrasonido",
+        "Lubricación",
+        "Inspección"
+    ],
+    fill="toself",
+    name=equipo_sel
+))
+
+radar.update_layout(
+    polar=dict(
+        radialaxis=dict(
+            visible=True,
+            range=[0,100]
+        )
     )
+)
 
+st.plotly_chart(
+    radar,
+    use_container_width=True
+)
 
-# PESTANA HISTORIAL
-with pestana_historial:
-    st.header(
-        "Historial de actualizaciones"
-    )
+# =====================================================
+# DETALLE
+# =====================================================
 
-    historial = cargar_historial()
+st.subheader("Detalle de Activos")
 
-    if historial.empty:
-        st.info(
-            "Todavía no existen actualizaciones "
-            "registradas."
-        )
-
-    else:
-        historial_mostrar = historial.copy()
-
-        historial_mostrar = historial_mostrar.rename(
-            columns={
-                "item": "Itm project",
-                "lider": "Líder",
-                "avance": "Avance",
-                "comentario": "Comentario",
-                "usuario": "Actualizado por",
-                "fecha": "Fecha"
-            }
-        )
-
-        columnas_historial = [
-            "Itm project",
-            "Líder",
-            "Avance",
-            "Comentario",
-            "Actualizado por",
-            "Fecha"
-        ]
-
-        st.dataframe(
-            historial_mostrar[
-                columnas_historial
-            ],
-            use_container_width=True,
-            hide_index=True
-        )
-
-        archivo_historial = historial_mostrar[
-            columnas_historial
-        ].to_csv(
-            index=False
-        ).encode("utf-8-sig")
-
-        st.download_button(
-            label="Descargar historial en CSV",
-            data=archivo_historial,
-            file_name=(
-                "historial_avances_26-1-PH2.csv"
-            ),
-            mime="text/csv"
-        )
+st.dataframe(
+    df.sort_values(
+        "Health",
+        ascending=False
+    ),
+    use_container_width=True
+)
